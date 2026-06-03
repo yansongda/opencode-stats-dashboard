@@ -133,38 +133,34 @@ async function getText(path: string): Promise<string> {
 // ── Query endpoints ────────────────────────────────────────────────────
 
 export function fetchOverview(): Promise<OverviewResponse> {
-  return getJson<OverviewResponse>('/api/overview')
+  return getJson<OverviewResponse>('/api/v1/overview')
 }
 
 export function fetchSessions(params?: SessionQueryParams): Promise<SessionsResponse> {
-  return getJson<SessionsResponse>('/api/sessions', {
+  return getJson<SessionsResponse>('/api/v1/sessions', {
     include_deleted: params?.include_deleted,
   })
 }
 
 export function fetchToolCalls(params?: ToolCallQueryParams): Promise<ToolCallsResponse> {
-  return getJson<ToolCallsResponse>('/api/tool-calls', {
+  return getJson<ToolCallsResponse>('/api/v1/tool-calls', {
     session_id: params?.session_id,
   })
 }
 
-// ── Export endpoints ───────────────────────────────────────────────────
-
 export function fetchExportSessions(): Promise<string> {
-  return getText('/api/export/sessions.csv')
+  return getText('/api/v1/export/sessions.csv')
 }
 
 export function fetchExportToolCalls(): Promise<ExportToolCallsResponse> {
-  return getJson<ExportToolCallsResponse>('/api/export/tool-calls.json')
+  return getJson<ExportToolCallsResponse>('/api/v1/export/tool-calls.json')
 }
 
-// ── Real-time endpoints ───────────────────────────────────────────────
-
 export function connectSSE(): EventSource {
-  const url = buildUrl('/api/events/stream')
+  const url = buildUrl('/api/v1/events/stream')
   return new EventSource(url)
 }
 
 export function fetchLatest(): Promise<LatestResponse> {
-  return getJson<LatestResponse>('/api/events/latest')
+  return getJson<LatestResponse>('/api/v1/events/latest')
 }

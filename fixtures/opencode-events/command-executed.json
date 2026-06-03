@@ -1,9 +1,0 @@
-{
-  "type": "command.executed",
-  "properties": {
-    "name": "session.share",
-    "sessionID": "ses_abc123def456",
-    "arguments": "",
-    "messageID": "msg_user_001"
-  }
-}

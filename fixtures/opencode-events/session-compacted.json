@@ -1,6 +1,0 @@
-{
-  "type": "session.compacted",
-  "properties": {
-    "sessionID": "ses_abc123def456"
-  }
-}

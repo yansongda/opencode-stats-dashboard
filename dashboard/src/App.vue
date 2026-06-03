@@ -69,11 +69,19 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, onUnmounted } from 'vue'
 import { useStatsStore } from './stores/stats'
 
 const store = useStatsStore()
 const realtimeMode = store.realtimeMode
+
+onMounted(() => {
+  store.start()
+})
+
+onUnmounted(() => {
+  store.stop()
+})
 
 const realtimeClass = computed(() => `realtime-${realtimeMode.value}`)
 const dotClass = computed(() => {

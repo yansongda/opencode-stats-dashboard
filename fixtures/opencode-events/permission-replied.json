@@ -1,8 +1,0 @@
-{
-  "type": "permission.replied",
-  "properties": {
-    "sessionID": "ses_abc123def456",
-    "permissionID": "perm_001",
-    "response": "allow"
-  }
-}

@@ -41,7 +41,7 @@ describe('API client', () => {
   })
 
   describe('fetchOverview', () => {
-    it('sends GET /api/overview and returns typed data', async () => {
+    it('sends GET /api/v1/overview and returns typed data', async () => {
       const mockData = {
         total_sessions: 42,
         deleted_sessions: 3,
@@ -54,13 +54,13 @@ describe('API client', () => {
 
       expect(fetchMock).toHaveBeenCalledTimes(1)
       const calledUrl = fetchMock.mock.calls[0][0] as string
-      expect(calledUrl).toContain('/api/overview')
+      expect(calledUrl).toContain('/api/v1/overview')
       expect(result).toEqual(mockData)
     })
   })
 
   describe('fetchSessions', () => {
-    it('sends GET /api/sessions without params by default', async () => {
+    it('sends GET /api/v1/sessions without params by default', async () => {
       const mockData = { sessions: [], count: 0 }
       const fetchMock = mockFetch(() => mockData)
 
@@ -68,7 +68,7 @@ describe('API client', () => {
 
       expect(fetchMock).toHaveBeenCalledTimes(1)
       const calledUrl = fetchMock.mock.calls[0][0] as string
-      expect(calledUrl).toContain('/api/sessions')
+      expect(calledUrl).toContain('/api/v1/sessions')
       expect(result).toEqual(mockData)
     })
 
@@ -92,7 +92,7 @@ describe('API client', () => {
   })
 
   describe('fetchToolCalls', () => {
-    it('sends GET /api/tool-calls without filter by default', async () => {
+    it('sends GET /api/v1/tool-calls without filter by default', async () => {
       const mockData = { tool_calls: [], count: 0 }
       const fetchMock = mockFetch(() => mockData)
 
@@ -100,7 +100,7 @@ describe('API client', () => {
 
       expect(fetchMock).toHaveBeenCalledTimes(1)
       const calledUrl = fetchMock.mock.calls[0][0] as string
-      expect(calledUrl).toContain('/api/tool-calls')
+      expect(calledUrl).toContain('/api/v1/tool-calls')
       expect(result).toEqual(mockData)
     })
 
@@ -115,7 +115,7 @@ describe('API client', () => {
   })
 
   describe('fetchExportSessions', () => {
-    it('sends GET /api/export/sessions.csv and returns text', async () => {
+    it('sends GET /api/v1/export/sessions.csv and returns text', async () => {
       const csvText = 'session_id,model,total_tokens\nses_001,claude,1000'
       const fetchMock = mockFetch(() => csvText)
 
@@ -123,13 +123,13 @@ describe('API client', () => {
 
       expect(fetchMock).toHaveBeenCalledTimes(1)
       const calledUrl = fetchMock.mock.calls[0][0] as string
-      expect(calledUrl).toContain('/api/export/sessions.csv')
+      expect(calledUrl).toContain('/api/v1/export/sessions.csv')
       expect(result).toBe(csvText)
     })
   })
 
   describe('fetchExportToolCalls', () => {
-    it('sends GET /api/export/tool-calls.json', async () => {
+    it('sends GET /api/v1/export/tool-calls.json', async () => {
       const mockData = { tool_calls: [], count: 0 }
       const fetchMock = mockFetch(() => mockData)
 
@@ -137,13 +137,13 @@ describe('API client', () => {
 
       expect(fetchMock).toHaveBeenCalledTimes(1)
       const calledUrl = fetchMock.mock.calls[0][0] as string
-      expect(calledUrl).toContain('/api/export/tool-calls.json')
+      expect(calledUrl).toContain('/api/v1/export/tool-calls.json')
       expect(result).toEqual(mockData)
     })
   })
 
   describe('fetchLatest', () => {
-    it('sends GET /api/events/latest', async () => {
+    it('sends GET /api/v1/events/latest', async () => {
       const mockData = { last_event_id: 'evt_001', updated_at: '2025-06-03T12:00:00Z' }
       const fetchMock = mockFetch(() => mockData)
 
@@ -151,13 +151,13 @@ describe('API client', () => {
 
       expect(fetchMock).toHaveBeenCalledTimes(1)
       const calledUrl = fetchMock.mock.calls[0][0] as string
-      expect(calledUrl).toContain('/api/events/latest')
+      expect(calledUrl).toContain('/api/v1/events/latest')
       expect(result).toEqual(mockData)
     })
   })
 
   describe('connectSSE', () => {
-    it('creates an EventSource pointing to /api/events/stream', () => {
+    it('creates an EventSource pointing to /api/v1/events/stream', () => {
       const mockClose = mock(() => {})
       let capturedUrl = ''
       class MockEventSource {
@@ -174,7 +174,7 @@ describe('API client', () => {
 
       const es = connectSSE()
 
-      expect(capturedUrl).toContain('/api/events/stream')
+      expect(capturedUrl).toContain('/api/v1/events/stream')
       expect(es).toBeDefined()
 
       globalThis.EventSource = undefined as unknown as typeof EventSource

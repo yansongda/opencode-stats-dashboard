@@ -1,8 +1,6 @@
 import { describe, it, expect, mock, beforeEach, afterEach } from 'bun:test'
 import { useStatsStore } from './stats'
 
-// ── Helpers ────────────────────────────────────────────────────────────
-
 const MOCK_OVERVIEW = {
   total_sessions: 10,
   deleted_sessions: 1,
@@ -111,18 +109,20 @@ function installMockEventSource() {
   } as unknown as typeof EventSource
 }
 
-// ── Tests ──────────────────────────────────────────────────────────────
-
 describe('useStatsStore', () => {
   const originalFetch = globalThis.fetch
   const originalEventSource = globalThis.EventSource
   const originalSetInterval = globalThis.setInterval
   const originalClearInterval = globalThis.clearInterval
+  const store = useStatsStore()
 
   beforeEach(() => {
-    // Mock setInterval to not actually run timers
+    store.stop()
+    store.overview.value = null
+    store.sessions.value = []
+    store.toolCalls.value = []
+    store.lastEventId.value = null
     globalThis.setInterval = mock((_fn: TimerHandler) => {
-      // Don't actually run — tests will trigger manually
       return 123 as unknown as ReturnType<typeof setInterval>
     }) as unknown as typeof setInterval
     globalThis.clearInterval = mock(() => {}) as unknown as typeof clearInterval
@@ -137,9 +137,16 @@ describe('useStatsStore', () => {
   })
 
   describe('initialization', () => {
-    it('starts with empty state and disconnected mode', () => {
-      const store = useStatsStore()
+    it('returns same refs across multiple calls', () => {
+      const a = useStatsStore()
+      const b = useStatsStore()
+      expect(a.overview).toBe(b.overview)
+      expect(a.sessions).toBe(b.sessions)
+      expect(a.toolCalls).toBe(b.toolCalls)
+      expect(a.realtimeMode).toBe(b.realtimeMode)
+    })
 
+    it('starts with empty state and disconnected mode after stop', () => {
       expect(store.overview.value).toBeNull()
       expect(store.sessions.value).toEqual([])
       expect(store.toolCalls.value).toEqual([])
@@ -150,10 +157,7 @@ describe('useStatsStore', () => {
 
   describe('refreshData', () => {
     it('fetches and populates all data', async () => {
-      // Three parallel fetches: overview, sessions, tool-calls
       mockFetchSequence([MOCK_OVERVIEW, MOCK_SESSIONS, MOCK_TOOL_CALLS])
-
-      const store = useStatsStore()
       await store.refreshData()
 
       expect(store.overview.value).toEqual(MOCK_OVERVIEW)
@@ -166,28 +170,33 @@ describe('useStatsStore', () => {
     it('fetches initial data and connects SSE', async () => {
       installMockEventSource()
       mockFetchSequence([MOCK_OVERVIEW, MOCK_SESSIONS, MOCK_TOOL_CALLS])
-
-      const store = useStatsStore()
       await store.start()
 
       expect(store.overview.value).toEqual(MOCK_OVERVIEW)
       expect(store.realtimeMode.value).toBe('sse')
       expect(lastEventSource).not.toBeNull()
-      expect(lastEventSource!.url).toContain('/api/events/stream')
+      expect(lastEventSource!.url).toContain('/api/v1/events/stream')
+    })
+
+    it('is idempotent — second call is a no-op', async () => {
+      installMockEventSource()
+      mockFetchSequence([MOCK_OVERVIEW, MOCK_SESSIONS, MOCK_TOOL_CALLS])
+      await store.start()
+      expect(store.realtimeMode.value).toBe('sse')
+
+      const fetchCallsBefore = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls.length
+      await store.start()
+      const fetchCallsAfter = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls.length
+      expect(fetchCallsAfter).toBe(fetchCallsBefore)
     })
 
     it('falls back to polling when SSE errors', async () => {
       installMockEventSource()
       mockFetchSequence([MOCK_OVERVIEW, MOCK_SESSIONS, MOCK_TOOL_CALLS])
-
-      const store = useStatsStore()
       await store.start()
 
       expect(store.realtimeMode.value).toBe('sse')
-
-      // Simulate SSE error
       lastEventSource!.triggerError()
-
       expect(store.realtimeMode.value).toBe('polling')
     })
 
@@ -199,8 +208,6 @@ describe('useStatsStore', () => {
       } as unknown as typeof EventSource
 
       mockFetchSequence([MOCK_OVERVIEW, MOCK_SESSIONS, MOCK_TOOL_CALLS])
-
-      const store = useStatsStore()
       await store.start()
 
       expect(store.realtimeMode.value).toBe('polling')
@@ -210,26 +217,20 @@ describe('useStatsStore', () => {
   describe('SSE message handling', () => {
     it('updates lastEventId and refreshes data on stats-update event', async () => {
       installMockEventSource()
-      // Initial load: 3 fetches, then refresh after SSE: 3 more fetches
       mockFetchSequence([
-        MOCK_OVERVIEW, MOCK_SESSIONS, MOCK_TOOL_CALLS,  // initial
-        MOCK_OVERVIEW, MOCK_SESSIONS, MOCK_TOOL_CALLS,  // refresh
+        MOCK_OVERVIEW, MOCK_SESSIONS, MOCK_TOOL_CALLS,
+        MOCK_OVERVIEW, MOCK_SESSIONS, MOCK_TOOL_CALLS,
       ])
-
-      const store = useStatsStore()
       await store.start()
 
       expect(store.lastEventId.value).toBeNull()
 
-      // Simulate SSE message
       lastEventSource!.emit('stats-update', {
         last_event_id: 'evt_002',
         updated_at: '2025-06-03T13:00:00Z',
       })
 
-      // Wait for async refresh
       await new Promise((r) => setTimeout(r, 10))
-
       expect(store.lastEventId.value).toBe('evt_002')
     })
   })
@@ -238,12 +239,9 @@ describe('useStatsStore', () => {
     it('closes SSE and resets mode to disconnected', async () => {
       installMockEventSource()
       mockFetchSequence([MOCK_OVERVIEW, MOCK_SESSIONS, MOCK_TOOL_CALLS])
-
-      const store = useStatsStore()
       await store.start()
 
       expect(store.realtimeMode.value).toBe('sse')
-
       store.stop()
 
       expect(store.realtimeMode.value).toBe('disconnected')
@@ -255,8 +253,6 @@ describe('useStatsStore', () => {
     it('goes disconnected → sse when SSE works', async () => {
       installMockEventSource()
       mockFetchSequence([MOCK_OVERVIEW, MOCK_SESSIONS, MOCK_TOOL_CALLS])
-
-      const store = useStatsStore()
       expect(store.realtimeMode.value).toBe('disconnected')
 
       await store.start()
@@ -271,8 +267,6 @@ describe('useStatsStore', () => {
       } as unknown as typeof EventSource
 
       mockFetchSequence([MOCK_OVERVIEW, MOCK_SESSIONS, MOCK_TOOL_CALLS])
-
-      const store = useStatsStore()
       await store.start()
 
       expect(store.realtimeMode.value).toBe('polling')
@@ -281,8 +275,6 @@ describe('useStatsStore', () => {
     it('goes sse → polling on SSE error', async () => {
       installMockEventSource()
       mockFetchSequence([MOCK_OVERVIEW, MOCK_SESSIONS, MOCK_TOOL_CALLS])
-
-      const store = useStatsStore()
       await store.start()
       expect(store.realtimeMode.value).toBe('sse')
 
