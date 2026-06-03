@@ -1,0 +1,28 @@
+{
+  "type": "message.part.updated",
+  "properties": {
+    "part": {
+      "id": "part_tool_001",
+      "sessionID": "ses_abc123def456",
+      "messageID": "msg_xyz789",
+      "type": "tool",
+      "callID": "call_001",
+      "tool": "bash",
+      "state": {
+        "status": "completed",
+        "input": {
+          "command": "npm install"
+        },
+        "output": "added 150 packages in 10s",
+        "title": "执行命令: npm install",
+        "metadata": {
+          "exitCode": 0
+        },
+        "time": {
+          "start": 1717400050000,
+          "end": 1717400060000
+        }
+      }
+    }
+  }
+}

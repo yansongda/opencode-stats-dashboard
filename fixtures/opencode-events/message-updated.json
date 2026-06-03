@@ -1,0 +1,18 @@
+{
+  "type": "message.updated",
+  "properties": {
+    "info": {
+      "id": "msg_user_001",
+      "sessionID": "ses_abc123def456",
+      "role": "user",
+      "time": {
+        "created": 1717400000000
+      },
+      "agent": "build",
+      "model": {
+        "providerID": "anthropic",
+        "modelID": "claude-sonnet-4-20250514"
+      }
+    }
+  }
+}

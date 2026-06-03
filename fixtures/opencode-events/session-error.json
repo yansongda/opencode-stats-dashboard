@@ -1,0 +1,13 @@
+{
+  "type": "session.error",
+  "properties": {
+    "sessionID": "ses_abc123def456",
+    "error": {
+      "name": "ProviderAuthError",
+      "data": {
+        "providerID": "anthropic",
+        "message": "Invalid API key"
+      }
+    }
+  }
+}

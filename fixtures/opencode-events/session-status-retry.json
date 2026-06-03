@@ -1,0 +1,12 @@
+{
+  "type": "session.status",
+  "properties": {
+    "sessionID": "ses_abc123def456",
+    "status": {
+      "type": "retry",
+      "attempt": 1,
+      "message": "Rate limited, retrying...",
+      "next": 1717400100000
+    }
+  }
+}

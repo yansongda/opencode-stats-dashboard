@@ -1,0 +1,21 @@
+{
+  "type": "session.created",
+  "properties": {
+    "info": {
+      "id": "ses_new_session_001",
+      "projectID": "proj_xyz789ghi012",
+      "directory": "/Users/user/my-project",
+      "parentID": null,
+      "summary": null,
+      "share": null,
+      "title": "",
+      "version": "1.0.0",
+      "time": {
+        "created": 1717400000000,
+        "updated": 1717400000000,
+        "compacting": null
+      },
+      "revert": null
+    }
+  }
+}

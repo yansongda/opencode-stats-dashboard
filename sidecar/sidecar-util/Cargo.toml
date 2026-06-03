@@ -1,0 +1,13 @@
+[package]
+name = "sidecar-util"
+rust-version.workspace = true
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+sidecar-kernel = { path = "../sidecar-kernel" }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }

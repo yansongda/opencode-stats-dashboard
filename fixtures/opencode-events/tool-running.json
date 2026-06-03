@@ -1,0 +1,24 @@
+{
+  "type": "message.part.updated",
+  "properties": {
+    "part": {
+      "id": "part_tool_001",
+      "sessionID": "ses_abc123def456",
+      "messageID": "msg_xyz789",
+      "type": "tool",
+      "callID": "call_001",
+      "tool": "bash",
+      "state": {
+        "status": "running",
+        "input": {
+          "command": "npm install"
+        },
+        "title": "执行命令: npm install",
+        "metadata": {},
+        "time": {
+          "start": 1717400050000
+        }
+      }
+    }
+  }
+}

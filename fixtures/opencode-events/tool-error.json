@@ -1,0 +1,27 @@
+{
+  "type": "message.part.updated",
+  "properties": {
+    "part": {
+      "id": "part_tool_002",
+      "sessionID": "ses_abc123def456",
+      "messageID": "msg_xyz789",
+      "type": "tool",
+      "callID": "call_002",
+      "tool": "bash",
+      "state": {
+        "status": "error",
+        "input": {
+          "command": "npm run build"
+        },
+        "error": "Build failed: TypeScript compilation error",
+        "metadata": {
+          "exitCode": 1
+        },
+        "time": {
+          "start": 1717400070000,
+          "end": 1717400080000
+        }
+      }
+    }
+  }
+}

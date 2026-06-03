@@ -1,0 +1,9 @@
+{
+  "type": "session.status",
+  "properties": {
+    "sessionID": "ses_abc123def456",
+    "status": {
+      "type": "busy"
+    }
+  }
+}

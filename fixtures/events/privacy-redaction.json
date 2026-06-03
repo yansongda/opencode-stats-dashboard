@@ -1,0 +1,19 @@
+{
+  "event_id": "evt_aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0005",
+  "event_type": "tool.completed",
+  "session_id": "ses_fixture_001",
+  "project_path": "/Users/user/my-project",
+  "timestamp_ms": 1717400070000,
+  "model": "claude-sonnet-4-20250514",
+  "tokens": 420,
+  "cost_usd": 0.0021,
+  "tool": "bash",
+  "status": "completed",
+  "summary": "执行命令: npm run build",
+  "deleted": false,
+  "metadata": {
+    "call_id": "call_002",
+    "exit_code": 1,
+    "duration_ms": 8000
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "opencode-stats-plugin",
+  "version": "0.1.0",
+  "description": "OpenCode stats collection plugin",
+  "main": "src/index.ts",
+  "scripts": {
+    "test": "bun test"
+  }
+}

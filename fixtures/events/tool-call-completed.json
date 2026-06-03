@@ -1,0 +1,19 @@
+{
+  "event_id": "evt_aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0004",
+  "event_type": "tool.completed",
+  "session_id": "ses_fixture_001",
+  "project_path": "/Users/user/my-project",
+  "timestamp_ms": 1717400060000,
+  "model": "claude-sonnet-4-20250514",
+  "tokens": 350,
+  "cost_usd": 0.0018,
+  "tool": "bash",
+  "status": "completed",
+  "summary": "执行命令: npm install",
+  "deleted": false,
+  "metadata": {
+    "call_id": "call_001",
+    "exit_code": 0,
+    "duration_ms": 10000
+  }
+}
