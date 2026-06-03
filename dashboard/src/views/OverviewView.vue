@@ -80,24 +80,30 @@
         </div>
       </div>
     </div>
+
+    <!-- Model Distribution (full width) -->
+    <ModelDistribution />
+
+    <!-- Bottom three-column grid: Project | Recent Sessions | Top Tools -->
+    <div class="widgets-grid" data-testid="widgets-grid">
+      <ProjectDistribution />
+      <RecentSessions />
+      <TopTools />
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from 'vue'
+import { computed } from 'vue'
 import MetricCard from '../components/MetricCard.vue'
+import ModelDistribution from '../components/ModelDistribution.vue'
+import ProjectDistribution from '../components/ProjectDistribution.vue'
+import RecentSessions from '../components/RecentSessions.vue'
+import TopTools from '../components/TopTools.vue'
 import { useStatsStore } from '../stores/stats'
 
 const store = useStatsStore()
 const { overview, realtimeMode } = store
-
-onMounted(() => {
-  store.start()
-})
-
-onUnmounted(() => {
-  store.stop()
-})
 
 // ── Metric helpers ──────────────────────────────────────────────────
 
@@ -334,18 +340,28 @@ const realtimeDetail = computed(() => {
   line-height: 1.5;
 }
 
+/* ── Widgets Grid ──────────────────────────────────────────────────── */
+
+.widgets-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--spacing-3);
+}
+
 /* ── Responsive ───────────────────────────────────────────────────── */
 
 @media (max-width: 1024px) {
   .metrics-grid,
-  .verification-grid {
+  .verification-grid,
+  .widgets-grid {
     grid-template-columns: repeat(2, 1fr);
   }
 }
 
 @media (max-width: 640px) {
   .metrics-grid,
-  .verification-grid {
+  .verification-grid,
+  .widgets-grid {
     grid-template-columns: 1fr;
   }
 }

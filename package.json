@@ -1,30 +1,14 @@
 {
   "name": "opencode-stats-plugin",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "OpenCode Session Stats Dashboard Plugin",
-  "bin": {
-    "opencode-stats": "./plugin/src/index.ts"
-  },
-  "files": [
-    "plugin/",
-    "scripts/",
-    "sidecar/Cargo.toml",
-    "sidecar/Cargo.lock",
-    "sidecar/sidecar-api/",
-    "sidecar/sidecar-database/",
-    "sidecar/sidecar-kernel/",
-    "sidecar/sidecar-util/"
-  ],
+  "main": "src/index.ts",
   "scripts": {
-    "build": "scripts/build.sh",
-    "postinstall": "scripts/postinstall.js",
-    "test:sidecar": "cargo test --manifest-path sidecar/Cargo.toml",
-    "test:plugin": "bun test plugin",
-    "test": "bun run test:sidecar && bun run test:plugin",
+    "test": "bun test",
     "build:dashboard": "bun run --cwd dashboard build"
   },
   "devDependencies": {
-    "@playwright/test": "^1.60.0"
+    "@opencode-ai/plugin": "^1.15.13"
   }
 }
