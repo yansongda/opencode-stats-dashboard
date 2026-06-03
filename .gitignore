@@ -1,0 +1,8 @@
+.omo/
+.superpowers/
+dist/
+node_modules/
+target/
+test-results/
+playwright.config.js
+.sidecar-config.json
