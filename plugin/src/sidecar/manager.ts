@@ -59,13 +59,31 @@ export class SidecarManager {
 
   /**
    * Gracefully stop the sidecar process.
-   * Sends SIGTERM and waits for exit.
+   * Sends SIGTERM, waits for timeout, then escalates to SIGKILL if needed.
    */
   async stop(): Promise<void> {
     if (!this.proc) return
 
+    // Send SIGTERM for graceful shutdown
     this.proc.kill("SIGTERM")
-    await this.proc.exited
+
+    // Wait for exit with timeout (5 seconds)
+    const timeout = 5000
+    const deadline = Date.now() + timeout
+
+    while (Date.now() < deadline) {
+      if (this.proc.exitCode !== null) {
+        break
+      }
+      await Bun.sleep(100)
+    }
+
+    // If still running, escalate to SIGKILL
+    if (this.proc.exitCode === null) {
+      this.proc.kill("SIGKILL")
+      await this.proc.exited
+    }
+
     this.proc = null
     this.url = null
   }

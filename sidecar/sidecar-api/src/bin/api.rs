@@ -3,7 +3,9 @@ use std::sync::{Arc, Mutex};
 
 use rusqlite::Connection;
 use salvo::prelude::*;
-use sidecar_api::api::{UpdateBroadcaster, events_router, export_router, ingest_router, query_router};
+use sidecar_api::api::{
+    UpdateBroadcaster, events_router, export_router, ingest_router, query_router,
+};
 use sidecar_database::schema::run_migrations;
 
 #[derive(Clone, Debug)]
@@ -17,6 +19,24 @@ async fn health() -> Json<serde_json::Value> {
     }))
 }
 
+fn content_type_for(path: &str) -> &'static str {
+    match path.rsplit('.').next().unwrap_or("") {
+        "js" | "mjs" => "application/javascript; charset=utf-8",
+        "css" => "text/css; charset=utf-8",
+        "json" => "application/json; charset=utf-8",
+        "svg" => "image/svg+xml",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "ico" => "image/x-icon",
+        "woff" => "font/woff",
+        "woff2" => "font/woff2",
+        "ttf" => "font/ttf",
+        "eot" => "application/vnd.ms-fontobject",
+        "map" => "application/json",
+        _ => "text/html; charset=utf-8",
+    }
+}
+
 #[handler]
 async fn serve_static(req: &mut Request, res: &mut Response, depot: &mut Depot) {
     let root = depot.obtain::<StaticRoot>().unwrap().0.clone();
@@ -24,14 +44,20 @@ async fn serve_static(req: &mut Request, res: &mut Response, depot: &mut Depot) 
     let file_path = root.join(path);
 
     let serve = if file_path.is_file() {
-        std::fs::read_to_string(&file_path)
+        std::fs::read(&file_path)
     } else {
-        std::fs::read_to_string(root.join("index.html"))
+        std::fs::read(root.join("index.html"))
     };
 
     match serve {
-        Ok(content) => { res.render(Text::Html(content)); }
-        Err(_) => { res.status_code(StatusCode::NOT_FOUND); }
+        Ok(content) => {
+            let ct = content_type_for(path);
+            res.add_header("content-type", ct, true).unwrap();
+            res.body(content);
+        }
+        Err(_) => {
+            res.status_code(StatusCode::NOT_FOUND);
+        }
     }
 }
 
@@ -47,9 +73,16 @@ fn detect_static_root() -> PathBuf {
             if candidate.is_dir() {
                 return candidate;
             }
+            // 3. 可执行文件上级目录的 static/（处理 sidecar/target/debug/sidecar-api 的情况）
+            if let Some(parent_dir) = exe_dir.parent() {
+                let candidate = parent_dir.join("static");
+                if candidate.is_dir() {
+                    return candidate;
+                }
+            }
         }
     }
-    // 3. 回退到 CWD/static
+    // 4. 回退到 CWD/static
     PathBuf::from("static")
 }
 
@@ -78,7 +111,7 @@ async fn main() {
 
     let router = app_router(db, broadcaster);
 
-    let acceptor = TcpListener::new("127.0.0.1:0").bind().await;
+    let acceptor = TcpListener::new("127.0.0.1:11133").bind().await;
     tracing::info!("Listening on {:?}", acceptor.local_addr());
 
     Server::new(acceptor).serve(router).await;
@@ -86,12 +119,16 @@ async fn main() {
 
 #[cfg(test)]
 mod tests {
-    use salvo::test::{TestClient, ResponseExt};
+    use salvo::test::{ResponseExt, TestClient};
     use std::fs;
 
     fn setup_static_dir(dir: &std::path::Path) {
         fs::create_dir_all(dir).unwrap();
-        fs::write(dir.join("index.html"), "<html><body>dashboard</body></html>").unwrap();
+        fs::write(
+            dir.join("index.html"),
+            "<html><body>dashboard</body></html>",
+        )
+        .unwrap();
         fs::write(dir.join("test.txt"), "hello world").unwrap();
         let assets = dir.join("assets");
         fs::create_dir_all(&assets).unwrap();
@@ -103,15 +140,17 @@ mod tests {
             .push(super::Router::with_path("health").get(super::health))
             .push(
                 super::Router::with_path("{*path}")
-                    .hoop(super::affix_state::inject(super::StaticRoot(tmp.to_path_buf())))
+                    .hoop(super::affix_state::inject(super::StaticRoot(
+                        tmp.to_path_buf(),
+                    )))
                     .get(super::serve_static),
             )
     }
 
     #[tokio::test]
     async fn health_endpoint_returns_ok() {
-        let router = super::Router::new()
-            .push(super::Router::with_path("health").get(super::health));
+        let router =
+            super::Router::new().push(super::Router::with_path("health").get(super::health));
 
         let res = TestClient::get("http://127.0.0.1:3000/health")
             .send(router)
@@ -127,9 +166,7 @@ mod tests {
 
         let router = router_with_static(tmp.path());
 
-        let mut res = TestClient::get("http://127.0.0.1:3000/")
-            .send(router)
-            .await;
+        let mut res = TestClient::get("http://127.0.0.1:3000/").send(router).await;
 
         assert_eq!(res.status_code, Some(super::StatusCode::OK));
         let body = res.take_string().await.unwrap();
@@ -186,10 +223,10 @@ mod tests {
 
     #[tokio::test]
     async fn api_routes_still_work_with_static() {
-        use std::sync::{Arc, Mutex};
         use rusqlite::Connection;
         use sidecar_api::api::UpdateBroadcaster;
         use sidecar_database::schema::run_migrations;
+        use std::sync::{Arc, Mutex};
 
         let tmp = tempfile::tempdir().unwrap();
         setup_static_dir(tmp.path());
