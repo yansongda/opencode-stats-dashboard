@@ -5,6 +5,13 @@ export interface OverviewResponse {
   deleted_sessions: number
   total_tokens: number
   total_cost_usd: number
+  total_messages: number
+  total_days: number
+  avg_tokens_per_session: number
+  input_tokens: number
+  output_tokens: number
+  cache_read: number
+  cache_write: number
 }
 
 export interface SessionRow {
@@ -163,4 +170,23 @@ export function connectSSE(): EventSource {
 
 export function fetchLatest(): Promise<LatestResponse> {
   return getJson<LatestResponse>('/api/v1/events/latest')
+}
+
+export interface CleanupResponse {
+  deleted: number
+  message?: string
+}
+
+export async function cleanupDeleted(): Promise<CleanupResponse> {
+  const url = buildUrl('/api/v1/cleanup/deleted')
+  const res = await fetch(url, { method: 'POST', headers: { Accept: 'application/json' } })
+  if (!res.ok) throw new Error(`API error: ${res.status} ${res.statusText}`)
+  return res.json() as Promise<CleanupResponse>
+}
+
+export async function cleanupAll(): Promise<CleanupResponse> {
+  const url = buildUrl('/api/v1/cleanup/all')
+  const res = await fetch(url, { method: 'POST', headers: { Accept: 'application/json' } })
+  if (!res.ok) throw new Error(`API error: ${res.status} ${res.statusText}`)
+  return res.json() as Promise<CleanupResponse>
 }

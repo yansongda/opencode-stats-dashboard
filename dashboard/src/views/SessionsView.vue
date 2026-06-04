@@ -1,6 +1,6 @@
 <template>
   <div class="view-container">
-    <h1 class="view-title">Sessions</h1>
+    <h1 class="view-title">会话审计</h1>
 
     <!-- Filter Bar -->
     <div class="filter-bar">
@@ -8,19 +8,19 @@
         v-model="searchQuery"
         type="text"
         class="filter-input filter-search"
-        placeholder="Search session ID, project..."
+        placeholder="搜索会话 ID、项目..."
       />
       <select v-model="filterStatus" class="filter-select">
-        <option value="all">All Status</option>
-        <option value="active">Active</option>
-        <option value="deleted">Deleted</option>
+        <option value="all">全部状态</option>
+        <option value="active">活跃</option>
+        <option value="deleted">已删除</option>
       </select>
       <select v-model="filterModel" class="filter-select">
-        <option value="all">All Models</option>
+        <option value="all">全部模型</option>
         <option v-for="m in uniqueModels" :key="m" :value="m">{{ m }}</option>
       </select>
       <select v-model="filterProject" class="filter-select">
-        <option value="all">All Projects</option>
+        <option value="all">全部项目</option>
         <option v-for="p in uniqueProjects" :key="p" :value="p">{{ truncateProject(p) }}</option>
       </select>
       <input
@@ -28,24 +28,24 @@
         type="date"
         class="filter-input filter-date"
       />
-      <span class="filter-sep">to</span>
+      <span class="filter-sep">至</span>
       <input
         v-model="dateTo"
         type="date"
         class="filter-input filter-date"
       />
-      <button class="btn btn-ghost" @click="resetFilters">Reset</button>
+      <button class="btn btn-ghost" @click="resetFilters">重置</button>
     </div>
 
     <!-- Summary Bar -->
     <div class="summary-bar">
-      <span class="summary-total">{{ filteredSessions.length }} sessions</span>
+      <span class="summary-total">共 {{ filteredSessions.length }} 会话</span>
       <span class="summary-sep">|</span>
-      <span class="summary-active">{{ activeCount }} active</span>
+      <span class="summary-active">{{ activeCount }} 活跃</span>
       <span class="summary-sep">|</span>
-      <span class="summary-deleted">{{ deletedCount }} deleted</span>
+      <span class="summary-deleted">{{ deletedCount }} 已删除</span>
       <span class="summary-sep">|</span>
-      <span class="summary-selected">{{ selectedIds.size }} selected</span>
+      <span class="summary-selected">已选 {{ selectedIds.size }} 条</span>
     </div>
 
     <!-- Data Table -->
@@ -66,7 +66,7 @@
               :class="{ sorted: sortKey === 'session_id' }"
               @click="toggleSort('session_id')"
             >
-              Session ID
+              会话 ID
               <span class="sort-indicator">{{ sortIndicator('session_id') }}</span>
             </th>
             <th
@@ -74,7 +74,7 @@
               :class="{ sorted: sortKey === 'project_path' }"
               @click="toggleSort('project_path')"
             >
-              Project
+              项目
               <span class="sort-indicator">{{ sortIndicator('project_path') }}</span>
             </th>
             <th
@@ -82,7 +82,7 @@
               :class="{ sorted: sortKey === 'model' }"
               @click="toggleSort('model')"
             >
-              Model
+              模型
               <span class="sort-indicator">{{ sortIndicator('model') }}</span>
             </th>
             <th
@@ -90,7 +90,7 @@
               :class="{ sorted: sortKey === 'total_tokens' }"
               @click="toggleSort('total_tokens')"
             >
-              Tokens
+              Token
               <span class="sort-indicator">{{ sortIndicator('total_tokens') }}</span>
             </th>
             <th
@@ -98,16 +98,16 @@
               :class="{ sorted: sortKey === 'total_cost_usd' }"
               @click="toggleSort('total_cost_usd')"
             >
-              Cost
+              成本
               <span class="sort-indicator">{{ sortIndicator('total_cost_usd') }}</span>
             </th>
-            <th class="col-status">Status</th>
+            <th class="col-status">状态</th>
             <th
               class="col-date sortable"
               :class="{ sorted: sortKey === 'first_event_at' }"
               @click="toggleSort('first_event_at')"
             >
-              First Event
+              首次事件
               <span class="sort-indicator">{{ sortIndicator('first_event_at') }}</span>
             </th>
             <th
@@ -115,7 +115,7 @@
               :class="{ sorted: sortKey === 'last_event_at' }"
               @click="toggleSort('last_event_at')"
             >
-              Last Event
+              末次事件
               <span class="sort-indicator">{{ sortIndicator('last_event_at') }}</span>
             </th>
           </tr>
@@ -145,11 +145,11 @@
             <td class="col-status">
               <AuditBadge :deleted="session.deleted" />
             </td>
-            <td class="col-date">{{ formatDateTime(session.first_event_at) }}</td>
-            <td class="col-date">{{ relativeTime(session.last_event_at) }}</td>
+            <td class="col-date">{{ formatInTimezone(session.first_event_at) }}</td>
+            <td class="col-date">{{ formatRelativeTime(session.last_event_at) }}</td>
           </tr>
           <tr v-if="paginatedSessions.length === 0">
-            <td colspan="9" class="empty-state">No sessions match the current filters.</td>
+            <td colspan="9" class="empty-state">没有匹配当前过滤条件的会话</td>
           </tr>
         </tbody>
       </table>
@@ -158,7 +158,7 @@
     <!-- Pagination -->
     <div class="pagination-bar">
       <span class="pagination-info">
-        Showing {{ paginationStart }}–{{ paginationEnd }} of {{ filteredSessions.length }}
+        显示 {{ paginationStart }}–{{ paginationEnd }} / 共 {{ filteredSessions.length }} 条
       </span>
       <div class="pagination-controls">
         <button
@@ -166,7 +166,7 @@
           :disabled="currentPage === 1"
           @click="currentPage--"
         >
-          Prev
+          上一页
         </button>
         <button
           v-for="page in visiblePages"
@@ -182,7 +182,7 @@
           :disabled="currentPage === totalPages"
           @click="currentPage++"
         >
-          Next
+          下一页
         </button>
       </div>
     </div>
@@ -194,10 +194,10 @@
         :disabled="selectedIds.size === 0"
         @click="exportSelected"
       >
-        Export Selected ({{ selectedIds.size }})
+        导出选中 ({{ selectedIds.size }})
       </button>
       <button class="btn btn-outline" @click="exportAll">
-        Export All
+        导出全部
       </button>
     </div>
   </div>
@@ -207,6 +207,7 @@
 import { ref, computed, watch } from 'vue'
 import { useStatsStore } from '../stores/stats'
 import { fetchExportSessions } from '../api/client'
+import { formatInTimezone, formatRelativeTime } from '../utils/timezone'
 import type { SessionRow } from '../api/client'
 
 const store = useStatsStore()
@@ -471,29 +472,6 @@ function formatCost(usd: number): string {
   return `$${usd.toFixed(2)}`
 }
 
-function formatDateTime(iso: string | null): string {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  const pad = (v: number) => String(v).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
-
-function relativeTime(iso: string | null): string {
-  if (!iso) return '—'
-  const now = Date.now()
-  const then = new Date(iso).getTime()
-  const diff = now - then
-  if (diff < 0) return 'just now'
-  const mins = Math.floor(diff / 60000)
-  if (mins < 1) return 'just now'
-  if (mins < 60) return `${mins}m ago`
-  const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${hours}h ago`
-  const days = Math.floor(hours / 24)
-  if (days < 7) return `${days}d ago`
-  return formatDateTime(iso)
-}
-
 function truncateProject(path: string): string {
   if (path.length <= 30) return path
   return '…' + path.slice(-28)
@@ -507,7 +485,7 @@ const AuditBadge = {
   },
   template: `
     <span :class="['audit-badge', deleted ? 'badge-deleted' : 'badge-active']">
-      {{ deleted ? 'Deleted' : 'Active' }}
+      {{ deleted ? '已删除' : '活跃' }}
     </span>
   `,
 }

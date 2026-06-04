@@ -3,7 +3,6 @@ import OverviewView from '../views/OverviewView.vue'
 import SessionsView from '../views/SessionsView.vue'
 import ToolCallsView from '../views/ToolCallsView.vue'
 import ExportsView from '../views/ExportsView.vue'
-import ValidationView from '../views/ValidationView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -27,11 +26,6 @@ const router = createRouter({
       path: '/exports',
       name: 'exports',
       component: ExportsView,
-    },
-    {
-      path: '/validation',
-      name: 'validation',
-      component: ValidationView,
     },
   ],
 })
