@@ -54,7 +54,6 @@ describe("schema", () => {
       "events",
       "sessions",
       "tool_calls",
-      "daily_usage",
       "schema_migrations",
     ]) {
       expect(tables).toContain(expected)
@@ -226,7 +225,6 @@ describe("processSessionEvent", () => {
   })
 
   test("session.deleted marks session as deleted", () => {
-    // Create session first
     processSessionEvent(
       db,
       validEvent({
@@ -235,15 +233,27 @@ describe("processSessionEvent", () => {
       })
     )
 
-    // Delete it
+    // Usage update to accumulate tokens
+    processSessionEvent(
+      db,
+      validEvent({
+        event_id: "evt_usage_001",
+        event_type: "usage.updated",
+        session_id: "ses_001",
+        tokens: 2500,
+        cost_usd: 0.0125,
+      })
+    )
+
+    // Delete — tokens/cost_usd in the event are 0 (OpenCode doesn't send cumulative totals)
     processSessionEvent(
       db,
       validEvent({
         event_id: "evt_del_001",
         event_type: "session.deleted",
         session_id: "ses_001",
-        tokens: 2500,
-        cost_usd: 0.0125,
+        tokens: 0,
+        cost_usd: 0,
       })
     )
 
@@ -254,8 +264,8 @@ describe("processSessionEvent", () => {
     expect(row).not.toBeNull()
     expect(row!.deleted).toBe(1) // TRUE
     expect(row!.deleted_at).not.toBeNull()
-    expect(row!.total_tokens).toBe(2500)
-    expect(row!.total_cost_usd).toBeCloseTo(0.0125)
+    expect(row!.total_tokens).toBe(2500) // Preserved from usage.updated
+    expect(row!.total_cost_usd).toBeCloseTo(0.0125) // Preserved from usage.updated
   })
 
   test("deleted session row is still queryable (not physically deleted)", () => {
@@ -367,7 +377,6 @@ describe("processSessionEvent", () => {
   })
 
   test("full lifecycle: create → usage → delete", () => {
-    // 1. Create
     processSessionEvent(
       db,
       validEvent({
@@ -376,7 +385,6 @@ describe("processSessionEvent", () => {
       })
     )
 
-    // 2. Usage update
     processSessionEvent(
       db,
       validEvent({
@@ -388,15 +396,14 @@ describe("processSessionEvent", () => {
       })
     )
 
-    // 3. Delete (carries final cumulative totals)
     processSessionEvent(
       db,
       validEvent({
         event_id: "evt_del_001",
         event_type: "session.deleted",
         session_id: "ses_001",
-        tokens: 2500,
-        cost_usd: 0.0125,
+        tokens: 0,
+        cost_usd: 0,
       })
     )
 
@@ -405,8 +412,8 @@ describe("processSessionEvent", () => {
       .get() as Record<string, unknown> | null
 
     expect(row!.deleted).toBe(1)
-    expect(row!.total_tokens).toBe(2500)
-    expect(row!.total_cost_usd).toBeCloseTo(0.0125)
+    expect(row!.total_tokens).toBe(1500)
+    expect(row!.total_cost_usd).toBeCloseTo(0.0075)
     expect(row!.deleted_at).not.toBeNull()
   })
 })

@@ -19,6 +19,7 @@ export interface StatsStore {
   toolCalls: Ref<ToolCallRow[]>
   realtimeMode: Ref<RealtimeMode>
   lastEventId: Ref<string | null>
+  lastUpdatedAt: Ref<Date | null>
   start: () => Promise<void>
   stop: () => void
   refreshData: () => Promise<void>
@@ -31,6 +32,7 @@ const sessions = ref<SessionRow[]>([]) as Ref<SessionRow[]>
 const toolCalls = ref<ToolCallRow[]>([]) as Ref<ToolCallRow[]>
 const realtimeMode = ref<RealtimeMode>('disconnected') as Ref<RealtimeMode>
 const lastEventId = ref<string | null>(null) as Ref<string | null>
+const lastUpdatedAt = ref<Date | null>(null) as Ref<Date | null>
 
 let eventSource: EventSource | null = null
 let pollTimer: ReturnType<typeof setInterval> | null = null
@@ -39,12 +41,13 @@ let started = false
 async function refreshData(): Promise<void> {
   const [ov, sess, tc] = await Promise.all([
     fetchOverview(),
-    fetchSessions(),
+    fetchSessions({ include_deleted: true }),
     fetchToolCalls(),
   ])
   overview.value = ov
   sessions.value = sess.sessions
   toolCalls.value = tc.tool_calls
+  lastUpdatedAt.value = new Date()
 }
 
 function stopPolling(): void {
@@ -72,26 +75,34 @@ function startPolling(): void {
 
 function connectSSEWithFallback(): void {
   try {
+    console.log('[SSE] Connecting to', connectSSE())
     eventSource = connectSSE()
     realtimeMode.value = 'sse'
 
     eventSource.addEventListener('stats-update', ((event: MessageEvent) => {
+      console.log('[SSE] Received event:', event.data)
       try {
         const update: StatsUpdate = JSON.parse(event.data)
         lastEventId.value = update.last_event_id
-        refreshData()
-      } catch {
-        // Ignore parse errors in SSE data
+        console.log('[SSE] Calling refreshData...')
+        refreshData().then(() => {
+          console.log('[SSE] refreshData completed')
+        }).catch((err) => {
+          console.error('[SSE] refreshData failed:', err)
+        })
+      } catch (err) {
+        console.error('[SSE] Parse error:', err)
       }
     }) as EventListener)
 
-    eventSource.onerror = () => {
+    eventSource.onerror = (err) => {
+      console.error('[SSE] Connection error:', err)
       eventSource?.close()
       eventSource = null
       startPolling()
     }
-  } catch {
-    // EventSource constructor failed — fall back to polling
+  } catch (err) {
+    console.error('[SSE] Constructor failed:', err)
     startPolling()
   }
 }
@@ -120,6 +131,7 @@ export function useStatsStore(): StatsStore {
     toolCalls,
     realtimeMode,
     lastEventId,
+    lastUpdatedAt,
     start,
     stop,
     refreshData,

@@ -44,9 +44,9 @@
  *   完整 payload 永远不会到达 sidecar。
  */
 
-import type { Event } from "@opencode-ai/sdk"
-import type { IngestEventEnvelope, ToolStatus } from "../types"
-import { FORBIDDEN_METADATA_KEYS } from "../types"
+import type { Event } from "@opencode-ai/sdk";
+import type { IngestEventEnvelope, ToolStatus } from "../types";
+import { FORBIDDEN_METADATA_KEYS } from "../types";
 
 // ---------------------------------------------------------------------------
 // 工具函数
@@ -63,21 +63,21 @@ export function buildEventId(
   timestamp_ms: number,
   event_type: string,
 ): string {
-  const input = `${session_id}:${timestamp_ms}:${event_type}`
-  const parts: number[] = []
-  let seed = 0x811c9dc5
+  const input = `${session_id}:${timestamp_ms}:${event_type}`;
+  const parts: number[] = [];
+  let seed = 0x811c9dc5;
 
   for (let round = 0; round < 4; round++) {
-    let hash = seed
+    let hash = seed;
     for (let i = 0; i < input.length; i++) {
-      hash ^= input.charCodeAt(i)
-      hash = Math.imul(hash, 0x01000193)
+      hash ^= input.charCodeAt(i);
+      hash = Math.imul(hash, 0x01000193);
     }
-    parts.push(hash >>> 0)
-    seed = hash ^ (round * 0x1b873593)
+    parts.push(hash >>> 0);
+    seed = hash ^ (round * 0x1b873593);
   }
 
-  const hex = parts.map((p) => p.toString(16).padStart(8, "0")).join("")
+  const hex = parts.map((p) => p.toString(16).padStart(8, "0")).join("");
   return [
     "evt",
     hex.slice(0, 8),
@@ -85,7 +85,7 @@ export function buildEventId(
     hex.slice(12, 16),
     hex.slice(16, 20),
     hex.slice(20, 32),
-  ].join("-")
+  ].join("-");
 }
 
 /**
@@ -97,13 +97,13 @@ export function buildEventId(
 export function stripSensitiveKeys(
   raw: Record<string, unknown>,
 ): Record<string, unknown> {
-  const sanitized: Record<string, unknown> = {}
+  const sanitized: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(raw)) {
     if (!(FORBIDDEN_METADATA_KEYS as readonly string[]).includes(key)) {
-      sanitized[key] = value
+      sanitized[key] = value;
     }
   }
-  return sanitized
+  return sanitized;
 }
 
 // ---------------------------------------------------------------------------
@@ -125,7 +125,7 @@ export function buildToolEnvelope(
   status: ToolStatus,
   summary?: string | null,
 ): IngestEventEnvelope {
-  const ts = Date.now()
+  const ts = Date.now();
   return {
     event_id: buildEventId(sessionID, ts, `tool.${status}`),
     event_type: `tool.${status}`,
@@ -140,7 +140,7 @@ export function buildToolEnvelope(
     summary: summary ?? null,
     deleted: false,
     metadata: stripSensitiveKeys({ call_id: callID }),
-  }
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -151,21 +151,18 @@ type EnvelopeFields = Pick<
   IngestEventEnvelope,
   "event_type" | "session_id" | "project_path"
 > & {
-  model?: string
-  tokens?: number
-  cost_usd?: number
-  tool?: string | null
-  status?: ToolStatus | null
-  summary?: string | null
-  deleted?: boolean
-  metadata?: Record<string, unknown>
-}
+  model?: string;
+  tokens?: number;
+  cost_usd?: number;
+  tool?: string | null;
+  status?: ToolStatus | null;
+  summary?: string | null;
+  deleted?: boolean;
+  metadata?: Record<string, unknown>;
+};
 
-function makeEnvelope(
-  ts: number,
-  fields: EnvelopeFields,
-): IngestEventEnvelope {
-  const session_id = fields.session_id
+function makeEnvelope(ts: number, fields: EnvelopeFields): IngestEventEnvelope {
+  const session_id = fields.session_id;
   return {
     event_id: buildEventId(session_id, ts, fields.event_type),
     event_type: fields.event_type,
@@ -180,7 +177,7 @@ function makeEnvelope(
     summary: fields.summary ?? null,
     deleted: fields.deleted ?? fields.event_type === "session.deleted",
     metadata: stripSensitiveKeys(fields.metadata ?? {}),
-  }
+  };
 }
 
 /**
@@ -197,22 +194,22 @@ function makeEnvelope(
  * 调用者：index.ts event hook。
  */
 export function buildSdkEnvelope(event: Event): IngestEventEnvelope | null {
-  const now = Date.now()
-  const props = event.properties as Record<string, any>
+  const now = Date.now();
+  const props = event.properties as Record<string, any>;
 
   switch (event.type) {
     case "session.created": {
-      const info = props.info ?? {}
+      const info = props.info ?? {};
       return makeEnvelope(now, {
         event_type: "session.created",
         session_id: props.sessionID ?? info.id ?? "unknown",
         project_path: info.directory ?? "",
         metadata: { title: info.title, version: info.version },
-      })
+      });
     }
     case "session.deleted": {
-      const info = props.info ?? {}
-      const summary = info.summary ?? {}
+      const info = props.info ?? {};
+      const summary = info.summary ?? {};
       return makeEnvelope(now, {
         event_type: "session.deleted",
         session_id: props.sessionID ?? info.id ?? "unknown",
@@ -224,16 +221,16 @@ export function buildSdkEnvelope(event: Event): IngestEventEnvelope | null {
           deletions: summary.deletions,
           files: summary.files,
         },
-      })
+      });
     }
     case "message.updated": {
-      const info = props.info
-      if (!info || info.role !== "assistant") return null
+      const info = props.info;
+      if (!info || info.role !== "assistant") return null;
       return makeEnvelope(now, {
         event_type: "usage.updated",
         session_id: props.sessionID ?? info.sessionID ?? "unknown",
         project_path: "",
-        model: info.modelID ?? "unknown",
+        model: `${info.providerID ?? "unknown"}/${info.modelID ?? "unknown"}`,
         tokens: info.tokens?.total ?? 0,
         cost_usd: info.cost ?? 0,
         metadata: {
@@ -241,13 +238,15 @@ export function buildSdkEnvelope(event: Event): IngestEventEnvelope | null {
           input_tokens: info.tokens?.input,
           output_tokens: info.tokens?.output,
           reasoning_tokens: info.tokens?.reasoning,
+          cache_read: info.tokens?.cache?.read,
+          cache_write: info.tokens?.cache?.write,
         },
-      })
+      });
     }
     case "session.idle":
     case "message.part.updated":
-      return null
+      return null;
     default:
-      return null
+      return null;
   }
 }

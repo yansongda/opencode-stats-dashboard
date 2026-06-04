@@ -1,8 +1,8 @@
 <template>
   <div class="widget-card" data-testid="top-tools">
-    <h3 class="widget-title">Top 5 Tool Calls</h3>
+    <h3 class="widget-title">工具调用 Top 5</h3>
     <div v-if="toolData.length === 0" class="widget-empty" data-testid="top-tools-empty">
-      No tool call data available
+      暂无工具调用数据
     </div>
     <div v-else class="tool-list">
       <div
@@ -14,7 +14,7 @@
         <span class="rank-badge">{{ item.rank }}</span>
         <div class="tool-content">
           <span class="tool-name" :title="item.toolName">{{ item.toolName }}</span>
-          <span class="tool-count">{{ item.count }} {{ item.count === 1 ? 'call' : 'calls' }}</span>
+          <span class="tool-count">{{ item.count }} 次</span>
         </div>
       </div>
     </div>

@@ -1,8 +1,8 @@
 <template>
   <div class="widget-card" data-testid="project-distribution">
-    <h3 class="widget-title">Project Distribution</h3>
+    <h3 class="widget-title">项目分布</h3>
     <div v-if="projectData.length === 0" class="widget-empty" data-testid="project-distribution-empty">
-      No session data available
+      暂无会话数据
     </div>
     <div v-else class="distribution-list">
       <div
@@ -13,8 +13,8 @@
       >
         <span class="rank-badge">{{ item.rank }}</span>
         <div class="distribution-content">
-          <span class="distribution-label" :title="item.path">{{ item.path }}</span>
-          <span class="distribution-count">{{ item.count }} {{ item.count === 1 ? 'session' : 'sessions' }}</span>
+          <span class="distribution-label" :title="item.path">{{ item.displayPath }}</span>
+          <span class="distribution-count">{{ item.count }} 会话</span>
         </div>
       </div>
     </div>
@@ -27,6 +27,13 @@ import { useStatsStore } from '../stores/stats'
 
 const store = useStatsStore()
 
+function truncatePath(path: string, maxSegments: number = 3): string {
+  if (!path || path === 'Unknown') return path
+  const segments = path.split('/').filter(Boolean)
+  if (segments.length <= maxSegments) return path
+  return '.../' + segments.slice(-maxSegments).join('/')
+}
+
 const projectData = computed(() => {
   const sessions = store.sessions.value
   if (sessions.length === 0) return []
@@ -38,7 +45,7 @@ const projectData = computed(() => {
   }
 
   return Array.from(counts.entries())
-    .map(([path, count]) => ({ path, count }))
+    .map(([path, count]) => ({ path, displayPath: truncatePath(path), count }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 10)
     .map((item, i) => ({ ...item, rank: i + 1 }))

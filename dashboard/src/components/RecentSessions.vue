@@ -1,8 +1,8 @@
 <template>
   <div class="widget-card" data-testid="recent-sessions">
-    <h3 class="widget-title">Recent Sessions</h3>
+    <h3 class="widget-title">近期会话</h3>
     <div v-if="recentSessions.length === 0" class="widget-empty" data-testid="recent-sessions-empty">
-      No session data available
+      暂无会话数据
     </div>
     <div v-else class="session-list">
       <div
@@ -12,14 +12,14 @@
         :data-testid="`session-row-${session.session_id}`"
       >
         <div class="session-content">
-          <span class="session-id" :title="session.session_id">{{ formatSessionId(session.session_id) }}</span>
-          <span class="session-time">{{ formatTime(session.last_event_at) }}</span>
+          <span class="session-project" :title="session.project_path || session.session_id">{{ formatProjectPath(session.project_path) }}</span>
+          <span class="session-time">{{ formatRelativeTime(session.last_event_at) }}</span>
         </div>
         <span
           class="session-tag"
           :class="session.deleted ? 'tag-deleted' : 'tag-active'"
         >
-          {{ session.deleted ? 'Deleted' : 'Active' }}
+          {{ session.deleted ? '已删除' : '活跃' }}
         </span>
       </div>
     </div>
@@ -29,6 +29,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useStatsStore } from '../stores/stats'
+import { formatRelativeTime } from '../utils/timezone'
 import type { SessionRow } from '../api/client'
 
 const store = useStatsStore()
@@ -47,26 +48,11 @@ const recentSessions = computed((): SessionRow[] => {
     .slice(0, 5)
 })
 
-function formatSessionId(id: string): string {
-  if (id.length <= 12) return id
-  return id.slice(0, 8) + '...'
-}
-
-function formatTime(iso: string | null): string {
-  if (!iso) return '-'
-  const date = new Date(iso)
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffMins = Math.floor(diffMs / 60_000)
-  const diffHours = Math.floor(diffMs / 3_600_000)
-  const diffDays = Math.floor(diffMs / 86_400_000)
-
-  if (diffMins < 1) return 'just now'
-  if (diffMins < 60) return `${diffMins}m ago`
-  if (diffHours < 24) return `${diffHours}h ago`
-  if (diffDays < 7) return `${diffDays}d ago`
-
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+function formatProjectPath(path: string | null): string {
+  if (!path) return '未知项目'
+  const segments = path.split('/').filter(Boolean)
+  if (segments.length <= 2) return path
+  return '.../' + segments.slice(-2).join('/')
 }
 </script>
 
@@ -125,7 +111,7 @@ function formatTime(iso: string | null): string {
   flex: 1;
 }
 
-.session-id {
+.session-project {
   font-size: var(--text-sm);
   font-family: monospace;
   color: var(--text);

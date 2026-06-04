@@ -9,7 +9,7 @@
 import { Database } from "bun:sqlite"
 
 /** Current schema version — bump when adding new migrations. */
-export const CURRENT_VERSION = 1
+export const CURRENT_VERSION = 2
 
 /** Migration definitions: [version, SQL statements]. */
 const MIGRATIONS: [number, string[]][] = [
@@ -67,20 +67,32 @@ const MIGRATIONS: [number, string[]][] = [
       )`,
       "CREATE INDEX IF NOT EXISTS idx_tool_calls_session ON tool_calls(session_id)",
       "CREATE INDEX IF NOT EXISTS idx_tool_calls_tool    ON tool_calls(tool_name)",
-      // ── daily_usage: pre-aggregated daily stats ──────────────────────
-      `CREATE TABLE IF NOT EXISTS daily_usage (
-          date            TEXT PRIMARY KEY,
-          session_count   INTEGER DEFAULT 0,
-          deleted_count   INTEGER DEFAULT 0,
-          total_tokens    INTEGER DEFAULT 0,
-          total_cost_usd  REAL DEFAULT 0,
-          tool_call_count INTEGER DEFAULT 0
-      )`,
       // ── schema_migrations: version tracking ──────────────────────────
       `CREATE TABLE IF NOT EXISTS schema_migrations (
           version     INTEGER PRIMARY KEY,
           applied_at  DATETIME DEFAULT CURRENT_TIMESTAMP
       )`,
+    ],
+  ],
+  [
+    2,
+    [
+      // Fix: Create sessions for events that have no corresponding session.created event
+      `INSERT OR IGNORE INTO sessions (session_id, project_path, model, total_tokens, total_cost_usd, deleted, first_event_at, last_event_at, tool_call_count)
+       SELECT 
+         e.session_id,
+         MAX(e.project_path) as project_path,
+         MAX(CASE WHEN e.model != 'unknown' THEN e.model END) as model,
+         SUM(e.tokens) as total_tokens,
+         SUM(e.cost_usd) as total_cost_usd,
+         FALSE as deleted,
+         datetime(MIN(e.timestamp_ms) / 1000, 'unixepoch') as first_event_at,
+         datetime(MAX(e.timestamp_ms) / 1000, 'unixepoch') as last_event_at,
+         0 as tool_call_count
+       FROM events e
+       WHERE e.session_id NOT IN (SELECT session_id FROM sessions)
+         AND e.event_type = 'usage.updated'
+       GROUP BY e.session_id`,
     ],
   ],
 ]

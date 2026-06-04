@@ -15,12 +15,36 @@
  *   POST /api/v1/ingest/event          — ingest a new event
  */
 
+import { join } from "path"
+import { existsSync } from "fs"
 import { Database } from "bun:sqlite"
 import { runMigrations } from "../db/schema"
 import { insertEvent } from "../db/event"
 import { processSessionEvent, processToolEvent } from "../db/reducer"
 import { FORBIDDEN_METADATA_KEYS, type IngestEventEnvelope } from "../types"
 import { SSEBroadcaster, type StatsUpdate } from "./sse"
+
+export { SSEBroadcaster, type StatsUpdate }
+
+const DASHBOARD_DIST = join(import.meta.dir, "..", "..", "dashboard", "dist")
+
+function serveStaticFile(pathname: string): Response | null {
+  let filePath = join(DASHBOARD_DIST, pathname)
+  
+  if (pathname.endsWith("/")) {
+    filePath = join(filePath, "index.html")
+  }
+  
+  if (!existsSync(filePath)) {
+    const indexPath = join(DASHBOARD_DIST, "index.html")
+    if (existsSync(indexPath)) {
+      return new Response(Bun.file(indexPath))
+    }
+    return null
+  }
+  
+  return new Response(Bun.file(filePath))
+}
 
 // ── Response types ─────────────────────────────────────────────────────
 
@@ -29,6 +53,13 @@ interface OverviewResponse {
   deleted_sessions: number
   total_tokens: number
   total_cost_usd: number
+  total_messages: number
+  total_days: number
+  avg_tokens_per_session: number
+  input_tokens: number
+  output_tokens: number
+  cache_read: number
+  cache_write: number
 }
 
 interface SessionRow {
@@ -137,7 +168,7 @@ function csvEscape(value: string | null): string {
 export function createServer(
   db: Database,
   port: number,
-): { url: string; stop: () => void } {
+): { url: string; stop: () => void; broadcaster: SSEBroadcaster } {
   // Run migrations on startup
   runMigrations(db)
 
@@ -145,6 +176,7 @@ export function createServer(
 
   const server = Bun.serve({
     port,
+    idleTimeout: 0,
     hostname: "127.0.0.1",
     async fetch(req: Request): Promise<Response> {
       const url = new URL(req.url)
@@ -199,6 +231,22 @@ export function createServer(
           return await handleIngestEvent(db, broadcaster, req)
         }
 
+        // ── POST /api/v1/cleanup/deleted ────────────────────────────
+        if (path === "/api/v1/cleanup/deleted" && req.method === "POST") {
+          return handleCleanupDeleted(db, broadcaster)
+        }
+
+        // ── POST /api/v1/cleanup/all ────────────────────────────────
+        if (path === "/api/v1/cleanup/all" && req.method === "POST") {
+          return handleCleanupAll(db, broadcaster)
+        }
+
+        // ── Static files ────────────────────────────────────────────
+        const staticResponse = serveStaticFile(path)
+        if (staticResponse) {
+          return staticResponse
+        }
+
         // ── 404 ──────────────────────────────────────────────────────
         return jsonResponse({ error: "not_found" }, 404)
       } catch (err) {
@@ -215,6 +263,7 @@ export function createServer(
   return {
     url: `http://127.0.0.1:${server.port}`,
     stop: () => server.stop(),
+    broadcaster,
   }
 }
 
@@ -252,11 +301,74 @@ function handleOverview(db: Database): Response {
       .get() as { total: number }
   ).total
 
+  const totalMessages = (
+    db
+      .query(
+        "SELECT COUNT(*) as cnt FROM events WHERE event_type = 'usage.updated'",
+      )
+      .get() as { cnt: number }
+  ).cnt
+
+  const totalDays = (
+    db
+      .query(
+        "SELECT COUNT(DISTINCT date(timestamp_ms / 1000, 'unixepoch')) as cnt FROM events",
+      )
+      .get() as { cnt: number }
+  ).cnt
+
+  const avgTokensPerSession = totalSessions > 0
+    ? Math.round(totalTokens / totalSessions)
+    : 0
+
+  const inputTokens = (
+    db
+      .query(
+        `SELECT COALESCE(SUM(CAST(json_extract(metadata, '$.input_tokens') AS INTEGER)), 0) as total
+         FROM events WHERE event_type = 'usage.updated' AND metadata IS NOT NULL`,
+      )
+      .get() as { total: number }
+  ).total
+
+  const outputTokens = (
+    db
+      .query(
+        `SELECT COALESCE(SUM(CAST(json_extract(metadata, '$.output_tokens') AS INTEGER)), 0) as total
+         FROM events WHERE event_type = 'usage.updated' AND metadata IS NOT NULL`,
+      )
+      .get() as { total: number }
+  ).total
+
+  const cacheRead = (
+    db
+      .query(
+        `SELECT COALESCE(SUM(CAST(json_extract(metadata, '$.cache_read') AS INTEGER)), 0) as total
+         FROM events WHERE event_type = 'usage.updated' AND metadata IS NOT NULL`,
+      )
+      .get() as { total: number }
+  ).total
+
+  const cacheWrite = (
+    db
+      .query(
+        `SELECT COALESCE(SUM(CAST(json_extract(metadata, '$.cache_write') AS INTEGER)), 0) as total
+         FROM events WHERE event_type = 'usage.updated' AND metadata IS NOT NULL`,
+      )
+      .get() as { total: number }
+  ).total
+
   const body: OverviewResponse = {
     total_sessions: totalSessions,
     deleted_sessions: deletedSessions,
     total_tokens: totalTokens,
     total_cost_usd: totalCostUsd,
+    total_messages: totalMessages,
+    total_days: totalDays,
+    avg_tokens_per_session: avgTokensPerSession,
+    input_tokens: inputTokens,
+    output_tokens: outputTokens,
+    cache_read: cacheRead,
+    cache_write: cacheWrite,
   }
 
   return jsonResponse(body)
@@ -518,6 +630,58 @@ async function handleIngestEvent(
     accepted: true,
     duplicate: false,
   } satisfies IngestAcceptedResponse)
+}
+
+/**
+ * `POST /api/v1/cleanup/deleted`
+ *
+ * Deletes all sessions marked as deleted and their related events/tool_calls.
+ */
+function handleCleanupDeleted(db: Database, broadcaster: SSEBroadcaster): Response {
+  const deletedSessions = db.query("SELECT session_id FROM sessions WHERE deleted = TRUE").all() as { session_id: string }[]
+  
+  if (deletedSessions.length === 0) {
+    return jsonResponse({ deleted: 0, message: "no_deleted_sessions" })
+  }
+
+  const tx = db.transaction(() => {
+    for (const s of deletedSessions) {
+      db.run("DELETE FROM tool_calls WHERE session_id = ?", [s.session_id])
+      db.run("DELETE FROM events WHERE session_id = ?", [s.session_id])
+    }
+    db.run("DELETE FROM sessions WHERE deleted = TRUE")
+  })
+  tx()
+
+  broadcaster.broadcast({
+    last_event_id: `cleanup-deleted-${Date.now()}`,
+    updated_at: new Date().toISOString(),
+  })
+
+  return jsonResponse({ deleted: deletedSessions.length })
+}
+
+/**
+ * `POST /api/v1/cleanup/all`
+ *
+ * Deletes ALL data: sessions, events, tool_calls. Irreversible.
+ */
+function handleCleanupAll(db: Database, broadcaster: SSEBroadcaster): Response {
+  const totalSessions = (db.query("SELECT COUNT(*) as cnt FROM sessions").get() as { cnt: number }).cnt
+
+  const tx = db.transaction(() => {
+    db.run("DELETE FROM tool_calls")
+    db.run("DELETE FROM events")
+    db.run("DELETE FROM sessions")
+  })
+  tx()
+
+  broadcaster.broadcast({
+    last_event_id: `cleanup-all-${Date.now()}`,
+    updated_at: new Date().toISOString(),
+  })
+
+  return jsonResponse({ deleted: totalSessions })
 }
 
 // ── Utility ────────────────────────────────────────────────────────────

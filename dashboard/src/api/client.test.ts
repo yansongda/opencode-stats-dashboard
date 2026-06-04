@@ -47,6 +47,13 @@ describe('API client', () => {
         deleted_sessions: 3,
         total_tokens: 100000,
         total_cost_usd: 0.55,
+        total_messages: 200,
+        total_days: 15,
+        avg_tokens_per_session: 2380,
+        input_tokens: 70000,
+        output_tokens: 30000,
+        cache_read: 50000,
+        cache_write: 10000,
       }
       const fetchMock = mockFetch(() => mockData)
 

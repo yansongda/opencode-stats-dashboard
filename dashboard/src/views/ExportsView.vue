@@ -135,7 +135,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useStatsStore } from '../stores/stats'
-import { fetchExportSessions, fetchExportToolCalls } from '../api/client'
+import { fetchExportSessions, fetchExportToolCalls, cleanupDeleted, cleanupAll } from '../api/client'
 
 const store = useStatsStore()
 
@@ -243,8 +243,16 @@ function cancelCleanup(): void {
 
 async function executeCleanup(): Promise<void> {
   showDialog.value = false
-  // TODO: Wire to backend cleanup API when available
-  await store.refreshData()
+  try {
+    if (cleanupTarget.value === 'deleted') {
+      await cleanupDeleted()
+    } else if (cleanupTarget.value === 'all') {
+      await cleanupAll()
+    }
+    await store.refreshData()
+  } catch (err) {
+    console.error('Cleanup failed:', err)
+  }
   cleanupTarget.value = null
 }
 </script>

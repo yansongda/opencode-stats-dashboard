@@ -1,8 +1,8 @@
 <template>
   <div class="widget-card" data-testid="model-distribution">
-    <h3 class="widget-title">Model Distribution</h3>
+    <h3 class="widget-title">模型分布</h3>
     <div v-if="modelData.length === 0" class="widget-empty" data-testid="model-distribution-empty">
-      No session data available
+      暂无会话数据
     </div>
     <div v-else class="distribution-list">
       <div
@@ -117,7 +117,7 @@ const modelData = computed(() => {
 
 .progress-track {
   height: 6px;
-  background-color: rgba(255, 255, 255, 0.06);
+  background-color: rgba(0, 0, 0, 0.06);
   border-radius: var(--radius-sm);
   overflow: hidden;
 }

@@ -30,19 +30,37 @@ export class SSEBroadcaster {
   /**
    * Subscribe to the SSE stream. Returns a ReadableStream that yields
    * encoded SSE frames. The stream closes when the subscriber disconnects.
+   * Includes a keepalive comment every 15 seconds to prevent timeout.
    */
   subscribe(): ReadableStream<Uint8Array> {
     const id = this.nextId++
     const broadcaster = this
     let controller: ReadableStreamDefaultController<Uint8Array>
+    let keepaliveTimer: ReturnType<typeof setInterval> | null = null
 
     const stream = new ReadableStream<Uint8Array>({
       start(ctrl) {
         controller = ctrl
         broadcaster.subscribers.set(id, controller)
+
+        const keepalive = new TextEncoder().encode(": keepalive\n\n")
+        keepaliveTimer = setInterval(() => {
+          try {
+            controller.enqueue(keepalive)
+          } catch {
+            if (keepaliveTimer) {
+              clearInterval(keepaliveTimer)
+              keepaliveTimer = null
+            }
+          }
+        }, 15_000)
       },
       cancel() {
         broadcaster.subscribers.delete(id)
+        if (keepaliveTimer) {
+          clearInterval(keepaliveTimer)
+          keepaliveTimer = null
+        }
       },
     })
 

@@ -11,38 +11,43 @@
           class="nav-link"
           data-testid="nav-overview"
         >
-          Overview
+          概览
         </router-link>
         <router-link
           to="/sessions"
           class="nav-link"
           data-testid="nav-sessions"
         >
-          Sessions
+          会话
         </router-link>
         <router-link
           to="/tool-calls"
           class="nav-link"
           data-testid="nav-tool-calls"
         >
-          Tool Calls
+          工具调用
         </router-link>
         <router-link
           to="/exports"
           class="nav-link"
           data-testid="nav-exports"
         >
-          Exports
-        </router-link>
-        <router-link
-          to="/validation"
-          class="nav-link"
-          data-testid="nav-validation"
-        >
-          Validation
+          导出
         </router-link>
       </nav>
+      <div class="timezone-selector">
+        <select v-model="selectedTimezone" @change="onTimezoneChange" class="tz-select">
+          <option v-for="tz in timezones" :key="tz" :value="tz">
+            {{ tz.replace('_', ' ') }}
+          </option>
+        </select>
+      </div>
       <div class="status-indicators">
+        <span class="last-updated" v-if="lastUpdatedAt" :title="lastUpdatedAt.toLocaleString()">
+          更新: {{ formatTime(lastUpdatedAt) }}
+        </span>
+        <span class="audit-badge" title="所有工具调用均被完整记录">审计完整</span>
+        <span class="privacy-badge" title="数据仅存储在本地，不会上传到云端">本地隐私</span>
         <div
           class="realtime-status"
           :class="realtimeClass"
@@ -69,14 +74,26 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useStatsStore } from './stores/stats'
+import { getActiveTimezone, setStoredTimezone, getBrowserTimezone, COMMON_TIMEZONES } from './utils/timezone'
 
 const store = useStatsStore()
 const realtimeMode = store.realtimeMode
+const lastUpdatedAt = store.lastUpdatedAt
+
+const selectedTimezone = ref(getActiveTimezone())
+const timezones = COMMON_TIMEZONES
+
+function onTimezoneChange() {
+  setStoredTimezone(selectedTimezone.value)
+}
 
 onMounted(() => {
   store.start()
+  if (!localStorage.getItem('opencode-stats-timezone')) {
+    selectedTimezone.value = getBrowserTimezone()
+  }
 })
 
 onUnmounted(() => {
@@ -102,21 +119,30 @@ const statusLabel = computed(() => {
 async function handleRefresh() {
   await store.refreshData()
 }
+
+function formatTime(date: Date): string {
+  return date.toLocaleTimeString('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  })
+}
 </script>
 
 <style>
 :root {
-  /* Colors - Dark theme */
+  /* Colors - Light theme */
   --primary: #3b82f6;
   --primary-hover: #2563eb;
-  --success: #22c55e;
-  --danger: #ef4444;
-  --warning: #f59e0b;
-  --bg: #0f172a;
-  --surface: #1e293b;
-  --border: #334155;
-  --text: #f8fafc;
-  --text-muted: #94a3b8;
+  --success: #16a34a;
+  --danger: #dc2626;
+  --warning: #d97706;
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --border: #e2e8f0;
+  --text: #0f172a;
+  --text-muted: #64748b;
 
   /* Spacing */
   --spacing-1: 4px;
@@ -204,12 +230,34 @@ body {
 
 .nav-link:hover {
   color: var(--text);
-  background-color: rgba(255, 255, 255, 0.05);
+  background-color: rgba(0, 0, 0, 0.05);
 }
 
 .nav-link.router-link-active {
   color: var(--primary);
   background-color: rgba(59, 130, 246, 0.1);
+}
+
+.timezone-selector {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+}
+
+.tz-select {
+  padding: 2px 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.tz-select:focus {
+  border-color: var(--primary);
 }
 
 .status-indicators {
@@ -218,13 +266,41 @@ body {
   align-items: center;
 }
 
+.audit-badge,
+.privacy-badge {
+  font-size: var(--text-sm);
+  padding: 2px 10px;
+  border-radius: var(--radius-lg);
+  font-weight: 600;
+  color: white;
+  cursor: help;
+}
+
+.last-updated {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.03);
+  border: 1px solid var(--border);
+  cursor: help;
+}
+
+.audit-badge {
+  background-color: var(--success);
+}
+
+.privacy-badge {
+  background-color: var(--primary);
+}
+
 .realtime-status {
   display: flex;
   align-items: center;
   gap: var(--spacing-2);
   padding: var(--spacing-1) var(--spacing-3);
   border-radius: var(--radius-md);
-  background-color: rgba(255, 255, 255, 0.03);
+  background-color: rgba(0, 0, 0, 0.03);
   border: 1px solid var(--border);
 }
 
@@ -287,7 +363,7 @@ body {
 .refresh-btn:hover {
   color: var(--text);
   border-color: var(--text-muted);
-  background-color: rgba(255, 255, 255, 0.05);
+  background-color: rgba(0, 0, 0, 0.05);
 }
 
 @keyframes pulse-live {

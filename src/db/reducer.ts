@@ -58,29 +58,57 @@ export function processSessionEvent(
         `UPDATE sessions
         SET deleted       = TRUE,
             deleted_at    = datetime(? / 1000, 'unixepoch'),
-            last_event_at = datetime(? / 1000, 'unixepoch'),
-            total_tokens  = ?,
-            total_cost_usd = ?
+            last_event_at = datetime(? / 1000, 'unixepoch')
         WHERE session_id = ?`,
         [
           event.timestamp_ms,
           event.timestamp_ms,
-          event.tokens,
-          event.cost_usd,
           event.session_id,
         ]
       )
       break
     }
     case "usage.updated": {
-      db.run(
-        `UPDATE sessions
-        SET total_tokens   = total_tokens + ?,
-            total_cost_usd = total_cost_usd + ?,
-            last_event_at  = datetime(? / 1000, 'unixepoch')
-        WHERE session_id = ?`,
-        [event.tokens, event.cost_usd, event.timestamp_ms, event.session_id]
-      )
+      const existing = db.query("SELECT session_id FROM sessions WHERE session_id = ?").get(event.session_id) as { session_id: string } | null
+      if (!existing) {
+        db.run(
+          `INSERT OR IGNORE INTO sessions (
+              session_id, project_path, model,
+              total_tokens, total_cost_usd,
+              deleted, deleted_at,
+              first_event_at, last_event_at,
+              tool_call_count
+          ) VALUES (
+              ?, ?, ?,
+              0, 0,
+              FALSE, NULL,
+              datetime(? / 1000, 'unixepoch'),
+              datetime(? / 1000, 'unixepoch'),
+              0
+          )`,
+          [event.session_id, event.project_path || '', event.model !== "unknown" ? event.model : null, event.timestamp_ms, event.timestamp_ms]
+        )
+      }
+      if (event.model && event.model !== "unknown") {
+        db.run(
+          `UPDATE sessions
+          SET model          = ?,
+              total_tokens   = total_tokens + ?,
+              total_cost_usd = total_cost_usd + ?,
+              last_event_at  = datetime(? / 1000, 'unixepoch')
+          WHERE session_id = ?`,
+          [event.model, event.tokens, event.cost_usd, event.timestamp_ms, event.session_id]
+        )
+      } else {
+        db.run(
+          `UPDATE sessions
+          SET total_tokens   = total_tokens + ?,
+              total_cost_usd = total_cost_usd + ?,
+              last_event_at  = datetime(? / 1000, 'unixepoch')
+          WHERE session_id = ?`,
+          [event.tokens, event.cost_usd, event.timestamp_ms, event.session_id]
+        )
+      }
       break
     }
     // Unknown event types — nothing to reduce for sessions.

@@ -1,15 +1,6 @@
 <template>
   <div class="view-container">
-    <h1>Tool Calls</h1>
-
-    <!-- Warning Banner: limited audit mode -->
-    <div v-if="isLimitedAudit" class="warning-banner" data-testid="warning-banner">
-      <span class="warning-icon">⚠️</span>
-      <div class="warning-content">
-        <strong>受限审计模式</strong>
-        <span>OpenCode 事件表面未暴露工具调用生命周期，仅显示会话级别统计。</span>
-      </div>
-    </div>
+    <h1>工具调用</h1>
 
     <!-- Filter Bar -->
     <div class="filter-bar">
@@ -76,9 +67,6 @@
             <th class="col-sortable col-center" @click="toggleSort('status')">
               状态 <span class="sort-arrow">{{ sortIndicator('status') }}</span>
             </th>
-            <th class="col-sortable" @click="toggleSort('model')">
-              模型 <span class="sort-arrow">{{ sortIndicator('model') }}</span>
-            </th>
             <th class="col-sortable col-right" @click="toggleSort('tokens')">
               代币 <span class="sort-arrow">{{ sortIndicator('tokens') }}</span>
             </th>
@@ -96,7 +84,7 @@
         </thead>
         <tbody>
           <tr v-if="paginatedCalls.length === 0">
-            <td colspan="9" class="empty-row">暂无数据</td>
+            <td colspan="8" class="empty-row">暂无数据</td>
           </tr>
           <tr v-for="call in paginatedCalls" :key="call.id">
             <td class="col-monospace">{{ call.tool_name }}</td>
@@ -106,11 +94,10 @@
                 {{ badgeLabel(call.status) }}
               </span>
             </td>
-            <td>{{ call.model || '—' }}</td>
             <td class="col-right">{{ call.tokens != null ? formatNumber(call.tokens) : '—' }}</td>
             <td class="col-right">{{ call.cost_usd != null ? formatCost(call.cost_usd) : '—' }}</td>
-            <td>{{ call.started_at ? formatTime(call.started_at) : '—' }}</td>
-            <td>{{ call.completed_at ? formatTime(call.completed_at) : '—' }}</td>
+            <td>{{ formatInTimezone(call.started_at) }}</td>
+            <td>{{ formatInTimezone(call.completed_at) }}</td>
             <td class="col-summary" :title="call.summary || ''">{{ call.summary || '—' }}</td>
           </tr>
         </tbody>
@@ -156,14 +143,11 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useStatsStore } from '../stores/stats'
+import { formatInTimezone } from '../utils/timezone'
 import type { ToolCallRow } from '../api/client'
 
 // ── Store ──────────────────────────────────────────────────────────────
 const store = useStatsStore()
-
-// ── Audit mode detection ───────────────────────────────────────────────
-// Phase 0 fallback: when event surface doesn't expose tool call lifecycle
-const isLimitedAudit = ref(true) // TODO: wire to validation state when available
 
 // ── Filter state ───────────────────────────────────────────────────────
 const searchQuery = ref('')
@@ -331,14 +315,6 @@ function formatCost(usd: number): string {
   return '$' + usd.toFixed(2)
 }
 
-function formatTime(iso: string): string {
-  const d = new Date(iso)
-  const hh = String(d.getHours()).padStart(2, '0')
-  const mm = String(d.getMinutes()).padStart(2, '0')
-  const ss = String(d.getSeconds()).padStart(2, '0')
-  return `${hh}:${mm}:${ss}`
-}
-
 // ── AuditBadge helpers ─────────────────────────────────────────────────
 function badgeLabel(status: string): string {
   switch (status) {
@@ -379,39 +355,6 @@ h1 {
   font-weight: 600;
   margin-bottom: var(--spacing-4);
   color: var(--text);
-}
-
-/* ── Warning Banner ─────────────────────────────────────────────────── */
-.warning-banner {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--spacing-3);
-  padding: var(--spacing-3) var(--spacing-4);
-  background-color: rgba(245, 158, 11, 0.1);
-  border: 1px solid rgba(245, 158, 11, 0.3);
-  border-radius: var(--radius-md);
-  margin-bottom: var(--spacing-4);
-}
-
-.warning-icon {
-  font-size: var(--text-lg);
-  flex-shrink: 0;
-}
-
-.warning-content {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-1);
-}
-
-.warning-content strong {
-  color: var(--warning);
-  font-size: var(--text-base);
-}
-
-.warning-content span {
-  color: var(--text-muted);
-  font-size: var(--text-sm);
 }
 
 /* ── Filter Bar ─────────────────────────────────────────────────────── */

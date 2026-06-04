@@ -7,7 +7,7 @@ import type { Plugin, PluginInput, Hooks } from "@opencode-ai/plugin"
 import { runMigrations } from "./db/schema"
 import { insertEvent } from "./db/event"
 import { processSessionEvent, processToolEvent } from "./db/reducer"
-import { createServer } from "./server/api"
+import { createServer, type SSEBroadcaster } from "./server/api"
 import { buildToolEnvelope, buildSdkEnvelope } from "./events/mapper"
 import type { IngestEventEnvelope } from "./types"
 
@@ -24,12 +24,18 @@ function log(msg: string): void {
   }
 }
 
-function ingestEvent(db: Database, envelope: IngestEventEnvelope): void {
+function ingestEvent(db: Database, envelope: IngestEventEnvelope, broadcaster: SSEBroadcaster): void {
   const result = insertEvent(db, envelope)
   if (result === "accepted") {
     processSessionEvent(db, envelope)
     processToolEvent(db, envelope)
     log(`ingest: event_id=${envelope.event_id} type=${envelope.event_type}`)
+    
+    // Broadcast SSE update for real-time dashboard updates
+    broadcaster.broadcast({
+      last_event_id: envelope.event_id,
+      updated_at: new Date().toISOString(),
+    })
   } else {
     log(`ingest: event_id=${envelope.event_id} duplicate`)
   }
@@ -65,7 +71,7 @@ const statsPlugin: Plugin = async (input: PluginInput) => {
   const db = new Database(DB_PATH)
   runMigrations(db)
 
-  const { url } = createServer(db, PORT)
+  const { url, broadcaster } = createServer(db, PORT)
   log(`activate: server started at ${url}`)
   console.log(`Dashboard: ${url}`)
 
@@ -75,12 +81,12 @@ const statsPlugin: Plugin = async (input: PluginInput) => {
     event: async ({ event }) => {
       const envelope = buildSdkEnvelope(event)
       if (envelope) {
-        ingestEvent(db, envelope)
+        ingestEvent(db, envelope, broadcaster)
       }
     },
 
     "tool.execute.before": async (input, _output) => {
-      ingestEvent(db, buildToolEnvelope(input.sessionID, input.tool, input.callID, "started"))
+      ingestEvent(db, buildToolEnvelope(input.sessionID, input.tool, input.callID, "started"), broadcaster)
     },
 
     "tool.execute.after": async (input, output) => {
@@ -90,7 +96,7 @@ const statsPlugin: Plugin = async (input: PluginInput) => {
         input.callID,
         "completed",
         output.title?.slice(0, 200),
-      ))
+      ), broadcaster)
     },
 
     dispose: async () => {

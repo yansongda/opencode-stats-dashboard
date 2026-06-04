@@ -6,6 +6,13 @@ const MOCK_OVERVIEW = {
   deleted_sessions: 1,
   total_tokens: 50000,
   total_cost_usd: 0.25,
+  total_messages: 50,
+  total_days: 7,
+  avg_tokens_per_session: 5000,
+  input_tokens: 35000,
+  output_tokens: 15000,
+  cache_read: 25000,
+  cache_write: 5000,
 }
 
 const MOCK_SESSIONS = {
