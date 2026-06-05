@@ -1,25 +1,42 @@
 <template>
-  <div class="view-container">
-    <h1 class="view-title">会话审计</h1>
+  <div class="view-container" data-testid="sessions-view">
+    <h1 class="view-title">会话列表</h1>
 
+    <!-- Loading State -->
+    <LoadingState v-if="loading" message="加载会话数据中..." test-id="sessions-loading" />
+
+    <!-- Error State -->
+    <EmptyState
+      v-else-if="error"
+      variant="error"
+      title="数据加载失败"
+      :description="error"
+      action-label="重试"
+      test-id="sessions-error"
+      @action="loadSessions"
+    />
+
+    <!-- Content -->
+    <template v-else>
     <!-- Filter Bar -->
-    <div class="filter-bar">
+    <div class="filter-bar resp-filter-bar">
       <input
         v-model="searchQuery"
         type="text"
         class="filter-input filter-search"
-        placeholder="搜索会话 ID、项目..."
+        placeholder="搜索会话 ID、项目、标题..."
+        data-testid="filter-search"
       />
-      <select v-model="filterStatus" class="filter-select">
+      <select v-model="filterStatus" class="filter-select" data-testid="filter-status">
         <option value="all">全部状态</option>
         <option value="active">活跃</option>
         <option value="deleted">已删除</option>
       </select>
-      <select v-model="filterModel" class="filter-select">
+      <select v-model="filterModel" class="filter-select" data-testid="filter-model">
         <option value="all">全部模型</option>
         <option v-for="m in uniqueModels" :key="m" :value="m">{{ m }}</option>
       </select>
-      <select v-model="filterProject" class="filter-select">
+      <select v-model="filterProject" class="filter-select" data-testid="filter-project">
         <option value="all">全部项目</option>
         <option v-for="p in uniqueProjects" :key="p" :value="p">{{ truncateProject(p) }}</option>
       </select>
@@ -27,14 +44,16 @@
         v-model="dateFrom"
         type="date"
         class="filter-input filter-date"
+        data-testid="filter-date-from"
       />
       <span class="filter-sep">至</span>
       <input
         v-model="dateTo"
         type="date"
         class="filter-input filter-date"
+        data-testid="filter-date-to"
       />
-      <button class="btn btn-ghost" @click="resetFilters">重置</button>
+      <button class="btn btn-ghost" data-testid="filter-reset" @click="resetFilters">重置</button>
     </div>
 
     <!-- Summary Bar -->
@@ -44,23 +63,13 @@
       <span class="summary-active">{{ activeCount }} 活跃</span>
       <span class="summary-sep">|</span>
       <span class="summary-deleted">{{ deletedCount }} 已删除</span>
-      <span class="summary-sep">|</span>
-      <span class="summary-selected">已选 {{ selectedIds.size }} 条</span>
     </div>
 
     <!-- Data Table -->
-    <div class="table-wrapper">
-      <table class="data-table">
+    <div class="table-wrapper resp-table-wrapper">
+      <table class="data-table" data-testid="sessions-table">
         <thead>
           <tr>
-            <th class="col-checkbox">
-              <input
-                type="checkbox"
-                :checked="isAllSelected"
-                :indeterminate="isIndeterminate"
-                @change="toggleSelectAll"
-              />
-            </th>
             <th
               class="col-session-id sortable"
               :class="{ sorted: sortKey === 'session_id' }"
@@ -69,6 +78,7 @@
               会话 ID
               <span class="sort-indicator">{{ sortIndicator('session_id') }}</span>
             </th>
+            <th class="col-title">标题</th>
             <th
               class="col-project sortable"
               :class="{ sorted: sortKey === 'project_path' }"
@@ -79,11 +89,11 @@
             </th>
             <th
               class="col-model sortable"
-              :class="{ sorted: sortKey === 'model' }"
-              @click="toggleSort('model')"
+              :class="{ sorted: sortKey === 'primary_model' }"
+              @click="toggleSort('primary_model')"
             >
               模型
-              <span class="sort-indicator">{{ sortIndicator('model') }}</span>
+              <span class="sort-indicator">{{ sortIndicator('primary_model') }}</span>
             </th>
             <th
               class="col-tokens sortable"
@@ -104,18 +114,10 @@
             <th class="col-status">状态</th>
             <th
               class="col-date sortable"
-              :class="{ sorted: sortKey === 'first_event_at' }"
-              @click="toggleSort('first_event_at')"
-            >
-              首次事件
-              <span class="sort-indicator">{{ sortIndicator('first_event_at') }}</span>
-            </th>
-            <th
-              class="col-date sortable"
               :class="{ sorted: sortKey === 'last_event_at' }"
               @click="toggleSort('last_event_at')"
             >
-              末次事件
+              最后活跃
               <span class="sort-indicator">{{ sortIndicator('last_event_at') }}</span>
             </th>
           </tr>
@@ -124,39 +126,42 @@
           <tr
             v-for="session in paginatedSessions"
             :key="session.session_id"
-            :class="{ 'row-deleted': session.deleted }"
+            :class="{
+              'row-deleted': session.status === 'deleted',
+              'row-selected': selectedSessionId === session.session_id,
+            }"
+            class="clickable-row"
+            :data-testid="`session-row-${session.session_id}`"
+            @click="selectSession(session.session_id)"
           >
-            <td class="col-checkbox">
-              <input
-                type="checkbox"
-                :checked="selectedIds.has(session.session_id)"
-                @change="toggleSelect(session.session_id)"
-              />
-            </td>
             <td class="col-session-id">
-              <code class="session-id">{{ session.session_id }}</code>
+              <span class="session-id-truncated" :title="session.session_id">
+                {{ truncateSessionId(session.session_id) }}
+              </span>
+            </td>
+            <td class="col-title" :title="session.title ?? ''">
+              {{ session.title ?? '—' }}
             </td>
             <td class="col-project" :title="session.project_path ?? ''">
               {{ truncateProject(session.project_path ?? '—') }}
             </td>
-            <td class="col-model">{{ session.model ?? '—' }}</td>
+            <td class="col-model">{{ session.primary_model ?? '—' }}</td>
             <td class="col-tokens">{{ formatNumber(session.total_tokens) }}</td>
             <td class="col-cost">{{ formatCost(session.total_cost_usd) }}</td>
             <td class="col-status">
-              <AuditBadge :deleted="session.deleted" />
+              <StatusBadge :status="session.status" />
             </td>
-            <td class="col-date">{{ formatInTimezone(session.first_event_at) }}</td>
-            <td class="col-date">{{ formatRelativeTime(session.last_event_at) }}</td>
+            <td class="col-date">{{ formatTimestamp(session.last_event_at) }}</td>
           </tr>
           <tr v-if="paginatedSessions.length === 0">
-            <td colspan="9" class="empty-state">没有匹配当前过滤条件的会话</td>
+            <td colspan="8" class="empty-state">没有匹配当前过滤条件的会话</td>
           </tr>
         </tbody>
       </table>
     </div>
 
     <!-- Pagination -->
-    <div class="pagination-bar">
+    <div class="pagination-bar" data-testid="pagination">
       <span class="pagination-info">
         显示 {{ paginationStart }}–{{ paginationEnd }} / 共 {{ filteredSessions.length }} 条
       </span>
@@ -164,6 +169,7 @@
         <button
           class="btn btn-ghost btn-sm"
           :disabled="currentPage === 1"
+          data-testid="page-prev"
           @click="currentPage--"
         >
           上一页
@@ -179,7 +185,8 @@
         </button>
         <button
           class="btn btn-ghost btn-sm"
-          :disabled="currentPage === totalPages"
+          :disabled="currentPage >= totalPages"
+          data-testid="page-next"
           @click="currentPage++"
         >
           下一页
@@ -187,30 +194,172 @@
       </div>
     </div>
 
-    <!-- Batch Actions -->
-    <div class="batch-actions">
-      <button
-        class="btn btn-outline"
-        :disabled="selectedIds.size === 0"
-        @click="exportSelected"
-      >
-        导出选中 ({{ selectedIds.size }})
-      </button>
-      <button class="btn btn-outline" @click="exportAll">
-        导出全部
-      </button>
+    <!-- Session Detail Panel -->
+    <div v-if="detailLoading" class="detail-panel" data-testid="session-detail-loading">
+      <div class="detail-loading">加载中...</div>
     </div>
+    <div v-else-if="selectedDetail" class="detail-panel" data-testid="session-detail">
+      <div class="detail-header">
+        <h2 class="detail-title">
+          会话详情
+          <code class="detail-session-id">{{ selectedDetail.session_id }}</code>
+        </h2>
+        <button class="btn btn-ghost btn-sm" @click="selectedSessionId = null">关闭</button>
+      </div>
+
+      <!-- Basic Info -->
+      <div class="detail-section">
+        <h3 class="detail-section-title">基本信息</h3>
+        <div class="detail-grid">
+          <div class="detail-item">
+            <span class="detail-label">标题</span>
+            <span class="detail-value">{{ selectedDetail.title ?? '—' }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">项目</span>
+            <span class="detail-value" :title="selectedDetail.project_path ?? ''">{{ truncateProject(selectedDetail.project_path ?? '—') }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">模型</span>
+            <span class="detail-value">{{ selectedDetail.primary_model ?? '—' }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Agent</span>
+            <span class="detail-value">{{ selectedDetail.primary_agent ?? '—' }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">状态</span>
+            <span class="detail-value"><StatusBadge :status="selectedDetail.status" /></span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">时长</span>
+            <span class="detail-value">{{ formatDuration(selectedDetail.duration_ms) }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">事件数</span>
+            <span class="detail-value">{{ formatNumber(selectedDetail.event_count) }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">首次事件</span>
+            <span class="detail-value">{{ formatTimestamp(selectedDetail.first_event_at) }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">末次事件</span>
+            <span class="detail-value">{{ formatTimestamp(selectedDetail.last_event_at) }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Token Stats -->
+      <div class="detail-section">
+        <h3 class="detail-section-title">Token 统计</h3>
+        <div class="detail-grid">
+          <div class="detail-item">
+            <span class="detail-label">总计</span>
+            <span class="detail-value detail-value-highlight">{{ formatNumber(selectedDetail.total_tokens) }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">输入</span>
+            <span class="detail-value">{{ formatNumber(selectedDetail.input_tokens) }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">输出</span>
+            <span class="detail-value">{{ formatNumber(selectedDetail.output_tokens) }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">推理</span>
+            <span class="detail-value">{{ formatNumber(selectedDetail.reasoning_tokens) }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">缓存读</span>
+            <span class="detail-value">{{ formatNumber(selectedDetail.cache_read) }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">缓存写</span>
+            <span class="detail-value">{{ formatNumber(selectedDetail.cache_write) }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">成本</span>
+            <span class="detail-value detail-value-highlight">{{ formatCost(selectedDetail.total_cost_usd) }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Messages & Tools -->
+      <div class="detail-section">
+        <h3 class="detail-section-title">消息 & 工具</h3>
+        <div class="detail-grid">
+          <div class="detail-item">
+            <span class="detail-label">用户消息</span>
+            <span class="detail-value">{{ formatNumber(selectedDetail.user_message_count) }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">助手消息</span>
+            <span class="detail-value">{{ formatNumber(selectedDetail.assistant_message_count) }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">工具调用</span>
+            <span class="detail-value">{{ formatNumber(selectedDetail.tool_call_count) }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">工具错误</span>
+            <span class="detail-value">{{ formatNumber(selectedDetail.tool_error_count) }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">文件编辑</span>
+            <span class="detail-value">{{ formatNumber(selectedDetail.files_edited) }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">代码变更</span>
+            <span class="detail-value">+{{ formatNumber(selectedDetail.lines_added) }} / -{{ formatNumber(selectedDetail.lines_deleted) }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">错误数</span>
+            <span class="detail-value">{{ formatNumber(selectedDetail.error_count) }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
-import { useStatsStore } from '../stores/stats'
-import { fetchExportSessions } from '../api/client'
-import { formatInTimezone, formatRelativeTime } from '../utils/timezone'
-import type { SessionRow } from '../api/client'
+import { ref, computed, watch, onMounted } from 'vue'
+import EmptyState from '../components/EmptyState.vue'
+import LoadingState from '../components/LoadingState.vue'
+import {
+  fetchStatsSessions,
+  fetchStatsSessionDetail,
+  type StatsSessionListItem,
+  type SessionDetail,
+} from '../api/client'
 
-const store = useStatsStore()
+// ── Data ──────────────────────────────────────────────────────────────
+
+const allSessions = ref<StatsSessionListItem[]>([])
+const dataTotal = ref(0)
+const loading = ref(false)
+const error = ref<string | null>(null)
+
+async function loadSessions(): Promise<void> {
+  loading.value = true
+  error.value = null
+  try {
+    const resp = await fetchStatsSessions({ limit: 100, offset: 0 })
+    allSessions.value = resp.sessions
+    dataTotal.value = resp.total
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : '加载会话数据时发生未知错误'
+    console.error('[Sessions] Failed to load data:', err)
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(() => {
+  void loadSessions()
+})
 
 // ── Filters ──────────────────────────────────────────────────────────
 
@@ -223,7 +372,7 @@ const dateTo = ref('')
 
 // ── Sorting ──────────────────────────────────────────────────────────
 
-type SortKey = 'session_id' | 'project_path' | 'model' | 'total_tokens' | 'total_cost_usd' | 'first_event_at' | 'last_event_at'
+type SortKey = 'session_id' | 'project_path' | 'primary_model' | 'total_tokens' | 'total_cost_usd' | 'last_event_at'
 const sortKey = ref<SortKey>('last_event_at')
 const sortDir = ref<'asc' | 'desc'>('desc')
 
@@ -245,33 +394,31 @@ function sortIndicator(key: SortKey): string {
 
 const uniqueModels = computed(() => {
   const models = new Set<string>()
-  for (const s of store.sessions.value) {
-    if (s.model) models.add(s.model)
+  for (const s of allSessions.value) {
+    if (s.primary_model) models.add(s.primary_model)
   }
   return [...models].sort()
 })
 
 const uniqueProjects = computed(() => {
   const projects = new Set<string>()
-  for (const s of store.sessions.value) {
+  for (const s of allSessions.value) {
     if (s.project_path) projects.add(s.project_path)
   }
   return [...projects].sort()
 })
 
-const filteredSessions = computed<SessionRow[]>(() => {
-  let list = [...store.sessions.value]
+const filteredSessions = computed<StatsSessionListItem[]>(() => {
+  let list = [...allSessions.value]
 
   // Status filter
-  if (filterStatus.value === 'active') {
-    list = list.filter((s) => !s.deleted)
-  } else if (filterStatus.value === 'deleted') {
-    list = list.filter((s) => s.deleted)
+  if (filterStatus.value !== 'all') {
+    list = list.filter((s) => s.status === filterStatus.value)
   }
 
   // Model filter
   if (filterModel.value !== 'all') {
-    list = list.filter((s) => s.model === filterModel.value)
+    list = list.filter((s) => s.primary_model === filterModel.value)
   }
 
   // Project filter
@@ -285,35 +432,36 @@ const filteredSessions = computed<SessionRow[]>(() => {
     list = list.filter(
       (s) =>
         s.session_id.toLowerCase().includes(q) ||
-        (s.project_path ?? '').toLowerCase().includes(q),
+        (s.project_path ?? '').toLowerCase().includes(q) ||
+        (s.title ?? '').toLowerCase().includes(q),
     )
   }
 
-  // Date range filter
+  // Date range filter (based on last_event_at, which is ms timestamp)
   if (dateFrom.value) {
     const from = new Date(dateFrom.value).getTime()
     list = list.filter((s) => {
-      const t = s.first_event_at ? new Date(s.first_event_at).getTime() : 0
-      return t >= from
+      if (s.last_event_at == null) return false
+      return s.last_event_at >= from
     })
   }
   if (dateTo.value) {
     const to = new Date(dateTo.value).getTime() + 86400000 // end of day
     list = list.filter((s) => {
-      const t = s.first_event_at ? new Date(s.first_event_at).getTime() : 0
-      return t <= to
+      if (s.last_event_at == null) return false
+      return s.last_event_at <= to
     })
   }
 
   // Sort
   list.sort((a, b) => {
-    const aVal = a[sortKey.value] ?? ''
-    const bVal = b[sortKey.value] ?? ''
+    const aVal = a[sortKey.value]
+    const bVal = b[sortKey.value]
     let cmp = 0
     if (typeof aVal === 'number' && typeof bVal === 'number') {
       cmp = aVal - bVal
     } else {
-      cmp = String(aVal).localeCompare(String(bVal))
+      cmp = String(aVal ?? '').localeCompare(String(bVal ?? ''))
     }
     return sortDir.value === 'asc' ? cmp : -cmp
   })
@@ -321,8 +469,8 @@ const filteredSessions = computed<SessionRow[]>(() => {
   return list
 })
 
-const activeCount = computed(() => filteredSessions.value.filter((s) => !s.deleted).length)
-const deletedCount = computed(() => filteredSessions.value.filter((s) => s.deleted).length)
+const activeCount = computed(() => filteredSessions.value.filter((s) => s.status === 'active').length)
+const deletedCount = computed(() => filteredSessions.value.filter((s) => s.status === 'deleted').length)
 
 // ── Pagination ───────────────────────────────────────────────────────
 
@@ -360,43 +508,27 @@ const visiblePages = computed(() => {
   return pages
 })
 
-// ── Selection ────────────────────────────────────────────────────────
+// ── Session Detail ───────────────────────────────────────────────────
 
-const selectedIds = ref(new Set<string>())
+const selectedSessionId = ref<string | null>(null)
+const selectedDetail = ref<SessionDetail | null>(null)
+const detailLoading = ref(false)
 
-const isAllSelected = computed(() => {
-  if (paginatedSessions.value.length === 0) return false
-  return paginatedSessions.value.every((s) => selectedIds.value.has(s.session_id))
-})
-
-const isIndeterminate = computed(() => {
-  const some = paginatedSessions.value.some((s) => selectedIds.value.has(s.session_id))
-  return some && !isAllSelected.value
-})
-
-function toggleSelectAll(): void {
-  if (isAllSelected.value) {
-    // Deselect current page
-    for (const s of paginatedSessions.value) {
-      selectedIds.value.delete(s.session_id)
-    }
-  } else {
-    // Select all on current page
-    for (const s of paginatedSessions.value) {
-      selectedIds.value.add(s.session_id)
-    }
+async function selectSession(sessionId: string): Promise<void> {
+  if (selectedSessionId.value === sessionId) {
+    selectedSessionId.value = null
+    selectedDetail.value = null
+    return
   }
-  // Trigger reactivity
-  selectedIds.value = new Set(selectedIds.value)
-}
-
-function toggleSelect(id: string): void {
-  if (selectedIds.value.has(id)) {
-    selectedIds.value.delete(id)
-  } else {
-    selectedIds.value.add(id)
+  selectedSessionId.value = sessionId
+  detailLoading.value = true
+  try {
+    selectedDetail.value = await fetchStatsSessionDetail(sessionId)
+  } catch {
+    selectedDetail.value = null
+  } finally {
+    detailLoading.value = false
   }
-  selectedIds.value = new Set(selectedIds.value)
 }
 
 // ── Actions ──────────────────────────────────────────────────────────
@@ -408,58 +540,6 @@ function resetFilters(): void {
   filterProject.value = 'all'
   dateFrom.value = ''
   dateTo.value = ''
-  selectedIds.value = new Set()
-}
-
-function downloadCsv(csvContent: string, filename: string): void {
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = filename
-  link.click()
-  URL.revokeObjectURL(url)
-}
-
-async function exportAll(): Promise<void> {
-  try {
-    const csv = await fetchExportSessions()
-    downloadCsv(csv, 'sessions-all.csv')
-  } catch {
-    // Fallback: generate CSV from local data
-    const csv = generateCsv(store.sessions.value)
-    downloadCsv(csv, 'sessions-all.csv')
-  }
-}
-
-function exportSelected(): void {
-  const selected = store.sessions.value.filter((s) => selectedIds.value.has(s.session_id))
-  const csv = generateCsv(selected)
-  downloadCsv(csv, 'sessions-selected.csv')
-}
-
-function generateCsv(rows: SessionRow[]): string {
-  const header = 'session_id,project_path,model,total_tokens,total_cost_usd,deleted,first_event_at,last_event_at'
-  const lines = rows.map((r) =>
-    [
-      csvEscape(r.session_id),
-      csvEscape(r.project_path ?? ''),
-      csvEscape(r.model ?? ''),
-      r.total_tokens,
-      r.total_cost_usd.toFixed(6),
-      r.deleted ? 'true' : 'false',
-      csvEscape(r.first_event_at ?? ''),
-      csvEscape(r.last_event_at ?? ''),
-    ].join(','),
-  )
-  return [header, ...lines].join('\n')
-}
-
-function csvEscape(val: string): string {
-  if (val.includes(',') || val.includes('"') || val.includes('\n')) {
-    return `"${val.replace(/"/g, '""')}"`
-  }
-  return val
 }
 
 // ── Formatters ───────────────────────────────────────────────────────
@@ -477,15 +557,46 @@ function truncateProject(path: string): string {
   return '…' + path.slice(-28)
 }
 
-// ── AuditBadge Component ─────────────────────────────────────────────
+function truncateSessionId(id: string): string {
+  if (id.length <= 16) return id
+  return id.slice(0, 12) + '…'
+}
 
-const AuditBadge = {
+function formatTimestamp(ms: number | null): string {
+  if (ms == null) return '—'
+  const date = new Date(ms)
+  return new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(date)
+}
+
+function formatDuration(ms: number | null): string {
+  if (ms == null) return '—'
+  if (ms < 1000) return `${ms}ms`
+  const sec = Math.floor(ms / 1000)
+  if (sec < 60) return `${sec}秒`
+  const min = Math.floor(sec / 60)
+  const remainSec = sec % 60
+  if (min < 60) return `${min}分${remainSec}秒`
+  const hour = Math.floor(min / 60)
+  const remainMin = min % 60
+  return `${hour}时${remainMin}分`
+}
+
+// ── StatusBadge Component ─────────────────────────────────────────────
+
+const StatusBadge = {
   props: {
-    deleted: { type: Boolean, required: true },
+    status: { type: String, required: true },
   },
   template: `
-    <span :class="['audit-badge', deleted ? 'badge-deleted' : 'badge-active']">
-      {{ deleted ? '已删除' : '活跃' }}
+    <span :class="['status-badge', status === 'active' ? 'badge-active' : 'badge-deleted']">
+      {{ status === 'active' ? '活跃' : '已删除' }}
     </span>
   `,
 }
@@ -642,7 +753,11 @@ const AuditBadge = {
   transition: background-color 0.1s ease;
 }
 
-.data-table tbody tr:hover {
+.data-table tbody tr.clickable-row {
+  cursor: pointer;
+}
+
+.data-table tbody tr.clickable-row:hover {
   background: rgba(255, 255, 255, 0.03);
 }
 
@@ -655,14 +770,26 @@ const AuditBadge = {
   background: rgba(239, 68, 68, 0.08);
 }
 
-/* Column widths */
-.col-checkbox {
-  width: 40px;
-  text-align: center;
+/* Selected row highlight */
+.data-table tbody tr.row-selected {
+  background: rgba(59, 130, 246, 0.08);
 }
 
+.data-table tbody tr.row-selected:hover {
+  background: rgba(59, 130, 246, 0.12);
+}
+
+/* Column widths */
 .col-session-id {
+  min-width: 130px;
+}
+
+.col-title {
   min-width: 120px;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .col-project {
@@ -694,13 +821,14 @@ const AuditBadge = {
   min-width: 100px;
 }
 
-.session-id {
+.session-id-truncated {
   font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
   font-size: var(--text-sm);
   color: var(--primary);
   background: rgba(59, 130, 246, 0.08);
   padding: 1px var(--spacing-1);
   border-radius: var(--radius-sm);
+  cursor: help;
 }
 
 .empty-state {
@@ -710,9 +838,9 @@ const AuditBadge = {
   font-style: italic;
 }
 
-/* ── Audit Badge ────────────────────────────────────────────────────── */
+/* ── Status Badge ───────────────────────────────────────────────────── */
 
-:deep(.audit-badge) {
+:deep(.status-badge) {
   display: inline-block;
   padding: 1px var(--spacing-2);
   border-radius: var(--radius-lg);
@@ -748,13 +876,93 @@ const AuditBadge = {
   gap: var(--spacing-1);
 }
 
-/* ── Batch Actions ──────────────────────────────────────────────────── */
+/* ── Detail Panel ───────────────────────────────────────────────────── */
 
-.batch-actions {
+.detail-panel {
+  margin-top: var(--spacing-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.detail-loading {
+  padding: var(--spacing-6);
+  text-align: center;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.detail-header {
   display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-3) var(--spacing-4);
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.detail-title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--text);
+  display: flex;
+  align-items: center;
   gap: var(--spacing-2);
-  padding: var(--spacing-3) 0;
-  border-top: 1px solid var(--border);
+}
+
+.detail-session-id {
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: var(--text-sm);
+  color: var(--primary);
+  background: rgba(59, 130, 246, 0.08);
+  padding: 1px var(--spacing-2);
+  border-radius: var(--radius-sm);
+}
+
+.detail-section {
+  padding: var(--spacing-3) var(--spacing-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.detail-section:last-child {
+  border-bottom: none;
+}
+
+.detail-section-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: var(--spacing-2);
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--spacing-2) var(--spacing-4);
+}
+
+.detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.detail-label {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.detail-value {
+  font-size: var(--text-base);
+  color: var(--text);
+}
+
+.detail-value-highlight {
+  font-weight: 600;
+  color: var(--primary);
 }
 
 /* ── Shared Button Styles ───────────────────────────────────────────── */
@@ -801,32 +1009,14 @@ const AuditBadge = {
   background: rgba(255, 255, 255, 0.05);
 }
 
-.btn-outline {
-  background: transparent;
-}
-
-.btn-outline:hover:not(:disabled) {
-  border-color: var(--primary);
-  color: var(--primary);
-}
-
 .btn-sm {
   padding: var(--spacing-1) var(--spacing-2);
   font-size: var(--text-sm);
 }
 
-/* ── Checkbox styling ───────────────────────────────────────────────── */
-
-input[type='checkbox'] {
-  width: 14px;
-  height: 14px;
-  accent-color: var(--primary);
-  cursor: pointer;
-}
-
 /* ── Responsive ─────────────────────────────────────────────────────── */
 
-@media (max-width: 900px) {
+@media (max-width: 767px) {
   .filter-bar {
     flex-direction: column;
     align-items: stretch;
@@ -841,6 +1031,10 @@ input[type='checkbox'] {
   .pagination-bar {
     flex-direction: column;
     gap: var(--spacing-2);
+  }
+
+  .detail-grid {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   }
 }
 </style>

@@ -1,105 +1,40 @@
 /**
- * SQLite schema definitions and migration runner for the opencode-stats database.
+ * SQLite schema migrations and PRAGMA configuration.
  *
- * All tables are created idempotently. The `schema_migrations` table tracks
- * which migration versions have been applied so that repeated calls to
- * {@link runMigrations} are safe.
+ * Tables created:
+ *   - events              (Event Store, §3.1)
+ *   - projection_sessions  (§4.1)
+ *   - projection_daily     (§4.2)
+ *   - projection_tool_calls(§4.3)
+ *   - snapshots            (§5.1)
+ *
+ * `schema_migrations` tracks applied versions for idempotent runs.
  */
 
 import { Database } from "bun:sqlite"
+import * as m001 from "./migrations/001_initial"
 
-/** Current schema version — bump when adding new migrations. */
-export const CURRENT_VERSION = 2
+/** All migration modules in order. */
+const MIGRATIONS = [m001]
 
-/** Migration definitions: [version, SQL statements]. */
-const MIGRATIONS: [number, string[]][] = [
-  [
-    1,
-    [
-      // ── events: raw ingest log ──────────────────────────────────────
-      `CREATE TABLE IF NOT EXISTS events (
-          event_id     TEXT PRIMARY KEY,
-          event_type   TEXT NOT NULL,
-          session_id   TEXT NOT NULL,
-          project_path TEXT,
-          timestamp_ms INTEGER NOT NULL,
-          model        TEXT,
-          tokens       INTEGER,
-          cost_usd     REAL,
-          tool         TEXT,
-          status       TEXT,
-          summary      TEXT,
-          deleted      BOOLEAN DEFAULT FALSE,
-          metadata     TEXT,
-          created_at   DATETIME DEFAULT CURRENT_TIMESTAMP
-      )`,
-      "CREATE INDEX IF NOT EXISTS idx_events_session   ON events(session_id)",
-      "CREATE INDEX IF NOT EXISTS idx_events_type      ON events(event_type)",
-      "CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp_ms)",
-      // ── sessions: aggregated session record ──────────────────────────
-      `CREATE TABLE IF NOT EXISTS sessions (
-          session_id      TEXT PRIMARY KEY,
-          project_path    TEXT,
-          model           TEXT,
-          total_tokens    INTEGER DEFAULT 0,
-          total_cost_usd  REAL DEFAULT 0,
-          deleted         BOOLEAN DEFAULT FALSE,
-          deleted_at      DATETIME,
-          first_event_at  DATETIME,
-          last_event_at   DATETIME,
-          tool_call_count INTEGER DEFAULT 0
-      )`,
-      "CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_path)",
-      "CREATE INDEX IF NOT EXISTS idx_sessions_deleted ON sessions(deleted)",
-      // ── tool_calls: per-tool audit trail ─────────────────────────────
-      `CREATE TABLE IF NOT EXISTS tool_calls (
-          id            INTEGER PRIMARY KEY AUTOINCREMENT,
-          tool_name     TEXT NOT NULL,
-          session_id    TEXT NOT NULL,
-          status        TEXT NOT NULL,
-          model         TEXT,
-          tokens        INTEGER,
-          cost_usd      REAL,
-          started_at    DATETIME,
-          completed_at  DATETIME,
-          summary       TEXT,
-          UNIQUE(session_id, tool_name, started_at)
-      )`,
-      "CREATE INDEX IF NOT EXISTS idx_tool_calls_session ON tool_calls(session_id)",
-      "CREATE INDEX IF NOT EXISTS idx_tool_calls_tool    ON tool_calls(tool_name)",
-      // ── schema_migrations: version tracking ──────────────────────────
-      `CREATE TABLE IF NOT EXISTS schema_migrations (
-          version     INTEGER PRIMARY KEY,
-          applied_at  DATETIME DEFAULT CURRENT_TIMESTAMP
-      )`,
-    ],
-  ],
-  [
-    2,
-    [
-      // Fix: Create sessions for events that have no corresponding session.created event
-      `INSERT OR IGNORE INTO sessions (session_id, project_path, model, total_tokens, total_cost_usd, deleted, first_event_at, last_event_at, tool_call_count)
-       SELECT 
-         e.session_id,
-         MAX(e.project_path) as project_path,
-         MAX(CASE WHEN e.model != 'unknown' THEN e.model END) as model,
-         SUM(e.tokens) as total_tokens,
-         SUM(e.cost_usd) as total_cost_usd,
-         FALSE as deleted,
-         datetime(MIN(e.timestamp_ms) / 1000, 'unixepoch') as first_event_at,
-         datetime(MAX(e.timestamp_ms) / 1000, 'unixepoch') as last_event_at,
-         0 as tool_call_count
-       FROM events e
-       WHERE e.session_id NOT IN (SELECT session_id FROM sessions)
-         AND e.event_type = 'usage.updated'
-       GROUP BY e.session_id`,
-    ],
-  ],
-]
+/** Latest schema version — derived from migration list length. */
+export const CURRENT_VERSION = MIGRATIONS.length
 
-/** Return the highest applied migration version, or 0 if none. */
+/**
+ * Configure PRAGMAs for optimal performance.
+ *
+ * - journal_mode = WAL   (concurrent readers + single writer)
+ * - synchronous  = NORMAL (good durability with WAL)
+ */
+export function configurePragmas(db: Database): void {
+  db.run("PRAGMA journal_mode = WAL")
+  db.run("PRAGMA synchronous = NORMAL")
+}
+
+/**
+ * Return the highest applied migration version, or 0 if none.
+ */
 function currentVersion(db: Database): number {
-  // Table may not exist yet on first run — treat as version 0.
   const exists = db
     .query(
       "SELECT COUNT(*) as cnt FROM sqlite_master WHERE type='table' AND name='schema_migrations'"
@@ -118,25 +53,37 @@ function currentVersion(db: Database): number {
 }
 
 /**
+ * Ensure the schema_migrations tracking table exists.
+ */
+function ensureMigrationsTable(db: Database): void {
+  db.run(`
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      version    INTEGER PRIMARY KEY,
+      applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `)
+}
+
+/**
  * Run all pending migrations inside a single transaction.
  *
- * This function is idempotent — calling it multiple times with the same
- * database is safe and will only apply new migrations.
+ * Idempotent — safe to call multiple times.
  *
- * @returns The number of migrations applied (0 if already up-to-date).
+ * @returns Number of migrations applied (0 if already up-to-date).
  */
 export function runMigrations(db: Database): number {
+  ensureMigrationsTable(db)
   const current = currentVersion(db)
   let appliedCount = 0
 
   const tx = db.transaction(() => {
-    for (const [version, statements] of MIGRATIONS) {
+    for (let i = 0; i < MIGRATIONS.length; i++) {
+      const migration = MIGRATIONS[i]!
+      const version = i + 1
       if (version <= current) {
         continue
       }
-      for (const sql of statements) {
-        db.run(sql)
-      }
+      migration.up(db)
       db.run("INSERT INTO schema_migrations (version) VALUES (?)", [version])
       appliedCount++
     }

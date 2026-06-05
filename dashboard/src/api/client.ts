@@ -190,3 +190,197 @@ export async function cleanupAll(): Promise<CleanupResponse> {
   if (!res.ok) throw new Error(`API error: ${res.status} ${res.statusText}`)
   return res.json() as Promise<CleanupResponse>
 }
+
+// ── New Stats API Types (matching Task 12 endpoints) ─────────────────
+
+export interface StatsOverviewResponse {
+  total_sessions: number
+  active_sessions: number
+  deleted_sessions: number
+  total_tokens: number
+  input_tokens: number
+  output_tokens: number
+  reasoning_tokens: number
+  cache_read: number
+  cache_write: number
+  total_cost_usd: number
+  tool_call_count: number
+  tool_error_count: number
+  files_edited: number
+  lines_added: number
+  lines_deleted: number
+  error_count: number
+  first_event_at: number | null
+  last_event_at: number | null
+}
+
+export interface TrendDataPoint {
+  date: string
+  tokens: number
+  cost_usd: number
+  messages: number
+  sessions: number
+  tool_calls: number
+  errors: number
+}
+
+export interface StatsTrendResponse {
+  granularity: 'day' | 'week' | 'month'
+  data: TrendDataPoint[]
+}
+
+export interface ToolStatsItem {
+  tool_name: string
+  call_count: number
+  error_count: number
+  success_rate: number
+  avg_duration_ms: number
+  total_tokens: number
+  total_cost_usd: number
+}
+
+export interface StatsToolsResponse {
+  tools: ToolStatsItem[]
+  total_calls: number
+  total_errors: number
+  success_rate: number
+}
+
+export interface StatsModelItem {
+  model: string
+  session_count: number
+  message_count: number
+  total_tokens: number
+  input_tokens: number
+  output_tokens: number
+  reasoning_tokens: number
+  total_cost_usd: number
+  avg_cost_per_session: number
+  tool_call_count: number
+  error_count: number
+}
+
+export interface StatsModelsResponse {
+  models: StatsModelItem[]
+  total_cost_usd: number
+}
+
+export interface ProjectStatsItem {
+  project_path: string
+  session_count: number
+  total_tokens: number
+  total_cost_usd: number
+  last_event_at: number | null
+  primary_model: string | null
+}
+
+export interface StatsProjectsResponse {
+  projects: ProjectStatsItem[]
+  total_cost_usd: number
+}
+
+export interface StatsSessionListItem {
+  session_id: string
+  project_path: string | null
+  title: string | null
+  status: 'active' | 'deleted'
+  primary_model: string | null
+  total_tokens: number
+  total_cost_usd: number
+  duration_ms: number | null
+  last_event_at: number | null
+  event_count: number
+}
+
+export interface StatsSessionsResponse {
+  sessions: StatsSessionListItem[]
+  total: number
+}
+
+export interface SessionDetail {
+  session_id: string
+  project_path: string | null
+  title: string | null
+  status: 'active' | 'deleted'
+  primary_model: string | null
+  primary_agent: string | null
+  total_tokens: number
+  input_tokens: number
+  output_tokens: number
+  reasoning_tokens: number
+  cache_read: number
+  cache_write: number
+  total_cost_usd: number
+  duration_ms: number | null
+  first_event_at: number | null
+  last_event_at: number | null
+  event_count: number
+  user_message_count: number
+  assistant_message_count: number
+  tool_call_count: number
+  tool_error_count: number
+  files_edited: number
+  lines_added: number
+  lines_deleted: number
+  error_count: number
+  model_usage: Record<string, unknown> | null
+  agent_usage: Record<string, unknown> | null
+}
+
+// ── New Stats API Client ─────────────────────────────────────────────
+
+export interface StatsTimeRange {
+  start?: string
+  end?: string
+}
+
+function unwrapData<T>(json: { data: T }): T {
+  return json.data
+}
+
+export function fetchStatsOverview(): Promise<StatsOverviewResponse> {
+  return getJson<{ data: StatsOverviewResponse }>('/api/v1/stats/overview').then(unwrapData)
+}
+
+export function fetchStatsTrend(range?: StatsTimeRange): Promise<StatsTrendResponse> {
+  return getJson<{ data: StatsTrendResponse }>('/api/v1/stats/trend', {
+    start: range?.start,
+    end: range?.end,
+  }).then(unwrapData)
+}
+
+export function fetchStatsTools(range?: StatsTimeRange): Promise<StatsToolsResponse> {
+  return getJson<{ data: StatsToolsResponse }>('/api/v1/stats/tools', {
+    start: range?.start,
+    end: range?.end,
+  }).then(unwrapData)
+}
+
+export function fetchStatsModels(range?: StatsTimeRange): Promise<StatsModelsResponse> {
+  return getJson<{ data: StatsModelsResponse }>('/api/v1/stats/models', {
+    start: range?.start,
+    end: range?.end,
+  }).then(unwrapData)
+}
+
+export function fetchStatsProjects(range?: StatsTimeRange): Promise<StatsProjectsResponse> {
+  return getJson<{ data: StatsProjectsResponse }>('/api/v1/stats/projects', {
+    start: range?.start,
+    end: range?.end,
+  }).then(unwrapData)
+}
+
+export function fetchStatsSessions(params?: { limit?: number; offset?: number; status?: string }): Promise<StatsSessionsResponse> {
+  return getJson<{ data: StatsSessionsResponse; meta: { total: number; limit: number; offset: number } }>(
+    '/api/v1/stats/sessions',
+    {
+      limit: params?.limit != null ? String(params.limit) : undefined,
+      offset: params?.offset != null ? String(params.offset) : undefined,
+      status: params?.status,
+    },
+  ).then((json) => json.data)
+}
+
+export function fetchStatsSessionDetail(sessionId: string): Promise<SessionDetail> {
+  return getJson<{ data: SessionDetail }>(`/api/v1/stats/sessions/${sessionId}`).then(unwrapData)
+}

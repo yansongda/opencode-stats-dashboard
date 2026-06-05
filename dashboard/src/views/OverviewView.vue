@@ -1,192 +1,501 @@
 <template>
-  <div class="view-container">
-    <!-- Metric Tiles -->
-    <div class="metrics-grid">
-      <div class="metric-tile">
-        <div class="metric-value">{{ formatNumber(overview?.total_sessions ?? 0) }}</div>
-        <div class="metric-label">会话数</div>
-      </div>
-      <div class="metric-tile">
-        <div class="metric-value">{{ formatNumber(overview?.total_messages ?? 0) }}</div>
-        <div class="metric-label">消息数</div>
-      </div>
-      <div class="metric-tile">
-        <div class="metric-value">{{ formatNumber(overview?.total_days ?? 0) }}</div>
-        <div class="metric-label">活跃天数</div>
-      </div>
-      <div class="metric-tile">
-        <div class="metric-value">{{ formatCost(overview?.total_cost_usd ?? 0) }} / {{ formatTokens(overview?.total_tokens ?? 0) }}</div>
-        <div class="metric-label">总费用 / 总 Token</div>
-      </div>
-      <div class="metric-tile">
-        <div class="metric-value">{{ formatCost((overview?.total_cost_usd ?? 0) / (overview?.total_sessions || 1)) }} / {{ formatTokens(overview?.avg_tokens_per_session ?? 0) }}</div>
-        <div class="metric-label">平均成本 / 会话</div>
-      </div>
-      <div class="metric-tile">
-        <div class="metric-value">{{ formatTokens(overview?.input_tokens ?? 0) }}</div>
-        <div class="metric-label">输入</div>
-      </div>
-      <div class="metric-tile">
-        <div class="metric-value">{{ formatTokens(overview?.output_tokens ?? 0) }}</div>
-        <div class="metric-label">输出</div>
-      </div>
-      <div class="metric-tile">
-        <div class="metric-value">{{ formatTokens(overview?.cache_read ?? 0) }}</div>
-        <div class="metric-label">Cache Read</div>
-      </div>
-      <div class="metric-tile">
-        <div class="metric-value">{{ formatTokens(overview?.cache_write ?? 0) }}</div>
-        <div class="metric-label">Cache Write</div>
+  <div class="overview-container">
+    <!-- Time Range Selector -->
+    <div class="time-range-bar" data-testid="time-range-bar">
+      <div class="period-tabs">
+        <button
+          v-for="p in periods"
+          :key="p.value"
+          class="period-btn"
+          :class="{ active: selectedPeriod === p.value }"
+          data-testid="period-btn"
+          @click="selectPeriod(p.value)"
+        >
+          {{ p.label }}
+        </button>
       </div>
     </div>
 
-    <!-- Trend Chart + Model Distribution -->
-    <div class="mid-row">
-      <div class="mid-trend">
-        <TrendChart />
+    <!-- Loading State -->
+    <LoadingState v-if="loading" message="加载统计数据中..." test-id="overview-loading" />
+
+    <!-- Error State -->
+    <EmptyState
+      v-else-if="error"
+      variant="error"
+      title="数据加载失败"
+      :description="error"
+      action-label="重试"
+      test-id="overview-error"
+      @action="fetchAll"
+    />
+
+    <!-- Empty State -->
+    <EmptyState
+      v-else-if="!overview"
+      title="暂无统计数据"
+      description="开始使用 OpenCode 后，统计数据将自动显示在这里"
+      test-id="overview-empty"
+    />
+
+    <!-- Content -->
+    <template v-else>
+    <!-- Metric Cards -->
+    <div class="metrics-row resp-metrics-5" data-testid="metrics-row">
+      <MetricCard
+        label="总会话"
+        :value="overview?.total_sessions ?? 0"
+        :subtitle="`${overview?.active_sessions ?? 0} 活跃 · ${overview?.deleted_sessions ?? 0} 已删除`"
+        test-id="metric-sessions"
+      />
+      <MetricCard
+        label="总 Token"
+        :value="formatTokens(overview?.total_tokens ?? 0)"
+        :subtitle="`入 ${formatTokens(overview?.input_tokens ?? 0)} · 出 ${formatTokens(overview?.output_tokens ?? 0)}`"
+        test-id="metric-tokens"
+      />
+      <MetricCard
+        label="总成本"
+        :value="formatCost(overview?.total_cost_usd ?? 0)"
+        :subtitle="`工具 ${overview?.tool_call_count ?? 0} 次`"
+        test-id="metric-cost"
+      />
+      <MetricCard
+        label="工具调用"
+        :value="overview?.tool_call_count ?? 0"
+        :subtitle="`错误 ${overview?.tool_error_count ?? 0} · 成功率 ${toolSuccessRate}%`"
+        test-id="metric-tools"
+      />
+      <MetricCard
+        label="代码变更"
+        :value="`+${overview?.lines_added ?? 0}`"
+        :subtitle="`-${overview?.lines_deleted ?? 0} · 净增 ${(overview?.lines_added ?? 0) - (overview?.lines_deleted ?? 0)} 行`"
+        test-id="metric-code"
+      />
+    </div>
+
+    <!-- Usage Trend Chart -->
+    <div class="trend-section" data-testid="trend-section">
+      <div class="section-header">
+        <h3 class="section-title">使用趋势</h3>
       </div>
-      <div class="mid-model">
-        <ModelDistribution />
+      <LineChart
+        :x-data="trendDates"
+        :series="trendSeries"
+        height="280px"
+        :smooth="true"
+        :show-area="true"
+        y-label="Token"
+      />
+    </div>
+
+    <!-- Middle Row: Model Distribution + Project Ranking -->
+    <div class="mid-row resp-two-col">
+      <div class="chart-card" data-testid="model-distribution">
+        <h3 class="section-title">模型成本分布</h3>
+        <PieChart
+          :data="modelPieData"
+          height="260px"
+          :donut="true"
+        />
+      </div>
+      <div class="chart-card" data-testid="project-ranking">
+        <h3 class="section-title">项目使用排行 Top 5</h3>
+        <BarChart
+          :x-data="projectNames"
+          :series="projectSeries"
+          height="260px"
+        />
       </div>
     </div>
 
-    <!-- Bottom three-column grid -->
-    <div class="widgets-grid" data-testid="widgets-grid">
-      <ProjectDistribution />
-      <RecentSessions />
-      <TopTools />
+    <!-- Bottom Row: Tool Top 5 + Recent Sessions -->
+    <div class="bottom-row resp-two-col">
+      <div class="chart-card" data-testid="tool-top5">
+        <h3 class="section-title">工具调用 Top 5</h3>
+        <BarChart
+          :x-data="toolNames"
+          :series="toolSeries"
+          height="260px"
+          :horizontal="true"
+        />
+      </div>
+      <div class="chart-card" data-testid="recent-sessions">
+        <h3 class="section-title">近期会话</h3>
+        <EmptyState
+          v-if="recentSessions.length === 0"
+          title="暂无会话数据"
+          description="开始使用 OpenCode 后，会话记录将显示在这里"
+          test-id="recent-sessions-empty"
+        />
+        <div v-else class="session-list">
+          <div
+            v-for="session in recentSessions"
+            :key="session.session_id"
+            class="session-row"
+          >
+            <div class="session-info">
+              <span class="session-project" :title="session.project_path || session.session_id">
+                {{ formatProjectPath(session.project_path) }}
+              </span>
+              <span class="session-model">{{ session.primary_model || '—' }}</span>
+            </div>
+            <div class="session-meta">
+              <span class="session-tokens">{{ formatTokens(session.total_tokens) }}</span>
+              <span
+                class="session-status"
+                :class="session.status === 'active' ? 'status-active' : 'status-deleted'"
+              >
+                {{ session.status === 'active' ? '活跃' : '已删除' }}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import TrendChart from '../components/TrendChart.vue'
-import ModelDistribution from '../components/ModelDistribution.vue'
-import ProjectDistribution from '../components/ProjectDistribution.vue'
-import RecentSessions from '../components/RecentSessions.vue'
-import TopTools from '../components/TopTools.vue'
-import { useStatsStore } from '../stores/stats'
+import { ref, computed, onMounted } from 'vue'
+import MetricCard from '../components/MetricCard.vue'
+import EmptyState from '../components/EmptyState.vue'
+import LoadingState from '../components/LoadingState.vue'
+import LineChart from '../charts/LineChart.vue'
+import PieChart from '../charts/PieChart.vue'
+import BarChart from '../charts/BarChart.vue'
+import {
+  fetchStatsOverview,
+  fetchStatsTrend,
+  fetchStatsTools,
+  fetchStatsModels,
+  fetchStatsProjects,
+  fetchStatsSessions,
+  type StatsOverviewResponse,
+  type TrendDataPoint,
+  type ToolStatsItem,
+  type StatsModelItem,
+  type ProjectStatsItem,
+  type StatsSessionListItem,
+} from '../api/client'
 
-const store = useStatsStore()
-const { overview } = store
+// ── Period / Time Range ────────────────────────────────────────────
 
-// ── Formatting helpers ──────────────────────────────────────────────
+type Period = '7d' | '30d' | 'all'
 
-function formatNumber(value: number): string {
-  return value.toLocaleString()
+const periods: Array<{ value: Period; label: string }> = [
+  { value: '7d', label: '7 天' },
+  { value: '30d', label: '30 天' },
+  { value: 'all', label: '全部' },
+]
+
+const selectedPeriod = ref<Period>('7d')
+
+function getDateRange(period: Period): { start?: string; end?: string } {
+  if (period === 'all') return {}
+  const now = new Date()
+  const end = formatDate(now)
+  const start = new Date(now)
+  start.setDate(start.getDate() - (period === '7d' ? 6 : 29))
+  return { start: formatDate(start), end }
 }
 
+function formatDate(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+// ── Data Fetching ──────────────────────────────────────────────────
+
+const overview = ref<StatsOverviewResponse | null>(null)
+const trendData = ref<TrendDataPoint[]>([])
+const tools = ref<ToolStatsItem[]>([])
+const models = ref<StatsModelItem[]>([])
+const projects = ref<ProjectStatsItem[]>([])
+const recentSessions = ref<StatsSessionListItem[]>([])
+const loading = ref(false)
+const error = ref<string | null>(null)
+
+async function fetchAll(): Promise<void> {
+  loading.value = true
+  error.value = null
+  try {
+    const range = getDateRange(selectedPeriod.value)
+    const [ov, trend, tl, md, pj, sess] = await Promise.all([
+      fetchStatsOverview(),
+      fetchStatsTrend(range),
+      fetchStatsTools(),
+      fetchStatsModels(range),
+      fetchStatsProjects(range),
+      fetchStatsSessions({ limit: 10 }),
+    ])
+    overview.value = ov
+    trendData.value = trend.data
+    tools.value = tl.tools
+    models.value = md.models
+    projects.value = pj.projects
+    recentSessions.value = sess.sessions
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : '加载数据时发生未知错误'
+    console.error('[Overview] Failed to fetch data:', err)
+  } finally {
+    loading.value = false
+  }
+}
+
+function selectPeriod(period: Period): void {
+  selectedPeriod.value = period
+  fetchAll()
+}
+
+onMounted(() => {
+  fetchAll()
+})
+
+// ── Formatting Helpers ─────────────────────────────────────────────
+
 function formatTokens(tokens: number): string {
-  if (tokens >= 1_000_000) {
-    return `${(tokens / 1_000_000).toFixed(1)}M`
-  }
-  if (tokens >= 1_000) {
-    return `${(tokens / 1_000).toFixed(1)}K`
-  }
+  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`
+  if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(1)}K`
   return tokens.toLocaleString()
 }
 
 function formatCost(cost: number): string {
   return `$${cost.toFixed(2)}`
 }
+
+function formatProjectPath(path: string | null): string {
+  if (!path) return '未知项目'
+  const segments = path.split('/').filter(Boolean)
+  if (segments.length <= 2) return path
+  return '.../' + segments.slice(-2).join('/')
+}
+
+// ── Derived Chart Data ─────────────────────────────────────────────
+
+const toolSuccessRate = computed(() => {
+  if (!overview.value) return '100'
+  const total = overview.value.tool_call_count
+  if (total === 0) return '100'
+  return ((1 - overview.value.tool_error_count / total) * 100).toFixed(1)
+})
+
+const trendDates = computed(() => trendData.value.map((d) => d.date))
+
+const trendSeries = computed(() => [
+  { name: 'Token', data: trendData.value.map((d) => d.tokens), color: '#3b82f6' },
+  { name: '消息', data: trendData.value.map((d) => d.messages), color: '#16a34a' },
+])
+
+const modelPieData = computed(() =>
+  models.value.map((m) => ({
+    name: m.model,
+    value: Math.round(m.total_cost_usd * 10000) / 10000,
+  })),
+)
+
+const projectNames = computed(() =>
+  projects.value.slice(0, 5).map((p) => {
+    const segments = p.project_path.split('/').filter(Boolean)
+    return segments.length > 2 ? '.../' + segments.slice(-2).join('/') : p.project_path
+  }),
+)
+
+const projectSeries = computed(() => [
+  {
+    name: '会话数',
+    data: projects.value.slice(0, 5).map((p) => p.session_count),
+    color: '#3b82f6',
+  },
+])
+
+const toolNames = computed(() => tools.value.slice(0, 5).map((t) => t.tool_name))
+
+const toolSeries = computed(() => [
+  {
+    name: '调用次数',
+    data: tools.value.slice(0, 5).map((t) => t.call_count),
+    color: '#8b5cf6',
+  },
+])
 </script>
 
 <style scoped>
-.view-container {
+.overview-container {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-4);
 }
 
-/* ── Metrics Grid ─────────────────────────────────────────────────── */
+/* ── Time Range Bar ─────────────────────────────────────────────── */
 
-.metrics-grid {
-  display: grid;
-  grid-template-columns: repeat(9, 1fr);
-  gap: var(--spacing-2);
+.time-range-bar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
 }
 
-.metric-tile {
+.period-tabs {
+  display: flex;
+  gap: var(--spacing-1);
+}
+
+.period-btn {
+  font-size: var(--text-xs);
+  padding: 3px var(--spacing-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  background-color: var(--surface);
+  color: var(--text-muted);
+  transition: all 0.15s ease;
+  line-height: 1.4;
+}
+
+.period-btn:hover {
+  color: var(--text);
+  border-color: var(--primary);
+}
+
+.period-btn.active {
+  background-color: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+
+/* ── Metrics Row ────────────────────────────────────────────────── */
+
+.metrics-row {
+  /* Grid handled by .resp-metrics-5 utility */
+  gap: var(--spacing-3);
+}
+
+/* ── Section Header ─────────────────────────────────────────────── */
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.section-title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* ── Chart Card ─────────────────────────────────────────────────── */
+
+.chart-card {
   background-color: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  padding: var(--spacing-3) var(--spacing-2);
-  text-align: center;
-  min-width: 0;
-  overflow: hidden;
+  padding: var(--spacing-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+  transition: border-color 0.2s ease;
 }
 
-.metric-value {
-  font-size: var(--text-xl);
-  font-weight: 700;
-  color: var(--text);
-  line-height: 1.2;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.chart-card:hover {
+  border-color: var(--primary);
 }
 
-.metric-label {
-  font-size: 10px;
-  color: var(--text-muted);
-  margin-top: 4px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.trend-section {
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
 }
 
-@media (max-width: 1200px) {
-  .metrics-grid {
-    grid-template-columns: repeat(5, 1fr);
-  }
-}
-
-@media (max-width: 768px) {
-  .metrics-grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
-}
-
-/* ── Mid Row: Trend + Model ───────────────────────────────────────── */
+/* ── Layout Rows ────────────────────────────────────────────────── */
 
 .mid-row {
+  /* Grid handled by .resp-two-col utility */
+  gap: var(--spacing-3);
+}
+
+.bottom-row {
+  /* Grid handled by .resp-two-col utility */
+  gap: var(--spacing-3);
+}
+
+/* ── Recent Sessions List ───────────────────────────────────────── */
+
+.session-list {
   display: flex;
-  gap: var(--spacing-3);
+  flex-direction: column;
+  gap: var(--spacing-1);
 }
 
-.mid-trend {
-  flex: 2;
+.session-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-2) 0;
+  border-bottom: 1px solid var(--border);
+  gap: var(--spacing-2);
+}
+
+.session-row:last-child {
+  border-bottom: none;
+}
+
+.session-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   min-width: 0;
-}
-
-.mid-model {
   flex: 1;
-  min-width: 0;
 }
 
-/* ── Widgets Grid ─────────────────────────────────────────────────── */
-
-.widgets-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: var(--spacing-3);
+.session-project {
+  font-size: var(--text-sm);
+  font-family: monospace;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* ── Responsive ───────────────────────────────────────────────────── */
-
-@media (max-width: 1024px) {
-  .widgets-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .mid-row {
-    flex-direction: column;
-  }
+.session-model {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
 }
 
-@media (max-width: 640px) {
-  .widgets-grid {
-    grid-template-columns: 1fr;
-  }
+.session-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  flex-shrink: 0;
+}
+
+.session-tokens {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.session-status {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  padding: 1px var(--spacing-2);
+  border-radius: var(--radius-sm);
+}
+
+.status-active {
+  color: var(--success);
+  background-color: rgba(34, 197, 94, 0.1);
+}
+
+.status-deleted {
+  color: var(--danger);
+  background-color: rgba(239, 68, 68, 0.1);
 }
 </style>

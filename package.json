@@ -1,14 +1,23 @@
 {
-  "name": "opencode-stats-plugin",
-  "version": "0.2.0",
+  "name": "opencode-stats-engine",
+  "version": "0.3.0",
   "private": true,
-  "description": "OpenCode Session Stats Dashboard Plugin",
+  "description": "OpenCode Event-Sourced Stats Engine",
+  "type": "module",
   "main": "src/index.ts",
   "scripts": {
     "test": "bun test",
+    "test:watch": "bun test --watch",
+    "lint": "eslint src/ tests/",
+    "format": "prettier --write 'src/**/*.ts' 'tests/**/*.ts'",
+    "typecheck": "tsc --noEmit",
     "build:dashboard": "bun run --cwd dashboard build"
   },
+  "dependencies": {
+    "bun-types": "latest"
+  },
   "devDependencies": {
-    "@opencode-ai/plugin": "^1.15.13"
+    "@types/bun": "latest",
+    "typescript": "^5.8.0"
   }
 }
