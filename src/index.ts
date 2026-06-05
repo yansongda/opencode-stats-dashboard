@@ -208,7 +208,7 @@ const StatsPlugin: Plugin = async (input) => {
   const hooks: Hooks = {
     // Generic event handler — covers session, message, file events
     event: async ({ event }) => {
-      const statsEvent = convertEvent(event, input)
+      const statsEvent = convertEvent(event, input.directory)
       if (statsEvent) {
         processEvent(statsEvent, eventStore, projectionEngine, broadcaster)
       }
@@ -219,7 +219,7 @@ const StatsPlugin: Plugin = async (input) => {
       const statsEvent = convertToolEvent(
         toolInput as { tool: string; sessionID: string; callID: string },
         toolOutput as { title: string; metadata: Record<string, unknown> },
-        input,
+        input.directory,
       )
       processEvent(statsEvent, eventStore, projectionEngine, broadcaster)
     },
