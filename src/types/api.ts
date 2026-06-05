@@ -4,8 +4,19 @@
  * REST API endpoints for querying stats, sessions, tools, models, and projects.
  */
 
-import type { TokenBreakdown } from "./events.js"
-import type { AgentUsage, ModelUsage } from "./projections.js"
+import type { TokenBreakdown } from "@defs/events"
+import type { AgentUsage, ModelUsage } from "@defs/projections"
+import type { Hono } from "hono"
+
+// ============================================================================
+// API Handler Types
+// ============================================================================
+
+/**
+ * A route registrar function that mounts its routes onto the Hono app.
+ * Used by handler modules (stats, stream, ingest, etc.)
+ */
+export type RouteRegistrar = (app: Hono) => void
 
 // ============================================================================
 // Common Types

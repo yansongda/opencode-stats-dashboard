@@ -8,18 +8,44 @@
       :loading="loading"
       :loading-options="loadingOptions"
     />
-    <div v-else class="chart-empty">
-      <slot name="empty">
-        <span class="chart-empty-text">暂无数据</span>
-      </slot>
-    </div>
+    <EmptyState
+      v-else
+      title="暂无数据"
+      description="开始使用 OpenCode 后，数据将自动显示在这里"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
 import VChart from 'vue-echarts'
+import { use } from 'echarts/core'
+import { CanvasRenderer } from 'echarts/renderers'
+import { BarChart, LineChart, PieChart, ScatterChart, HeatmapChart } from 'echarts/charts'
+import {
+  GridComponent,
+  TooltipComponent,
+  LegendComponent,
+  DataZoomComponent,
+  VisualMapComponent,
+} from 'echarts/components'
+import EmptyState from '../components/EmptyState.vue'
 import type { EChartsOption } from 'echarts'
+
+// Register ECharts components
+use([
+  CanvasRenderer,
+  BarChart,
+  LineChart,
+  PieChart,
+  ScatterChart,
+  HeatmapChart,
+  GridComponent,
+  TooltipComponent,
+  LegendComponent,
+  DataZoomComponent,
+  VisualMapComponent,
+])
 
 // ── Props ──────────────────────────────────────────────────────────
 
@@ -67,18 +93,5 @@ const mergedOption = computed<EChartsOption>(() => {
   width: 100%;
   min-height: 100px;
   position: relative;
-}
-
-.chart-empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  min-height: 100px;
-}
-
-.chart-empty-text {
-  color: var(--text-muted, #8c8c8c);
-  font-size: var(--text-sm, 14px);
 }
 </style>

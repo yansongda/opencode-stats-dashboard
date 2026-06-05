@@ -10,8 +10,8 @@
  */
 
 import type { Database } from "bun:sqlite"
-import type { IngestEventEnvelope, EventType } from "../types/events"
-import type { ProjectionHandler, TransactionContext } from "./handlers/types"
+import type { StatsEvent, StatsEventType } from "@defs/events"
+import type { ProjectionHandler, TransactionContext } from "@defs/projections"
 
 // ---------------------------------------------------------------------------
 // Transaction Context Implementation
@@ -105,7 +105,7 @@ export class ProjectionEngine {
    * If any handler throws, the transaction rolls back and the event
    * is NOT marked as processed (so it can be retried).
    */
-  processEvent(event: IngestEventEnvelope): void {
+  processEvent(event: StatsEvent): void {
     // Idempotency check
     if (this.processedEvents.has(event.event_id)) {
       return
@@ -140,7 +140,7 @@ export class ProjectionEngine {
   /**
    * Find all handlers whose `handles` array includes the given event_type.
    */
-  private findMatchingHandlers(eventType: EventType): HandlerEntry[] {
+  private findMatchingHandlers(eventType: StatsEventType): HandlerEntry[] {
     const result: HandlerEntry[] = []
     for (const entry of this.handlers.values()) {
       if (entry.handler.handles.includes(eventType)) {

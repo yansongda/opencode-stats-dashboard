@@ -60,7 +60,9 @@ const props = withDefaults(
 
 const hours = Array.from({ length: 24 }, (_, i) => `${i}:00`)
 
-const chartOption = computed<EChartsOption>(() => {
+const chartOption = computed<EChartsOption | null>(() => {
+  if (props.data.length === 0) return null
+
   const maxVal = Math.max(...props.data.map((d) => d.value), 1)
 
   // Convert to [hour, day, value] format for ECharts heatmap

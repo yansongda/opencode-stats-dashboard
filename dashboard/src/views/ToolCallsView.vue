@@ -82,7 +82,13 @@
           </thead>
           <tbody>
             <tr v-if="sortedTools.length === 0">
-              <td colspan="6" class="empty-state">暂无工具调用数据</td>
+              <td colspan="6">
+                <EmptyState
+                  title="暂无工具调用数据"
+                  description="开始使用 OpenCode 后，工具调用记录将显示在这里"
+                  test-id="tools-empty"
+                />
+              </td>
             </tr>
             <tr v-for="tool in sortedTools" :key="tool.tool_name">
               <td class="col-monospace">{{ tool.tool_name }}</td>

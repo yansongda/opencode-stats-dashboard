@@ -42,10 +42,15 @@ export function formatInTimezone(
   return new Intl.DateTimeFormat('zh-CN', defaultOptions).format(date)
 }
 
-export function formatRelativeTime(utcDateStr: string | null): string {
+export function formatRelativeTime(utcDateStr: string | number | null): string {
   if (!utcDateStr) return '—'
 
-  const date = new Date(utcDateStr.replace(' ', 'T') + 'Z')
+  let date: Date
+  if (typeof utcDateStr === 'number') {
+    date = new Date(utcDateStr)
+  } else {
+    date = new Date(utcDateStr.replace(' ', 'T') + 'Z')
+  }
   if (isNaN(date.getTime())) return '—'
 
   return formatRelativeTimeFromDate(date)

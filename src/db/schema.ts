@@ -12,7 +12,7 @@
  */
 
 import { Database } from "bun:sqlite"
-import * as m001 from "./migrations/001_initial"
+import * as m001 from "@db/migrations/001_initial"
 
 /** All migration modules in order. */
 const MIGRATIONS = [m001]

@@ -38,6 +38,8 @@ const props = withDefaults(
     showLabel?: boolean
     /** Tooltip formatter */
     tooltipFormatter?: (params: unknown) => string
+    /** Legend position */
+    legendPosition?: 'top' | 'bottom' | 'left' | 'right'
   }>(),
   {
     height: '300px',
@@ -48,15 +50,32 @@ const props = withDefaults(
     innerRadius: 0.55,
     showLabel: true,
     tooltipFormatter: undefined,
+    legendPosition: 'right',
   },
 )
 
 // ── Chart Option ───────────────────────────────────────────────────
 
-const chartOption = computed<EChartsOption>(() => {
+const chartOption = computed<EChartsOption | null>(() => {
+  if (props.data.length === 0) return null
+
   const radius = props.donut
     ? [`${Math.round(props.innerRadius * 100)}%`, '70%']
     : ['0%', '70%']
+
+  const legendConfig = (() => {
+    switch (props.legendPosition) {
+      case 'top':
+        return { orient: 'horizontal' as const, top: 0, left: 'center' }
+      case 'bottom':
+        return { orient: 'horizontal' as const, bottom: 0, left: 'center' }
+      case 'left':
+        return { orient: 'vertical' as const, left: '5%', top: 'center' }
+      case 'right':
+      default:
+        return { orient: 'vertical' as const, right: '5%', top: 'center' }
+    }
+  })()
 
   return {
     tooltip: {
@@ -66,9 +85,7 @@ const chartOption = computed<EChartsOption>(() => {
         : {}),
     },
     legend: {
-      orient: 'vertical',
-      right: '5%',
-      top: 'center',
+      ...legendConfig,
       textStyle: {
         fontSize: 12,
       },
@@ -77,7 +94,7 @@ const chartOption = computed<EChartsOption>(() => {
       {
         type: 'pie',
         radius,
-        center: ['40%', '50%'],
+        center: props.legendPosition === 'right' ? ['40%', '50%'] : ['50%', '55%'],
         data: props.data,
         label: {
           show: props.showLabel,

@@ -12,7 +12,7 @@
  */
 
 import { Database } from "bun:sqlite"
-import type { IngestEventEnvelope } from "../types/events"
+import type { StatsEvent } from "@defs/events"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -44,32 +44,6 @@ export interface EventQueryFilters {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/** Map IngestEventEnvelope → events table column values + JSON contents */
-function envelopeToRow(event: IngestEventEnvelope): {
-  event_id: string
-  event_type: string
-  session_id: string
-  timestamp_ms: number
-  model: string
-  total_tokens: number
-  cost_usd: number
-  event_contents: string
-} {
-  const { event_id, event_type, session_id, timestamp_ms, model, tokens, cost_usd, ...rest } =
-    event
-
-  return {
-    event_id,
-    event_type,
-    session_id,
-    timestamp_ms,
-    model,
-    total_tokens: tokens,
-    cost_usd,
-    event_contents: JSON.stringify(rest),
-  }
-}
 
 /**
  * Build WHERE clause fragments + params from filters.
@@ -130,19 +104,21 @@ export class EventStore {
    *
    * @returns true if inserted, false if duplicate (ignored)
    */
-  insertEvent(event: IngestEventEnvelope): boolean {
-    const row = envelopeToRow(event)
+  insertEvent(event: StatsEvent): boolean {
+    const session_id = "session_id" in event ? event.session_id : ""
+    const model = "model" in event ? event.model : ""
+    const tokens = "tokens" in event && event.tokens
+      ? (typeof event.tokens === "number"
+        ? event.tokens
+        : event.tokens.input + event.tokens.output + event.tokens.reasoning)
+      : 0
+    const cost_usd = "cost_usd" in event ? event.cost_usd : 0
+
+    const { event_id, event_type, timestamp_ms, ...rest } = event
     const result = this.stmtInsert.run(
-      row.event_id,
-      row.event_type,
-      row.session_id,
-      row.timestamp_ms,
-      row.model,
-      row.total_tokens,
-      row.cost_usd,
-      row.event_contents
+      event_id, event_type, session_id, timestamp_ms, model,
+      tokens, cost_usd, JSON.stringify(rest),
     )
-    // Bun: result.changes === 1 means a row was inserted
     return result.changes === 1
   }
 
@@ -151,7 +127,7 @@ export class EventStore {
    *
    * @returns count of events actually inserted (duplicates skipped)
    */
-  insertEvents(events: IngestEventEnvelope[]): number {
+  insertEvents(events: StatsEvent[]): number {
     if (events.length === 0) return 0
 
     let inserted = 0

@@ -1,21 +1,5 @@
 <template>
   <div class="overview-container">
-    <!-- Time Range Selector -->
-    <div class="time-range-bar" data-testid="time-range-bar">
-      <div class="period-tabs">
-        <button
-          v-for="p in periods"
-          :key="p.value"
-          class="period-btn"
-          :class="{ active: selectedPeriod === p.value }"
-          data-testid="period-btn"
-          @click="selectPeriod(p.value)"
-        >
-          {{ p.label }}
-        </button>
-      </div>
-    </div>
-
     <!-- Loading State -->
     <LoadingState v-if="loading" message="加载统计数据中..." test-id="overview-loading" />
 
@@ -49,16 +33,16 @@
         test-id="metric-sessions"
       />
       <MetricCard
-        label="总 Token"
-        :value="formatTokens(overview?.total_tokens ?? 0)"
+        label="总 Token / 成本"
+        :value="`${formatTokens(overview?.total_tokens ?? 0)} / ${formatCost(overview?.total_cost_usd ?? 0)}`"
         :subtitle="`入 ${formatTokens(overview?.input_tokens ?? 0)} · 出 ${formatTokens(overview?.output_tokens ?? 0)}`"
         test-id="metric-tokens"
       />
       <MetricCard
-        label="总成本"
-        :value="formatCost(overview?.total_cost_usd ?? 0)"
-        :subtitle="`工具 ${overview?.tool_call_count ?? 0} 次`"
-        test-id="metric-cost"
+        label="平均 Token / 成本"
+        :value="`${formatTokens(avgTokensPerSession)} / ${formatCost(avgCostPerSession)}`"
+        subtitle="平均会话 Token / 平均会话成本"
+        test-id="metric-avg-cost"
       />
       <MetricCard
         label="工具调用"
@@ -78,6 +62,18 @@
     <div class="trend-section" data-testid="trend-section">
       <div class="section-header">
         <h3 class="section-title">使用趋势</h3>
+        <div class="period-tabs">
+          <button
+            v-for="p in periods"
+            :key="p.value"
+            class="period-btn"
+            :class="{ active: selectedPeriod === p.value }"
+            data-testid="period-btn"
+            @click="selectPeriod(p.value)"
+          >
+            {{ p.label }}
+          </button>
+        </div>
       </div>
       <LineChart
         :x-data="trendDates"
@@ -97,6 +93,7 @@
           :data="modelPieData"
           height="260px"
           :donut="true"
+          legend-position="top"
         />
       </div>
       <div class="chart-card" data-testid="project-ranking">
@@ -283,6 +280,16 @@ const toolSuccessRate = computed(() => {
   return ((1 - overview.value.tool_error_count / total) * 100).toFixed(1)
 })
 
+const avgTokensPerSession = computed(() => {
+  if (!overview.value || overview.value.total_sessions === 0) return 0
+  return Math.round(overview.value.total_tokens / overview.value.total_sessions)
+})
+
+const avgCostPerSession = computed(() => {
+  if (!overview.value || overview.value.total_sessions === 0) return 0
+  return overview.value.total_cost_usd / overview.value.total_sessions
+})
+
 const trendDates = computed(() => trendData.value.map((d) => d.date))
 
 const trendSeries = computed(() => [
@@ -330,12 +337,25 @@ const toolSeries = computed(() => [
   gap: var(--spacing-4);
 }
 
-/* ── Time Range Bar ─────────────────────────────────────────────── */
+/* ── Metrics Row ────────────────────────────────────────────────── */
 
-.time-range-bar {
+.metrics-row {
+  /* Grid handled by .resp-metrics-5 utility */
+  gap: var(--spacing-3);
+}
+
+/* ── Section Header ─────────────────────────────────────────────── */
+
+.section-header {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
   align-items: center;
+}
+
+.section-title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--text);
 }
 
 .period-tabs {
@@ -364,27 +384,6 @@ const toolSeries = computed(() => [
   background-color: var(--primary);
   color: white;
   border-color: var(--primary);
-}
-
-/* ── Metrics Row ────────────────────────────────────────────────── */
-
-.metrics-row {
-  /* Grid handled by .resp-metrics-5 utility */
-  gap: var(--spacing-3);
-}
-
-/* ── Section Header ─────────────────────────────────────────────── */
-
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.section-title {
-  font-size: var(--text-lg);
-  font-weight: 600;
-  color: var(--text);
 }
 
 /* ── Chart Card ─────────────────────────────────────────────────── */

@@ -1,8 +1,9 @@
 /**
  * Event type definitions for the Event-Sourced Stats Engine.
  *
- * 30 event types covering session lifecycle, messages, tools, files,
- * permissions, agents, providers, and system events.
+ * Covers the 9 event types actually used by the stats plugin:
+ * session.created, session.deleted, session.error, session.diff,
+ * message.updated, tool.completed, tool.failed, file.edited, agent.completed
  */
 
 // ============================================================================
@@ -23,9 +24,6 @@ export interface TokenBreakdown {
 /** Tool execution status */
 export type ToolStatus = "started" | "completed" | "failed"
 
-/** Permission response */
-export type PermissionResponse = "allow" | "deny" | "ask"
-
 /** Session status */
 export type SessionStatus = "active" | "deleted"
 
@@ -33,67 +31,28 @@ export type SessionStatus = "active" | "deleted"
 export type AgentRole = "user" | "assistant" | "system"
 
 // ============================================================================
-// Event Type Union (30 types)
+// Event Type Union (9 types actually used)
 // ============================================================================
 
 export type EventType =
-  // Session events (5)
   | "session.created"
-  | "session.updated"
   | "session.deleted"
   | "session.error"
   | "session.diff"
-  // Message events (3)
-  | "message.created"
   | "message.updated"
-  | "message.deleted"
-  // Tool events (5)
-  | "tool.started"
   | "tool.completed"
   | "tool.failed"
-  | "tool.execute.before"
-  | "tool.execute.after"
-  // File events (3)
-  | "file.created"
   | "file.edited"
-  | "file.deleted"
-  // Permission events (3)
-  | "permission.created"
-  | "permission.updated"
-  | "permission.resolved"
-  // Usage events (1)
-  | "usage.updated"
-  // Agent events (3)
-  | "agent.started"
   | "agent.completed"
-  | "agent.failed"
-  // Provider events (3)
-  | "provider.connected"
-  | "provider.disconnected"
-  | "provider.error"
-  // Config events (1)
-  | "config.updated"
-  // Project events (2)
-  | "project.created"
-  | "project.deleted"
-  // System events (1)
-  | "system.started"
 
 // ============================================================================
-// Event Contents Interfaces
+// Event Contents Interfaces (only used ones)
 // ============================================================================
-
-// --- Session Events ---
 
 export interface SessionCreatedContents {
   project_path: string
   title: string
   version?: string
-}
-
-export interface SessionUpdatedContents {
-  title?: string
-  project_path?: string
 }
 
 export interface SessionDeletedContents {
@@ -122,32 +81,12 @@ export interface SessionDiffContents {
   }>
 }
 
-// --- Message Events ---
-
-export interface MessageCreatedContents {
-  message_id: string
-  role: AgentRole
-  content_preview?: string
-}
-
 export interface MessageUpdatedContents {
   message_id: string
   role: AgentRole
   tokens?: TokenBreakdown
   cost_usd?: number
   content_preview?: string
-}
-
-export interface MessageDeletedContents {
-  message_id: string
-}
-
-// --- Tool Events ---
-
-export interface ToolStartedContents {
-  tool_name: string
-  call_id: string
-  title?: string
 }
 
 export interface ToolCompletedContents {
@@ -166,70 +105,10 @@ export interface ToolFailedContents {
   duration_ms?: number
 }
 
-export interface ToolExecuteBeforeContents {
-  tool_name: string
-  call_id: string
-}
-
-export interface ToolExecuteAfterContents {
-  tool_name: string
-  call_id: string
-  status: "completed" | "error"
-  title?: string
-  duration_ms?: number
-  tokens?: TokenBreakdown
-  cost_usd?: number
-}
-
-// --- File Events ---
-
-export interface FileCreatedContents {
-  file_path: string
-}
-
 export interface FileEditedContents {
   file_path: string
   additions: number
   deletions: number
-}
-
-export interface FileDeletedContents {
-  file_path: string
-}
-
-// --- Permission Events ---
-
-export interface PermissionCreatedContents {
-  permission_id: string
-  permission_type: string
-  pattern: string
-}
-
-export interface PermissionUpdatedContents {
-  permission_id: string
-  permission_type: string
-  pattern: string
-}
-
-export interface PermissionResolvedContents {
-  permission_id: string
-  permission_type: string
-  pattern: string
-  response: PermissionResponse
-}
-
-// --- Usage Events ---
-
-export interface UsageUpdatedContents {
-  tokens: TokenBreakdown
-  cost_usd: number
-}
-
-// --- Agent Events ---
-
-export interface AgentStartedContents {
-  agent_name: string
-  task_description?: string
 }
 
 export interface AgentCompletedContents {
@@ -239,125 +118,177 @@ export interface AgentCompletedContents {
   cost_usd?: number
 }
 
-export interface AgentFailedContents {
-  agent_name: string
-  error_message: string
-}
-
-// --- Provider Events ---
-
-export interface ProviderConnectedContents {
-  provider_name: string
-  model?: string
-}
-
-export interface ProviderDisconnectedContents {
-  provider_name: string
-  reason?: string
-}
-
-export interface ProviderErrorContents {
-  provider_name: string
-  error_type: string
-  error_message: string
-}
-
-// --- Config Events ---
-
-export interface ConfigUpdatedContents {
-  config_path: string
-  changes?: string[]
-}
-
-// --- Project Events ---
-
-export interface ProjectCreatedContents {
-  project_path: string
-  name?: string
-}
-
-export interface ProjectDeletedContents {
-  project_path: string
-}
-
-// --- System Events ---
-
-export interface SystemStartedContents {
-  version?: string
-  uptime_ms?: number
-}
-
 // ============================================================================
 // Event Contents Union
 // ============================================================================
 
 export type EventContents =
   | SessionCreatedContents
-  | SessionUpdatedContents
   | SessionDeletedContents
   | SessionErrorContents
   | SessionDiffContents
-  | MessageCreatedContents
   | MessageUpdatedContents
-  | MessageDeletedContents
-  | ToolStartedContents
   | ToolCompletedContents
   | ToolFailedContents
-  | ToolExecuteBeforeContents
-  | ToolExecuteAfterContents
-  | FileCreatedContents
   | FileEditedContents
-  | FileDeletedContents
-  | PermissionCreatedContents
-  | PermissionUpdatedContents
-  | PermissionResolvedContents
-  | UsageUpdatedContents
-  | AgentStartedContents
   | AgentCompletedContents
-  | AgentFailedContents
-  | ProviderConnectedContents
-  | ProviderDisconnectedContents
-  | ProviderErrorContents
-  | ConfigUpdatedContents
-  | ProjectCreatedContents
-  | ProjectDeletedContents
-  | SystemStartedContents
 
 // ============================================================================
-// Ingest Event Envelope
+// Stats Event Types
 // ============================================================================
 
-export interface IngestEventEnvelope {
-  /** UUID v4 — idempotency key for deduplication */
+/** Common fields shared by all stats events */
+export interface BaseStatsEvent {
+  /** Unique event identifier — idempotency key for deduplication */
   event_id: string
-  /** Discriminator for event routing */
-  event_type: EventType
-  /** OpenCode session identifier */
-  session_id: string
-  /** Absolute path to the project directory */
-  project_path: string
   /** Event timestamp in milliseconds since epoch */
   timestamp_ms: number
-  /** Model identifier (e.g. "claude-sonnet-4-20250514") */
-  model: string
-  /** Token count associated with this event */
-  tokens: number
-  /** Cost in USD associated with this event */
-  cost_usd: number
-  /** Tool name — present only for tool events */
-  tool: string | null
-  /** Tool execution status — present only for tool events */
-  status: ToolStatus | null
-  /** Short human-readable summary (redacted, no full payloads) */
-  summary: string | null
-  /** Whether the session is deleted */
-  deleted: boolean
-  /** Redacted metadata — no full tool inputs/outputs allowed */
-  metadata: Record<string, unknown>
 }
 
+/** Session created */
+export interface SessionCreatedEvent extends BaseStatsEvent {
+  event_type: "session.created"
+  /** ← event.properties.info.id */
+  session_id: string
+  /** ← event.properties.info.directory || input.directory */
+  project_path: string
+  /** ← event.properties.info.title ?? "" */
+  title: string
+}
+
+/** Session deleted */
+export interface SessionDeletedEvent extends BaseStatsEvent {
+  event_type: "session.deleted"
+  /** ← event.properties.info.id */
+  session_id: string
+  /** ← event.properties.info.directory || input.directory */
+  project_path: string
+}
+
+/** Session error */
+export interface SessionErrorEvent extends BaseStatsEvent {
+  event_type: "session.error"
+  /** ← event.properties.sessionID */
+  session_id: string
+  /** ← input.directory */
+  project_path: string
+  /** ← event.properties.error.name */
+  error_type: string
+  /** ← event.properties.error.data.message */
+  error_message: string
+}
+
+/** Session diff (git diff stats) */
+export interface SessionDiffEvent extends BaseStatsEvent {
+  event_type: "session.diff"
+  /** ← event.properties.sessionID */
+  session_id: string
+  /** ← input.directory */
+  project_path: string
+  /** ← event.properties.diff.reduce(sum => sum.additions) */
+  lines_added: number
+  /** ← event.properties.diff.reduce(sum => sum.deletions) */
+  lines_deleted: number
+  /** ← event.properties.diff.length */
+  files_changed: number
+}
+
+/** Message updated (tokens/cost finalized) */
+export interface MessageUpdatedEvent extends BaseStatsEvent {
+  event_type: "message.updated"
+  /** ← event.properties.info.sessionID */
+  session_id: string
+  /** ← input.directory */
+  project_path: string
+  /** ← `${info.providerID}/${info.modelID}` */
+  model: string
+  /** ← event.properties.info.role */
+  role: string
+  /** ← event.properties.info.tokens */
+  tokens: TokenBreakdown
+  /** ← event.properties.info.cost ?? 0 */
+  cost_usd: number
+}
+
+/** Tool execution completed */
+export interface ToolCompletedEvent extends BaseStatsEvent {
+  event_type: "tool.completed"
+  /** ← input.sessionID */
+  session_id: string
+  /** ← ctx.directory */
+  project_path: string
+  /** ← input.tool */
+  tool_name: string
+  /** ← input.callID */
+  call_id: string
+  /** ← output.metadata.duration_ms ?? 0 */
+  duration_ms: number
+  /** ← output.title */
+  title: string
+  /** ← output.metadata.tokens */
+  tokens?: TokenBreakdown
+  /** ← output.metadata.cost_usd ?? 0 */
+  cost_usd: number
+}
+
+/** Tool execution failed */
+export interface ToolFailedEvent extends BaseStatsEvent {
+  event_type: "tool.failed"
+  /** ← input.sessionID */
+  session_id: string
+  /** ← ctx.directory */
+  project_path: string
+  /** ← input.tool */
+  tool_name: string
+  /** ← input.callID */
+  call_id: string
+  /** ← output.metadata.duration_ms ?? 0 */
+  duration_ms: number
+  /** ← output.metadata.error_message */
+  error_message: string
+}
+
+/** File edited */
+export interface FileEditedEvent extends BaseStatsEvent {
+  event_type: "file.edited"
+  /** ← input.directory */
+  project_path: string
+  /** ← event.properties.file */
+  file_path: string
+}
+
+/** Agent completed */
+export interface AgentCompletedEvent extends BaseStatsEvent {
+  event_type: "agent.completed"
+  /** ← event.properties.sessionID */
+  session_id: string
+  /** ← input.directory */
+  project_path: string
+  /** ← event.properties.agent.name */
+  agent_name: string
+  /** ← event.properties.tokens */
+  tokens: TokenBreakdown
+  /** ← event.properties.cost_usd ?? 0 */
+  cost_usd: number
+}
+
+/** Union of all stats event types */
+export type StatsEvent =
+  | SessionCreatedEvent
+  | SessionDeletedEvent
+  | SessionErrorEvent
+  | SessionDiffEvent
+  | MessageUpdatedEvent
+  | ToolCompletedEvent
+  | ToolFailedEvent
+  | FileEditedEvent
+  | AgentCompletedEvent
+
+/** Extracted union of all event_type literal values */
+export type StatsEventType = StatsEvent["event_type"]
+
 // ============================================================================
-// Type Guards
+// Type Guards (only for used types)
 // ============================================================================
 
 /** Type guard for SessionCreatedContents */
@@ -371,15 +302,6 @@ export function isSessionCreatedContents(
     "title" in data &&
     typeof (data as SessionCreatedContents).project_path === "string" &&
     typeof (data as SessionCreatedContents).title === "string"
-  )
-}
-
-/** Type guard for SessionUpdatedContents */
-export function isSessionUpdatedContents(
-  data: unknown
-): data is SessionUpdatedContents {
-  return (
-    typeof data === "object" && data !== null && ("title" in data || "project_path" in data)
   )
 }
 
@@ -420,20 +342,6 @@ export function isSessionDiffContents(
   )
 }
 
-/** Type guard for MessageCreatedContents */
-export function isMessageCreatedContents(
-  data: unknown
-): data is MessageCreatedContents {
-  return (
-    typeof data === "object" &&
-    data !== null &&
-    "message_id" in data &&
-    "role" in data &&
-    typeof (data as MessageCreatedContents).message_id === "string" &&
-    typeof (data as MessageCreatedContents).role === "string"
-  )
-}
-
 /** Type guard for MessageUpdatedContents */
 export function isMessageUpdatedContents(
   data: unknown
@@ -445,32 +353,6 @@ export function isMessageUpdatedContents(
     "role" in data &&
     typeof (data as MessageUpdatedContents).message_id === "string" &&
     typeof (data as MessageUpdatedContents).role === "string"
-  )
-}
-
-/** Type guard for MessageDeletedContents */
-export function isMessageDeletedContents(
-  data: unknown
-): data is MessageDeletedContents {
-  return (
-    typeof data === "object" &&
-    data !== null &&
-    "message_id" in data &&
-    typeof (data as MessageDeletedContents).message_id === "string"
-  )
-}
-
-/** Type guard for ToolStartedContents */
-export function isToolStartedContents(
-  data: unknown
-): data is ToolStartedContents {
-  return (
-    typeof data === "object" &&
-    data !== null &&
-    "tool_name" in data &&
-    "call_id" in data &&
-    typeof (data as ToolStartedContents).tool_name === "string" &&
-    typeof (data as ToolStartedContents).call_id === "string"
   )
 }
 
@@ -504,48 +386,6 @@ export function isToolFailedContents(
   )
 }
 
-/** Type guard for ToolExecuteBeforeContents */
-export function isToolExecuteBeforeContents(
-  data: unknown
-): data is ToolExecuteBeforeContents {
-  return (
-    typeof data === "object" &&
-    data !== null &&
-    "tool_name" in data &&
-    "call_id" in data &&
-    typeof (data as ToolExecuteBeforeContents).tool_name === "string" &&
-    typeof (data as ToolExecuteBeforeContents).call_id === "string"
-  )
-}
-
-/** Type guard for ToolExecuteAfterContents */
-export function isToolExecuteAfterContents(
-  data: unknown
-): data is ToolExecuteAfterContents {
-  return (
-    typeof data === "object" &&
-    data !== null &&
-    "tool_name" in data &&
-    "call_id" in data &&
-    "status" in data &&
-    typeof (data as ToolExecuteAfterContents).tool_name === "string" &&
-    typeof (data as ToolExecuteAfterContents).call_id === "string" &&
-    typeof (data as ToolExecuteAfterContents).status === "string"
-  )
-}
-
-/** Type guard for FileCreatedContents */
-export function isFileCreatedContents(
-  data: unknown
-): data is FileCreatedContents {
-  return (
-    typeof data === "object" &&
-    data !== null &&
-    "file_path" in data &&
-    typeof (data as FileCreatedContents).file_path === "string"
-  )
-}
-
 /** Type guard for FileEditedContents */
 export function isFileEditedContents(
   data: unknown
@@ -562,93 +402,6 @@ export function isFileEditedContents(
   )
 }
 
-/** Type guard for FileDeletedContents */
-export function isFileDeletedContents(
-  data: unknown
-): data is FileDeletedContents {
-  return (
-    typeof data === "object" &&
-    data !== null &&
-    "file_path" in data &&
-    typeof (data as FileDeletedContents).file_path === "string"
-  )
-}
-
-/** Type guard for PermissionCreatedContents */
-export function isPermissionCreatedContents(
-  data: unknown
-): data is PermissionCreatedContents {
-  return (
-    typeof data === "object" &&
-    data !== null &&
-    "permission_id" in data &&
-    "permission_type" in data &&
-    "pattern" in data &&
-    typeof (data as PermissionCreatedContents).permission_id === "string" &&
-    typeof (data as PermissionCreatedContents).permission_type === "string" &&
-    typeof (data as PermissionCreatedContents).pattern === "string"
-  )
-}
-
-/** Type guard for PermissionUpdatedContents */
-export function isPermissionUpdatedContents(
-  data: unknown
-): data is PermissionUpdatedContents {
-  return (
-    typeof data === "object" &&
-    data !== null &&
-    "permission_id" in data &&
-    "permission_type" in data &&
-    "pattern" in data &&
-    typeof (data as PermissionUpdatedContents).permission_id === "string" &&
-    typeof (data as PermissionUpdatedContents).permission_type === "string" &&
-    typeof (data as PermissionUpdatedContents).pattern === "string"
-  )
-}
-
-/** Type guard for PermissionResolvedContents */
-export function isPermissionResolvedContents(
-  data: unknown
-): data is PermissionResolvedContents {
-  return (
-    typeof data === "object" &&
-    data !== null &&
-    "permission_id" in data &&
-    "permission_type" in data &&
-    "pattern" in data &&
-    "response" in data &&
-    typeof (data as PermissionResolvedContents).permission_id === "string" &&
-    typeof (data as PermissionResolvedContents).permission_type === "string" &&
-    typeof (data as PermissionResolvedContents).pattern === "string" &&
-    typeof (data as PermissionResolvedContents).response === "string"
-  )
-}
-
-/** Type guard for UsageUpdatedContents */
-export function isUsageUpdatedContents(
-  data: unknown
-): data is UsageUpdatedContents {
-  return (
-    typeof data === "object" &&
-    data !== null &&
-    "tokens" in data &&
-    "cost_usd" in data &&
-    typeof (data as UsageUpdatedContents).cost_usd === "number"
-  )
-}
-
-/** Type guard for AgentStartedContents */
-export function isAgentStartedContents(
-  data: unknown
-): data is AgentStartedContents {
-  return (
-    typeof data === "object" &&
-    data !== null &&
-    "agent_name" in data &&
-    typeof (data as AgentStartedContents).agent_name === "string"
-  )
-}
-
 /** Type guard for AgentCompletedContents */
 export function isAgentCompletedContents(
   data: unknown
@@ -659,103 +412,6 @@ export function isAgentCompletedContents(
     "agent_name" in data &&
     typeof (data as AgentCompletedContents).agent_name === "string"
   )
-}
-
-/** Type guard for AgentFailedContents */
-export function isAgentFailedContents(
-  data: unknown
-): data is AgentFailedContents {
-  return (
-    typeof data === "object" &&
-    data !== null &&
-    "agent_name" in data &&
-    "error_message" in data &&
-    typeof (data as AgentFailedContents).agent_name === "string" &&
-    typeof (data as AgentFailedContents).error_message === "string"
-  )
-}
-
-/** Type guard for ProviderConnectedContents */
-export function isProviderConnectedContents(
-  data: unknown
-): data is ProviderConnectedContents {
-  return (
-    typeof data === "object" &&
-    data !== null &&
-    "provider_name" in data &&
-    typeof (data as ProviderConnectedContents).provider_name === "string"
-  )
-}
-
-/** Type guard for ProviderDisconnectedContents */
-export function isProviderDisconnectedContents(
-  data: unknown
-): data is ProviderDisconnectedContents {
-  return (
-    typeof data === "object" &&
-    data !== null &&
-    "provider_name" in data &&
-    typeof (data as ProviderDisconnectedContents).provider_name === "string"
-  )
-}
-
-/** Type guard for ProviderErrorContents */
-export function isProviderErrorContents(
-  data: unknown
-): data is ProviderErrorContents {
-  return (
-    typeof data === "object" &&
-    data !== null &&
-    "provider_name" in data &&
-    "error_type" in data &&
-    "error_message" in data &&
-    typeof (data as ProviderErrorContents).provider_name === "string" &&
-    typeof (data as ProviderErrorContents).error_type === "string" &&
-    typeof (data as ProviderErrorContents).error_message === "string"
-  )
-}
-
-/** Type guard for ConfigUpdatedContents */
-export function isConfigUpdatedContents(
-  data: unknown
-): data is ConfigUpdatedContents {
-  return (
-    typeof data === "object" &&
-    data !== null &&
-    "config_path" in data &&
-    typeof (data as ConfigUpdatedContents).config_path === "string"
-  )
-}
-
-/** Type guard for ProjectCreatedContents */
-export function isProjectCreatedContents(
-  data: unknown
-): data is ProjectCreatedContents {
-  return (
-    typeof data === "object" &&
-    data !== null &&
-    "project_path" in data &&
-    typeof (data as ProjectCreatedContents).project_path === "string"
-  )
-}
-
-/** Type guard for ProjectDeletedContents */
-export function isProjectDeletedContents(
-  data: unknown
-): data is ProjectDeletedContents {
-  return (
-    typeof data === "object" &&
-    data !== null &&
-    "project_path" in data &&
-    typeof (data as ProjectDeletedContents).project_path === "string"
-  )
-}
-
-/** Type guard for SystemStartedContents */
-export function isSystemStartedContents(
-  data: unknown
-): data is SystemStartedContents {
-  return typeof data === "object" && data !== null
 }
 
 // ============================================================================

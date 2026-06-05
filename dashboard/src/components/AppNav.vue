@@ -24,11 +24,29 @@
         {{ link.label }}
       </router-link>
     </div>
+    <div class="nav-status">
+      <div class="realtime-status" :class="realtimeClass" :data-testid="`realtime-${realtimeMode}`">
+        <span class="status-dot" :class="dotClass"></span>
+        <span class="status-label">{{ statusLabel }}</span>
+      </div>
+      <span class="audit-badge" title="所有工具调用均被完整记录">审计完整</span>
+      <span class="privacy-badge" title="数据仅存储在本地，不会上传到云端">本地隐私</span>
+    </div>
   </nav>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
+import type { RealtimeMode } from '../stores/stats'
+
+const props = defineProps<{
+  realtimeMode: RealtimeMode
+  lastUpdatedAt: Date | null
+}>()
+
+defineEmits<{
+  refresh: []
+}>()
 
 const menuOpen = ref(false)
 
@@ -40,6 +58,22 @@ const links = [
   { to: '/tools', label: '工具统计', testId: 'tools' },
   { to: '/sessions', label: '会话', testId: 'sessions' },
 ]
+
+const realtimeClass = computed(() => `realtime-${props.realtimeMode}`)
+const dotClass = computed(() => {
+  switch (props.realtimeMode) {
+    case 'sse': return 'dot-live'
+    case 'polling': return 'dot-polling'
+    case 'disconnected': return 'dot-offline'
+  }
+})
+const statusLabel = computed(() => {
+  switch (props.realtimeMode) {
+    case 'sse': return 'Live'
+    case 'polling': return 'Polling'
+    case 'disconnected': return 'Offline'
+  }
+})
 </script>
 
 <style scoped>
@@ -111,6 +145,85 @@ const links = [
   background-color: rgba(59, 130, 246, 0.1);
 }
 
+.nav-status {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  margin-left: auto;
+}
+
+.realtime-status {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  padding: 2px 8px;
+  border-radius: var(--radius-md);
+  background-color: rgba(0, 0, 0, 0.03);
+  border: 1px solid var(--border);
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.dot-live {
+  background-color: var(--success);
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.5);
+  animation: pulse-live 2s ease-in-out infinite;
+}
+
+.dot-polling {
+  background-color: var(--warning);
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.5);
+  animation: pulse-polling 3s ease-in-out infinite;
+}
+
+.dot-offline {
+  background-color: var(--danger);
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.5);
+}
+
+.status-label {
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.realtime-live .status-label {
+  color: var(--success);
+}
+
+.realtime-polling .status-label {
+  color: var(--warning);
+}
+
+.realtime-disconnected .status-label {
+  color: var(--danger);
+}
+
+.audit-badge,
+.privacy-badge {
+  font-size: var(--text-xs);
+  padding: 2px 8px;
+  border-radius: var(--radius-lg);
+  font-weight: 600;
+  color: white;
+  cursor: help;
+}
+
+.audit-badge {
+  background-color: var(--success);
+}
+
+.privacy-badge {
+  background-color: var(--primary);
+}
+
 /* ── Mobile: hamburger menu ───────────────────────────────────────── */
 
 @media (max-width: 767px) {
@@ -138,5 +251,19 @@ const links = [
   .nav-links.open {
     display: flex;
   }
+
+  .nav-status {
+    display: none;
+  }
+}
+
+@keyframes pulse-live {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes pulse-polling {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }
 </style>

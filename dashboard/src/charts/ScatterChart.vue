@@ -55,7 +55,9 @@ const props = withDefaults(
 
 // ── Chart Option ───────────────────────────────────────────────────
 
-const chartOption = computed<EChartsOption>(() => {
+const chartOption = computed<EChartsOption | null>(() => {
+  if (props.data.length === 0) return null
+
   const scatterData = props.data.map((d) => ({
     name: d.name,
     value: [d.x, d.y],

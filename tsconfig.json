@@ -26,6 +26,19 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
+
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"],
+      "@api/*": ["src/api/*"],
+      "@db/*": ["src/db/*"],
+      "@events/*": ["src/events/*"],
+      "@projection/*": ["src/projection/*"],
+      "@snapshot/*": ["src/snapshot/*"],
+      "@sse/*": ["src/sse/*"],
+      "@store/*": ["src/store/*"],
+      "@defs/*": ["src/types/*"]
+    }
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist", "dashboard", "tests"],

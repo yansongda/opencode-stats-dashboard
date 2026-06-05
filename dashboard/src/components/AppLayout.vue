@@ -1,7 +1,6 @@
 <template>
   <div class="app-layout">
-    <AppNav />
-    <AppStatusBar
+    <AppNav
       :realtime-mode="realtimeMode"
       :last-updated-at="lastUpdatedAt"
       @refresh="$emit('refresh')"
@@ -14,7 +13,6 @@
 
 <script setup lang="ts">
 import AppNav from './AppNav.vue'
-import AppStatusBar from './AppStatusBar.vue'
 import type { RealtimeMode } from '../stores/stats'
 
 defineProps<{

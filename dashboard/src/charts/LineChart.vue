@@ -56,7 +56,9 @@ const props = withDefaults(
 
 // ── Chart Option ───────────────────────────────────────────────────
 
-const chartOption = computed<EChartsOption>(() => {
+const chartOption = computed<EChartsOption | null>(() => {
+  if (props.xData.length === 0 || props.series.length === 0) return null
+
   return {
     tooltip: {
       trigger: 'axis',

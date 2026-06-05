@@ -5,7 +5,7 @@
  *  - session.created:  create session record
  *  - session.deleted:  update status to deleted
  *  - message.updated:  update token/message stats, model_usage
- *  - tool.execute.before / tool.execute.after: update tool stats
+ *  - tool.completed / tool.failed: update tool stats
  *  - file.edited:      update file stats
  *  - session.error:    increment error_count
  *  - agent.completed:  update agent_usage
@@ -15,9 +15,22 @@
  * Type safety: uses type guards for JSON field parsing (no `as` assertions).
  */
 
-import type { EventType, IngestEventEnvelope, TokenBreakdown } from "../types/events"
-import type { ProjectionHandler, TransactionContext } from "./handlers/types"
-import type { ModelUsage, ModelUsageEntry, AgentUsage, AgentUsageEntry } from "../types/projections"
+import type {
+  StatsEvent,
+  StatsEventType,
+  SessionCreatedEvent,
+  SessionDeletedEvent,
+  SessionErrorEvent,
+  SessionDiffEvent,
+  MessageUpdatedEvent,
+  ToolCompletedEvent,
+  ToolFailedEvent,
+  FileEditedEvent,
+  AgentCompletedEvent,
+  TokenBreakdown,
+} from "@defs/events"
+import type { ProjectionHandler, TransactionContext } from "@defs/projections"
+import type { ModelUsage, ModelUsageEntry, AgentUsage, AgentUsageEntry } from "@defs/projections"
 
 // ---------------------------------------------------------------------------
 // Type Guards (JSON field validation)
@@ -109,6 +122,10 @@ function zeroTokenBreakdown(): TokenBreakdown {
   return { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } }
 }
 
+function totalTokens(tokens: TokenBreakdown): number {
+  return tokens.input + tokens.output + tokens.reasoning + tokens.cache.read + tokens.cache.write
+}
+
 function updateModelUsage(
   current: ModelUsage,
   model: string,
@@ -194,38 +211,43 @@ function calculatePrimaryAgent(usage: AgentUsage): string | null {
 }
 
 // ---------------------------------------------------------------------------
-// Metadata Extraction Helpers
+// Session Existence Guard
 // ---------------------------------------------------------------------------
 
-/** Safely extract a string from metadata */
-function metaString(meta: Record<string, unknown>, key: string): string | null {
-  const val = meta[key]
-  return typeof val === "string" ? val : null
+interface SessionIdentifiers {
+  session_id: string
+  project_path: string
+  timestamp_ms: number
 }
 
-/** Safely extract a number from metadata */
-function metaNumber(meta: Record<string, unknown>, key: string): number | null {
-  const val = meta[key]
-  return typeof val === "number" ? val : null
+function ensureSessionExists(event: SessionIdentifiers, txn: TransactionContext): void {
+  const existing = txn.get("SELECT session_id FROM projection_sessions WHERE session_id = ?", [event.session_id])
+  if (!existing) {
+    txn.run(
+      `INSERT OR IGNORE INTO projection_sessions
+        (session_id, project_path, title, status, first_event_at, last_event_at,
+         model_usage, agent_usage, event_count)
+       VALUES (?, ?, '', 'active', ?, ?, '{}', '{}', 0)`,
+      [event.session_id, event.project_path, event.timestamp_ms, event.timestamp_ms]
+    )
+  }
 }
 
 // ---------------------------------------------------------------------------
 // Event Handlers
 // ---------------------------------------------------------------------------
 
-function handleSessionCreated(event: IngestEventEnvelope, txn: TransactionContext): void {
-  const title = metaString(event.metadata, "title") ?? ""
-
+function handleSessionCreated(event: SessionCreatedEvent, txn: TransactionContext): void {
   txn.run(
     `INSERT OR IGNORE INTO projection_sessions
       (session_id, project_path, title, status, first_event_at, last_event_at,
        model_usage, agent_usage, event_count)
      VALUES (?, ?, ?, 'active', ?, ?, '{}', '{}', 1)`,
-    [event.session_id, event.project_path, title, event.timestamp_ms, event.timestamp_ms]
+    [event.session_id, event.project_path, event.title, event.timestamp_ms, event.timestamp_ms]
   )
 }
 
-function handleSessionDeleted(event: IngestEventEnvelope, txn: TransactionContext): void {
+function handleSessionDeleted(event: SessionDeletedEvent, txn: TransactionContext): void {
   txn.run(
     `UPDATE projection_sessions
      SET status = 'deleted', deleted_at = ?, last_event_at = ?, duration_ms = ? - first_event_at, event_count = event_count + 1
@@ -234,7 +256,7 @@ function handleSessionDeleted(event: IngestEventEnvelope, txn: TransactionContex
   )
 }
 
-function handleSessionError(event: IngestEventEnvelope, txn: TransactionContext): void {
+function handleSessionError(event: SessionErrorEvent, txn: TransactionContext): void {
   txn.run(
     `UPDATE projection_sessions
      SET error_count = error_count + 1, last_event_at = ?, duration_ms = ? - first_event_at, event_count = event_count + 1
@@ -243,38 +265,28 @@ function handleSessionError(event: IngestEventEnvelope, txn: TransactionContext)
   )
 }
 
-function handleSessionDiff(event: IngestEventEnvelope, txn: TransactionContext): void {
-  const linesAdded = metaNumber(event.metadata, "lines_added") ?? 0
-  const linesDeleted = metaNumber(event.metadata, "lines_deleted") ?? 0
-
+function handleSessionDiff(event: SessionDiffEvent, txn: TransactionContext): void {
   txn.run(
     `UPDATE projection_sessions
      SET lines_added = lines_added + ?, lines_deleted = lines_deleted + ?,
          last_event_at = ?, duration_ms = ? - first_event_at, event_count = event_count + 1
      WHERE session_id = ?`,
-    [linesAdded, linesDeleted, event.timestamp_ms, event.timestamp_ms, event.session_id]
+    [event.lines_added, event.lines_deleted, event.timestamp_ms, event.timestamp_ms, event.session_id]
   )
 }
 
-function handleMessageUpdated(event: IngestEventEnvelope, txn: TransactionContext): void {
-  const role = metaString(event.metadata, "role")
-  if (!role) return
+function handleMessageUpdated(event: MessageUpdatedEvent, txn: TransactionContext): void {
+  ensureSessionExists(event, txn)
 
-  // Read current session for JSON field updates
   const row = txn.get<{ model_usage: string | null; agent_usage: string | null }>(
     "SELECT model_usage, agent_usage FROM projection_sessions WHERE session_id = ?",
     [event.session_id]
   )
-  if (!row) return // session doesn't exist yet — skip
+  if (!row) return
 
-  // Extract token breakdown from metadata
-  const rawTokens = event.metadata['tokens']
-  const tokens: TokenBreakdown = isTokenBreakdown(rawTokens)
-    ? rawTokens
-    : zeroTokenBreakdown()
+  const tokens = event.tokens
 
-  // Update message count
-  if (role === "user") {
+  if (event.role === "user") {
     txn.run(
       `UPDATE projection_sessions
        SET user_message_count = user_message_count + 1,
@@ -282,8 +294,7 @@ function handleMessageUpdated(event: IngestEventEnvelope, txn: TransactionContex
        WHERE session_id = ?`,
       [event.timestamp_ms, event.timestamp_ms, event.session_id]
     )
-  } else if (role === "assistant") {
-    // Update model_usage
+  } else if (event.role === "assistant") {
     const modelUsage = parseModelUsage(row.model_usage)
     const updatedModelUsage = updateModelUsage(modelUsage, event.model, tokens, event.cost_usd)
     const primaryModel = calculatePrimaryModel(updatedModelUsage)
@@ -303,7 +314,7 @@ function handleMessageUpdated(event: IngestEventEnvelope, txn: TransactionContex
            last_event_at = ?, duration_ms = ? - first_event_at, event_count = event_count + 1
        WHERE session_id = ?`,
       [
-        event.tokens,
+        totalTokens(tokens),
         tokens.input,
         tokens.output,
         tokens.reasoning,
@@ -320,69 +331,43 @@ function handleMessageUpdated(event: IngestEventEnvelope, txn: TransactionContex
   }
 }
 
-function handleToolExecuteBefore(event: IngestEventEnvelope, txn: TransactionContext): void {
-  txn.run(
-    `UPDATE projection_sessions
-     SET tool_call_count = tool_call_count + 1, last_event_at = ?, duration_ms = ? - first_event_at, event_count = event_count + 1
-     WHERE session_id = ?`,
-    [event.timestamp_ms, event.timestamp_ms, event.session_id]
-  )
-}
-
-function handleToolExecuteAfter(event: IngestEventEnvelope, txn: TransactionContext): void {
-  const status = metaString(event.metadata, "status")
-  const isError = status === "error" || event.status === "failed"
+function handleToolExecuteAfter(event: ToolCompletedEvent | ToolFailedEvent, txn: TransactionContext): void {
+  ensureSessionExists(event, txn)
+  const isError = event.event_type === "tool.failed"
 
   if (isError) {
     txn.run(
       `UPDATE projection_sessions
-       SET tool_error_count = tool_error_count + 1, last_event_at = ?, duration_ms = ? - first_event_at, event_count = event_count + 1
+       SET tool_call_count = tool_call_count + 1, tool_error_count = tool_error_count + 1, last_event_at = ?, duration_ms = ? - first_event_at, event_count = event_count + 1
        WHERE session_id = ?`,
       [event.timestamp_ms, event.timestamp_ms, event.session_id]
     )
   } else {
     txn.run(
       `UPDATE projection_sessions
-       SET last_event_at = ?, duration_ms = ? - first_event_at, event_count = event_count + 1
+       SET tool_call_count = tool_call_count + 1, last_event_at = ?, duration_ms = ? - first_event_at, event_count = event_count + 1
        WHERE session_id = ?`,
       [event.timestamp_ms, event.timestamp_ms, event.session_id]
     )
   }
 }
 
-function handleFileEdited(event: IngestEventEnvelope, txn: TransactionContext): void {
-  const additions = metaNumber(event.metadata, "additions") ?? 0
-  const deletions = metaNumber(event.metadata, "deletions") ?? 0
-
-  txn.run(
-    `UPDATE projection_sessions
-     SET files_edited = files_edited + 1,
-         lines_added = lines_added + ?,
-         lines_deleted = lines_deleted + ?,
-         last_event_at = ?, duration_ms = ? - first_event_at, event_count = event_count + 1
-     WHERE session_id = ?`,
-    [additions, deletions, event.timestamp_ms, event.timestamp_ms, event.session_id]
-  )
+function handleFileEdited(_event: FileEditedEvent, _txn: TransactionContext): void {
+  // FileEditedEvent has no session_id — cannot update a session row.
+  // The SDK file.edited event only provides project_path and file_path.
 }
 
-function handleAgentCompleted(event: IngestEventEnvelope, txn: TransactionContext): void {
-  const agentName = metaString(event.metadata, "agent_name")
-  if (!agentName) return
-
-  // Read current agent_usage
+function handleAgentCompleted(event: AgentCompletedEvent, txn: TransactionContext): void {
   const row = txn.get<{ agent_usage: string | null }>(
     "SELECT agent_usage FROM projection_sessions WHERE session_id = ?",
     [event.session_id]
   )
   if (!row) return
 
-  const rawTokens = event.metadata['tokens']
-  const tokens: TokenBreakdown = isTokenBreakdown(rawTokens)
-    ? rawTokens
-    : zeroTokenBreakdown()
+  const tokens = event.tokens
 
   const agentUsage = parseAgentUsage(row.agent_usage)
-  const updatedAgentUsage = updateAgentUsage(agentUsage, agentName, tokens, event.cost_usd)
+  const updatedAgentUsage = updateAgentUsage(agentUsage, event.agent_name, tokens, event.cost_usd)
   const primaryAgent = calculatePrimaryAgent(updatedAgentUsage)
 
   txn.run(
@@ -400,7 +385,7 @@ function handleAgentCompleted(event: IngestEventEnvelope, txn: TransactionContex
     [
       JSON.stringify(updatedAgentUsage),
       primaryAgent,
-      event.tokens,
+      totalTokens(tokens),
       tokens.input,
       tokens.output,
       tokens.reasoning,
@@ -418,23 +403,16 @@ function handleAgentCompleted(event: IngestEventEnvelope, txn: TransactionContex
 // Handler Factory
 // ---------------------------------------------------------------------------
 
-const HANDLED_EVENTS: EventType[] = [
+const HANDLED_EVENTS: StatsEventType[] = [
   "session.created",
-  "session.updated",
   "session.deleted",
   "session.error",
   "session.diff",
-  "message.created",
   "message.updated",
-  "message.deleted",
-  "tool.execute.before",
-  "tool.execute.after",
+  "tool.completed",
+  "tool.failed",
   "file.edited",
-  "file.created",
-  "file.deleted",
-  "agent.started",
   "agent.completed",
-  "agent.failed",
 ]
 
 /**
@@ -446,7 +424,7 @@ export function createSessionProjectionHandler(): ProjectionHandler {
   return {
     handles: HANDLED_EVENTS,
 
-    handle(event: IngestEventEnvelope, txn: TransactionContext): void {
+    handle(event: StatsEvent, txn: TransactionContext): void {
       switch (event.event_type) {
         case "session.created":
           handleSessionCreated(event, txn)
@@ -468,11 +446,8 @@ export function createSessionProjectionHandler(): ProjectionHandler {
           handleMessageUpdated(event, txn)
           break
 
-        case "tool.execute.before":
-          handleToolExecuteBefore(event, txn)
-          break
-
-        case "tool.execute.after":
+        case "tool.completed":
+        case "tool.failed":
           handleToolExecuteAfter(event, txn)
           break
 
@@ -484,9 +459,6 @@ export function createSessionProjectionHandler(): ProjectionHandler {
           handleAgentCompleted(event, txn)
           break
 
-        // Events we handle but don't need specific logic for yet:
-        // session.updated, message.created, message.deleted,
-        // file.created, file.deleted, agent.started, agent.failed
         default:
           break
       }

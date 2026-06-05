@@ -56,7 +56,9 @@ const props = withDefaults(
 
 // ── Chart Option ───────────────────────────────────────────────────
 
-const chartOption = computed<EChartsOption>(() => {
+const chartOption = computed<EChartsOption | null>(() => {
+  if (props.xData.length === 0 || props.series.length === 0) return null
+
   const categoryAxis = {
     type: 'category' as const,
     data: props.xData,
