@@ -9,9 +9,9 @@
  * Does NOT implement specific projection logic — that's the handlers' job.
  */
 
-import type { Database } from "bun:sqlite"
-import type { StatsEvent, StatsEventType } from "@defs/events"
-import type { ProjectionHandler, TransactionContext } from "@defs/projections"
+import type { Database } from "bun:sqlite";
+import type { StatsEvent, StatsEventType } from "@defs/events";
+import type { ProjectionHandler, TransactionContext } from "@defs/projections";
 
 // ---------------------------------------------------------------------------
 // Transaction Context Implementation
@@ -25,17 +25,23 @@ import type { ProjectionHandler, TransactionContext } from "@defs/projections"
 function createTransactionContext(db: Database): TransactionContext {
   return {
     run(sql: string, params?: unknown[]): void {
-      db.run(sql, params as any)
+      // biome-ignore lint/suspicious/noExplicitAny: bun:sqlite API requires specific binding type
+      db.run(sql, params as any);
     },
 
     query<T = Record<string, unknown>>(sql: string, params?: unknown[]): T[] {
-      return db.query(sql).all(...((params ?? []) as any)) as T[]
+      // biome-ignore lint/suspicious/noExplicitAny: bun:sqlite API requires specific binding type
+      return db.query(sql).all(...((params ?? []) as any)) as T[];
     },
 
-    get<T = Record<string, unknown>>(sql: string, params?: unknown[]): T | null {
-      return (db.query(sql).get(...((params ?? []) as any)) as T) ?? null
+    get<T = Record<string, unknown>>(
+      sql: string,
+      params?: unknown[],
+    ): T | null {
+      // biome-ignore lint/suspicious/noExplicitAny: bun:sqlite API requires specific binding type
+      return (db.query(sql).get(...((params ?? []) as any)) as T) ?? null;
     },
-  }
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -46,17 +52,17 @@ function createTransactionContext(db: Database): TransactionContext {
  * Entry for a registered handler.
  */
 interface HandlerEntry {
-  name: string
-  handler: ProjectionHandler
+  name: string;
+  handler: ProjectionHandler;
 }
 
 export class ProjectionEngine {
-  private readonly db: Database
-  private readonly handlers = new Map<string, HandlerEntry>()
-  private readonly processedEvents = new Set<string>()
+  private readonly db: Database;
+  private readonly handlers = new Map<string, HandlerEntry>();
+  private readonly processedEvents = new Set<string>();
 
   constructor(db: Database) {
-    this.db = db
+    this.db = db;
   }
 
   // =========================================================================
@@ -70,23 +76,23 @@ export class ProjectionEngine {
    */
   registerHandler(name: string, handler: ProjectionHandler): void {
     if (this.handlers.has(name)) {
-      throw new Error(`Handler "${name}" is already registered`)
+      throw new Error(`Handler "${name}" is already registered`);
     }
-    this.handlers.set(name, { name, handler })
+    this.handlers.set(name, { name, handler });
   }
 
   /**
    * Check if a handler with the given name is registered.
    */
   hasHandler(name: string): boolean {
-    return this.handlers.has(name)
+    return this.handlers.has(name);
   }
 
   /**
    * Return all registered handler names.
    */
   getHandlerNames(): string[] {
-    return [...this.handlers.keys()]
+    return [...this.handlers.keys()];
   }
 
   // =========================================================================
@@ -108,29 +114,29 @@ export class ProjectionEngine {
   processEvent(event: StatsEvent): void {
     // Idempotency check
     if (this.processedEvents.has(event.event_id)) {
-      return
+      return;
     }
 
     // Find matching handlers
-    const matching = this.findMatchingHandlers(event.event_type)
+    const matching = this.findMatchingHandlers(event.event_type);
     if (matching.length === 0) {
-      return
+      return;
     }
 
     const txn = this.db.transaction(() => {
-      const ctx = createTransactionContext(this.db)
+      const ctx = createTransactionContext(this.db);
       for (const entry of matching) {
-        entry.handler.handle(event, ctx)
+        entry.handler.handle(event, ctx);
       }
-    })
+    });
 
     try {
-      txn()
-      this.processedEvents.add(event.event_id)
+      txn();
+      this.processedEvents.add(event.event_id);
     } catch {}
 
     // Mark as processed only after successful commit
-    this.processedEvents.add(event.event_id)
+    this.processedEvents.add(event.event_id);
   }
 
   // =========================================================================
@@ -141,12 +147,12 @@ export class ProjectionEngine {
    * Find all handlers whose `handles` array includes the given event_type.
    */
   private findMatchingHandlers(eventType: StatsEventType): HandlerEntry[] {
-    const result: HandlerEntry[] = []
+    const result: HandlerEntry[] = [];
     for (const entry of this.handlers.values()) {
       if (entry.handler.handles.includes(eventType)) {
-        result.push(entry)
+        result.push(entry);
       }
     }
-    return result
+    return result;
   }
 }

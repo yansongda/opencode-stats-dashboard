@@ -8,49 +8,39 @@
  * Design doc: §4.3 projection_tool_calls
  */
 
-import type { ProjectionHandler, TransactionContext } from "@defs/projections"
 import type {
   StatsEvent,
   StatsEventType,
   ToolCompletedEvent,
   ToolFailedEvent,
-} from "@defs/events"
-
-// ---------------------------------------------------------------------------
-// Token Breakdown Helpers
-// ---------------------------------------------------------------------------
-
-interface TokenBreakdownCache {
-  read: number
-  write: number
-}
-
-interface TokenBreakdown {
-  input: number
-  output: number
-  reasoning: number
-  cache: TokenBreakdownCache
-}
+} from "@defs/events";
+import type { ProjectionHandler, TransactionContext } from "@defs/projections";
 
 // ---------------------------------------------------------------------------
 // Event Handlers
 // ---------------------------------------------------------------------------
 
-function handleToolCompleted(event: ToolCompletedEvent, txn: TransactionContext): void {
-  const callId = event.call_id
-  const toolName = event.tool_name
-  const title = event.title
-  const durationMs = event.duration_ms
+function handleToolCompleted(
+  event: ToolCompletedEvent,
+  txn: TransactionContext,
+): void {
+  const callId = event.call_id;
+  const toolName = event.tool_name;
+  const title = event.title;
+  const durationMs = event.duration_ms;
 
   // Extract token breakdown
-  const tokens = event.tokens
-  const input = tokens?.input ?? 0
-  const output = tokens?.output ?? 0
-  const cache_read = tokens?.cache?.read ?? 0
-  const cache_write = tokens?.cache?.write ?? 0
+  const tokens = event.tokens;
+  const input = tokens?.input ?? 0;
+  const output = tokens?.output ?? 0;
+  const cache_read = tokens?.cache?.read ?? 0;
+  const cache_write = tokens?.cache?.write ?? 0;
 
   // Check if the tool call record exists
-  const existing = txn.get("SELECT call_id FROM projection_tool_calls WHERE call_id = ?", [callId])
+  const existing = txn.get(
+    "SELECT call_id FROM projection_tool_calls WHERE call_id = ?",
+    [callId],
+  );
 
   if (!existing) {
     // Insert new record if it doesn't exist (no prior tool.started event)
@@ -60,11 +50,21 @@ function handleToolCompleted(event: ToolCompletedEvent, txn: TransactionContext)
           input_tokens, output_tokens, cache_read, cache_write, cost_usd, title)
        VALUES (?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        callId, event.session_id, toolName, event.timestamp_ms, event.timestamp_ms,
-        durationMs || null, input, output, cache_read, cache_write, event.cost_usd, title
-      ]
-    )
-    return
+        callId,
+        event.session_id,
+        toolName,
+        event.timestamp_ms,
+        event.timestamp_ms,
+        durationMs || null,
+        input,
+        output,
+        cache_read,
+        cache_write,
+        event.cost_usd,
+        title,
+      ],
+    );
+    return;
   }
 
   txn.run(
@@ -90,19 +90,25 @@ function handleToolCompleted(event: ToolCompletedEvent, txn: TransactionContext)
       event.cost_usd,
       title,
       callId,
-    ]
-  )
+    ],
+  );
 }
 
-function handleToolFailed(event: ToolFailedEvent, txn: TransactionContext): void {
-  const callId = event.call_id
+function handleToolFailed(
+  event: ToolFailedEvent,
+  txn: TransactionContext,
+): void {
+  const callId = event.call_id;
 
   // Check if the tool call record exists
-  const existing = txn.get("SELECT call_id FROM projection_tool_calls WHERE call_id = ?", [callId])
-  if (!existing) return
+  const existing = txn.get(
+    "SELECT call_id FROM projection_tool_calls WHERE call_id = ?",
+    [callId],
+  );
+  if (!existing) return;
 
-  const errorMessage = event.error_message
-  const durationMs = event.duration_ms
+  const errorMessage = event.error_message;
+  const durationMs = event.duration_ms;
 
   txn.run(
     `UPDATE projection_tool_calls
@@ -112,18 +118,15 @@ function handleToolFailed(event: ToolFailedEvent, txn: TransactionContext): void
          error_message = ?,
          projected_at = CURRENT_TIMESTAMP
      WHERE call_id = ?`,
-    [event.timestamp_ms, durationMs || null, errorMessage, callId]
-  )
+    [event.timestamp_ms, durationMs || null, errorMessage, callId],
+  );
 }
 
 // ---------------------------------------------------------------------------
 // Handler Export
 // ---------------------------------------------------------------------------
 
-const HANDLED_EVENTS: StatsEventType[] = [
-  "tool.completed",
-  "tool.failed",
-]
+const HANDLED_EVENTS: StatsEventType[] = ["tool.completed", "tool.failed"];
 
 /**
  * ProjectionHandler for projection_tool_calls table.
@@ -138,11 +141,11 @@ export const toolCallHandler: ProjectionHandler = {
   handle(event: StatsEvent, txn: TransactionContext): void {
     switch (event.event_type) {
       case "tool.completed":
-        handleToolCompleted(event, txn)
-        break
+        handleToolCompleted(event, txn);
+        break;
       case "tool.failed":
-        handleToolFailed(event, txn)
-        break
+        handleToolFailed(event, txn);
+        break;
     }
   },
-}
+};

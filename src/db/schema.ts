@@ -11,14 +11,14 @@
  * `schema_migrations` tracks applied versions for idempotent runs.
  */
 
-import { Database } from "bun:sqlite"
-import * as m001 from "@db/migrations/001_initial"
+import type { Database } from "bun:sqlite";
+import * as m001 from "@db/migrations/001_initial";
 
 /** All migration modules in order. */
-const MIGRATIONS = [m001]
+const MIGRATIONS = [m001];
 
 /** Latest schema version — derived from migration list length. */
-export const CURRENT_VERSION = MIGRATIONS.length
+export const CURRENT_VERSION = MIGRATIONS.length;
 
 /**
  * Configure PRAGMAs for optimal performance.
@@ -27,8 +27,8 @@ export const CURRENT_VERSION = MIGRATIONS.length
  * - synchronous  = NORMAL (good durability with WAL)
  */
 export function configurePragmas(db: Database): void {
-  db.run("PRAGMA journal_mode = WAL")
-  db.run("PRAGMA synchronous = NORMAL")
+  db.run("PRAGMA journal_mode = WAL");
+  db.run("PRAGMA synchronous = NORMAL");
 }
 
 /**
@@ -37,19 +37,19 @@ export function configurePragmas(db: Database): void {
 function currentVersion(db: Database): number {
   const exists = db
     .query(
-      "SELECT COUNT(*) as cnt FROM sqlite_master WHERE type='table' AND name='schema_migrations'"
+      "SELECT COUNT(*) as cnt FROM sqlite_master WHERE type='table' AND name='schema_migrations'",
     )
-    .get() as { cnt: number } | null
+    .get() as { cnt: number } | null;
 
   if (!exists || exists.cnt === 0) {
-    return 0
+    return 0;
   }
 
   const row = db
     .query("SELECT COALESCE(MAX(version), 0) as v FROM schema_migrations")
-    .get() as { v: number } | null
+    .get() as { v: number } | null;
 
-  return row?.v ?? 0
+  return row?.v ?? 0;
 }
 
 /**
@@ -61,7 +61,7 @@ function ensureMigrationsTable(db: Database): void {
       version    INTEGER PRIMARY KEY,
       applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
-  `)
+  `);
 }
 
 /**
@@ -72,23 +72,24 @@ function ensureMigrationsTable(db: Database): void {
  * @returns Number of migrations applied (0 if already up-to-date).
  */
 export function runMigrations(db: Database): number {
-  ensureMigrationsTable(db)
-  const current = currentVersion(db)
-  let appliedCount = 0
+  ensureMigrationsTable(db);
+  const current = currentVersion(db);
+  let appliedCount = 0;
 
   const tx = db.transaction(() => {
     for (let i = 0; i < MIGRATIONS.length; i++) {
-      const migration = MIGRATIONS[i]!
-      const version = i + 1
+      const migration = MIGRATIONS[i];
+      if (!migration) continue;
+      const version = i + 1;
       if (version <= current) {
-        continue
+        continue;
       }
-      migration.up(db)
-      db.run("INSERT INTO schema_migrations (version) VALUES (?)", [version])
-      appliedCount++
+      migration.up(db);
+      db.run("INSERT INTO schema_migrations (version) VALUES (?)", [version]);
+      appliedCount++;
     }
-  })
+  });
 
-  tx()
-  return appliedCount
+  tx();
+  return appliedCount;
 }

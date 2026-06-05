@@ -9,9 +9,9 @@
  *   - snapshots            (§5.1)
  */
 
-import type { Database } from "bun:sqlite"
+import type { Database } from "bun:sqlite";
 
-export const VERSION = 1
+export const VERSION = 1;
 
 export function up(db: Database): void {
   db.run(`
@@ -26,11 +26,13 @@ export function up(db: Database): void {
       cost_usd        REAL DEFAULT 0,
       event_contents  TEXT NOT NULL DEFAULT '{}'
     )
-  `)
-  db.run("CREATE INDEX IF NOT EXISTS idx_events_session ON events(session_id)")
-  db.run("CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type)")
-  db.run("CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp_ms)")
-  db.run("CREATE INDEX IF NOT EXISTS idx_events_model ON events(model)")
+  `);
+  db.run("CREATE INDEX IF NOT EXISTS idx_events_session ON events(session_id)");
+  db.run("CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type)");
+  db.run(
+    "CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp_ms)",
+  );
+  db.run("CREATE INDEX IF NOT EXISTS idx_events_model ON events(model)");
 
   db.run(`
     CREATE TABLE IF NOT EXISTS projection_sessions (
@@ -64,7 +66,7 @@ export function up(db: Database): void {
       projected_at              DATETIME DEFAULT CURRENT_TIMESTAMP,
       event_count               INTEGER DEFAULT 0
     )
-  `)
+  `);
 
   db.run(`
     CREATE TABLE IF NOT EXISTS projection_daily (
@@ -95,7 +97,7 @@ export function up(db: Database): void {
       event_count         INTEGER DEFAULT 0,
       PRIMARY KEY (date, project_path, model)
     )
-  `)
+  `);
 
   db.run(`
     CREATE TABLE IF NOT EXISTS projection_tool_calls (
@@ -115,10 +117,16 @@ export function up(db: Database): void {
       error_message   TEXT,
       projected_at    DATETIME DEFAULT CURRENT_TIMESTAMP
     )
-  `)
-  db.run("CREATE INDEX IF NOT EXISTS idx_tc_session ON projection_tool_calls(session_id)")
-  db.run("CREATE INDEX IF NOT EXISTS idx_tc_tool ON projection_tool_calls(tool_name)")
-  db.run("CREATE INDEX IF NOT EXISTS idx_tc_status ON projection_tool_calls(status)")
+  `);
+  db.run(
+    "CREATE INDEX IF NOT EXISTS idx_tc_session ON projection_tool_calls(session_id)",
+  );
+  db.run(
+    "CREATE INDEX IF NOT EXISTS idx_tc_tool ON projection_tool_calls(tool_name)",
+  );
+  db.run(
+    "CREATE INDEX IF NOT EXISTS idx_tc_status ON projection_tool_calls(status)",
+  );
 
   db.run(`
     CREATE TABLE IF NOT EXISTS snapshots (
@@ -132,8 +140,10 @@ export function up(db: Database): void {
       event_count     INTEGER,
       created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
     )
-  `)
-  db.run("CREATE INDEX IF NOT EXISTS idx_snap_type ON snapshots(snapshot_type)")
-  db.run("CREATE INDEX IF NOT EXISTS idx_snap_target ON snapshots(target_id)")
-  db.run("CREATE INDEX IF NOT EXISTS idx_snap_time ON snapshots(snapshot_at)")
+  `);
+  db.run(
+    "CREATE INDEX IF NOT EXISTS idx_snap_type ON snapshots(snapshot_type)",
+  );
+  db.run("CREATE INDEX IF NOT EXISTS idx_snap_target ON snapshots(target_id)");
+  db.run("CREATE INDEX IF NOT EXISTS idx_snap_time ON snapshots(snapshot_at)");
 }

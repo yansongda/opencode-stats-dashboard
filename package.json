@@ -8,8 +8,9 @@
   "scripts": {
     "test": "bun test",
     "test:watch": "bun test --watch",
-    "lint": "eslint src/ tests/",
-    "format": "prettier --write 'src/**/*.ts' 'tests/**/*.ts'",
+    "biome:check": "biome check",
+    "biome:fix": "biome check --fix",
+    "biome:fix-unsafe": "biome check --fix --unsafe",
     "typecheck": "tsc --noEmit",
     "build:dashboard": "bun run --cwd dashboard build"
   },
@@ -20,6 +21,7 @@
     "hono": "^4.12.23"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.16",
     "@types/bun": "latest",
     "typescript": "^5.8.0"
   }
