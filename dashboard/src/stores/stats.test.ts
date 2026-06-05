@@ -1,4 +1,5 @@
 import { describe, it, expect, mock, beforeEach, afterEach } from 'bun:test'
+import { nextTick } from 'vue'
 import { useStatsStore } from './stats'
 
 const MOCK_OVERVIEW = {
@@ -51,6 +52,29 @@ const MOCK_TOOL_CALLS = {
   count: 1,
 }
 
+const MOCK_MODELS_RESPONSE = {
+  data: {
+    models: [
+      {
+        model: 'claude-sonnet',
+        session_count: 1,
+        message_count: 10,
+        total_tokens: 5000,
+        input_tokens: 3000,
+        output_tokens: 2000,
+        reasoning_tokens: 0,
+        cache_read: 1000,
+        cache_write: 500,
+        total_cost_usd: 0.05,
+        avg_cost_per_session: 0.05,
+        tool_call_count: 5,
+        error_count: 0,
+      },
+    ],
+    total_cost_usd: 0.05,
+  },
+}
+
 function mockFetchSequence(responses: unknown[]) {
   let callIndex = 0
   const fn = mock(() => {
@@ -70,12 +94,28 @@ function mockFetchSequence(responses: unknown[]) {
 
 class MockEventSource {
   url: string
+  readyState = 0
   onerror: ((event: Event) => void) | null = null
   listeners: Record<string, ((event: unknown) => void)[]> = {}
   closed = false
 
+  static CONNECTING = 0
+  static OPEN = 1
+  static CLOSED = 2
+
   constructor(url: string) {
     this.url = url
+    setTimeout(() => {
+      if (!this.closed) {
+        this.readyState = 1
+        const openEvent = new Event('open')
+        if (this.listeners['open']) {
+          for (const listener of this.listeners['open']) {
+            listener(openEvent)
+          }
+        }
+      }
+    }, 0)
   }
 
   addEventListener(type: string, listener: (event: unknown) => void) {
@@ -87,6 +127,7 @@ class MockEventSource {
 
   close() {
     this.closed = true
+    this.readyState = 2
   }
 
   emit(type: string, data: unknown) {
@@ -104,14 +145,14 @@ class MockEventSource {
   }
 }
 
-let lastEventSource: MockEventSource | null = null
+let mockEventSources: MockEventSource[] = []
 
 function installMockEventSource() {
-  lastEventSource = null
+  mockEventSources = []
   globalThis.EventSource = class extends MockEventSource {
     constructor(url: string) {
       super(url)
-      lastEventSource = this
+      mockEventSources.push(this)
     }
   } as unknown as typeof EventSource
 }
@@ -121,6 +162,8 @@ describe('useStatsStore', () => {
   const originalEventSource = globalThis.EventSource
   const originalSetInterval = globalThis.setInterval
   const originalClearInterval = globalThis.clearInterval
+  const originalSetTimeout = globalThis.setTimeout
+  const originalClearTimeout = globalThis.clearTimeout
   const store = useStatsStore()
 
   beforeEach(() => {
@@ -140,7 +183,9 @@ describe('useStatsStore', () => {
     globalThis.EventSource = originalEventSource
     globalThis.setInterval = originalSetInterval
     globalThis.clearInterval = originalClearInterval
-    lastEventSource = null
+    globalThis.setTimeout = originalSetTimeout
+    globalThis.clearTimeout = originalClearTimeout
+    mockEventSources = []
   })
 
   describe('initialization', () => {
@@ -164,7 +209,7 @@ describe('useStatsStore', () => {
 
   describe('refreshData', () => {
     it('fetches and populates all data', async () => {
-      mockFetchSequence([MOCK_OVERVIEW, MOCK_SESSIONS, MOCK_TOOL_CALLS])
+      mockFetchSequence([MOCK_OVERVIEW, MOCK_SESSIONS, MOCK_TOOL_CALLS, MOCK_MODELS_RESPONSE])
       await store.refreshData()
 
       expect(store.overview.value).toEqual(MOCK_OVERVIEW)
@@ -176,19 +221,21 @@ describe('useStatsStore', () => {
   describe('start', () => {
     it('fetches initial data and connects SSE', async () => {
       installMockEventSource()
-      mockFetchSequence([MOCK_OVERVIEW, MOCK_SESSIONS, MOCK_TOOL_CALLS])
+      mockFetchSequence([MOCK_OVERVIEW, MOCK_SESSIONS, MOCK_TOOL_CALLS, MOCK_MODELS_RESPONSE])
       await store.start()
+      await new Promise((r) => setTimeout(r, 10))
 
       expect(store.overview.value).toEqual(MOCK_OVERVIEW)
       expect(store.realtimeMode.value).toBe('sse')
-      expect(lastEventSource).not.toBeNull()
-      expect(lastEventSource!.url).toContain('/api/v1/events/stream')
+      expect(mockEventSources.length).toBeGreaterThan(0)
+      expect(mockEventSources[0].url).toContain('/api/v1/events/stream')
     })
 
     it('is idempotent — second call is a no-op', async () => {
       installMockEventSource()
-      mockFetchSequence([MOCK_OVERVIEW, MOCK_SESSIONS, MOCK_TOOL_CALLS])
+      mockFetchSequence([MOCK_OVERVIEW, MOCK_SESSIONS, MOCK_TOOL_CALLS, MOCK_MODELS_RESPONSE])
       await store.start()
+      await new Promise((r) => setTimeout(r, 10))
       expect(store.realtimeMode.value).toBe('sse')
 
       const fetchCallsBefore = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls.length
@@ -197,14 +244,18 @@ describe('useStatsStore', () => {
       expect(fetchCallsAfter).toBe(fetchCallsBefore)
     })
 
-    it('falls back to polling when SSE errors', async () => {
+    it('enters reconnecting state on SSE error (auto-reconnect)', async () => {
       installMockEventSource()
-      mockFetchSequence([MOCK_OVERVIEW, MOCK_SESSIONS, MOCK_TOOL_CALLS])
+      mockFetchSequence([MOCK_OVERVIEW, MOCK_SESSIONS, MOCK_TOOL_CALLS, MOCK_MODELS_RESPONSE])
       await store.start()
+      await new Promise((r) => setTimeout(r, 10))
 
       expect(store.realtimeMode.value).toBe('sse')
-      lastEventSource!.triggerError()
-      expect(store.realtimeMode.value).toBe('polling')
+      mockEventSources[0].triggerError()
+      await nextTick()
+
+      // With auto-reconnect, mode stays 'sse' (reconnecting)
+      expect(store.realtimeMode.value).toBe('sse')
     })
 
     it('falls back to polling when EventSource constructor throws', async () => {
@@ -214,7 +265,7 @@ describe('useStatsStore', () => {
         }
       } as unknown as typeof EventSource
 
-      mockFetchSequence([MOCK_OVERVIEW, MOCK_SESSIONS, MOCK_TOOL_CALLS])
+      mockFetchSequence([MOCK_OVERVIEW, MOCK_SESSIONS, MOCK_TOOL_CALLS, MOCK_MODELS_RESPONSE])
       await store.start()
 
       expect(store.realtimeMode.value).toBe('polling')
@@ -225,16 +276,19 @@ describe('useStatsStore', () => {
     it('updates lastEventId and refreshes data on stats-update event', async () => {
       installMockEventSource()
       mockFetchSequence([
-        MOCK_OVERVIEW, MOCK_SESSIONS, MOCK_TOOL_CALLS,
-        MOCK_OVERVIEW, MOCK_SESSIONS, MOCK_TOOL_CALLS,
+        MOCK_OVERVIEW, MOCK_SESSIONS, MOCK_TOOL_CALLS, MOCK_MODELS_RESPONSE,
+        MOCK_OVERVIEW, MOCK_SESSIONS, MOCK_TOOL_CALLS, MOCK_MODELS_RESPONSE,
       ])
       await store.start()
+      await new Promise((r) => setTimeout(r, 10))
 
       expect(store.lastEventId.value).toBeNull()
 
-      lastEventSource!.emit('stats-update', {
-        last_event_id: 'evt_002',
-        updated_at: '2025-06-03T13:00:00Z',
+      mockEventSources[0].emit('stats-update', {
+        event_id: 'evt_002',
+        timestamp: '2025-06-03T13:00:00Z',
+        type: 'session',
+        action: 'created',
       })
 
       await new Promise((r) => setTimeout(r, 10))
@@ -245,48 +299,54 @@ describe('useStatsStore', () => {
   describe('stop', () => {
     it('closes SSE and resets mode to disconnected', async () => {
       installMockEventSource()
-      mockFetchSequence([MOCK_OVERVIEW, MOCK_SESSIONS, MOCK_TOOL_CALLS])
+      mockFetchSequence([MOCK_OVERVIEW, MOCK_SESSIONS, MOCK_TOOL_CALLS, MOCK_MODELS_RESPONSE])
       await store.start()
+      await new Promise((r) => setTimeout(r, 10))
 
       expect(store.realtimeMode.value).toBe('sse')
       store.stop()
 
       expect(store.realtimeMode.value).toBe('disconnected')
-      expect(lastEventSource!.closed).toBe(true)
+      expect(mockEventSources[0].closed).toBe(true)
     })
   })
 
   describe('realtimeMode transitions', () => {
     it('goes disconnected → sse when SSE works', async () => {
       installMockEventSource()
-      mockFetchSequence([MOCK_OVERVIEW, MOCK_SESSIONS, MOCK_TOOL_CALLS])
+      mockFetchSequence([MOCK_OVERVIEW, MOCK_SESSIONS, MOCK_TOOL_CALLS, MOCK_MODELS_RESPONSE])
       expect(store.realtimeMode.value).toBe('disconnected')
 
       await store.start()
+      await new Promise((r) => setTimeout(r, 10))
       expect(store.realtimeMode.value).toBe('sse')
     })
 
-    it('goes disconnected → polling when SSE fails', async () => {
+    it('goes disconnected → polling when SSE constructor fails', async () => {
       globalThis.EventSource = class {
         constructor() {
           throw new Error('no SSE')
         }
       } as unknown as typeof EventSource
 
-      mockFetchSequence([MOCK_OVERVIEW, MOCK_SESSIONS, MOCK_TOOL_CALLS])
+      mockFetchSequence([MOCK_OVERVIEW, MOCK_SESSIONS, MOCK_TOOL_CALLS, MOCK_MODELS_RESPONSE])
       await store.start()
 
       expect(store.realtimeMode.value).toBe('polling')
     })
 
-    it('goes sse → polling on SSE error', async () => {
+    it('goes sse → sse (reconnecting) on SSE error', async () => {
       installMockEventSource()
-      mockFetchSequence([MOCK_OVERVIEW, MOCK_SESSIONS, MOCK_TOOL_CALLS])
+      mockFetchSequence([MOCK_OVERVIEW, MOCK_SESSIONS, MOCK_TOOL_CALLS, MOCK_MODELS_RESPONSE])
       await store.start()
+      await new Promise((r) => setTimeout(r, 10))
       expect(store.realtimeMode.value).toBe('sse')
 
-      lastEventSource!.triggerError()
-      expect(store.realtimeMode.value).toBe('polling')
+      mockEventSources[0].triggerError()
+      await nextTick()
+
+      // Auto-reconnect keeps mode as 'sse'
+      expect(store.realtimeMode.value).toBe('sse')
     })
   })
 })

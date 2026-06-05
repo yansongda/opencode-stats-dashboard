@@ -1,0 +1,26 @@
+[     130ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:5173/api/v1/overview:0
+[     130ms] [ERROR] [Stats] Failed to refresh data: Error: API error: 404 Not Found
+    at getJson (http://localhost:5173/src/api/client.ts:30:11)
+    at async Promise.all (index 0)
+    at async refreshData (http://localhost:5173/src/stores/stats.ts:35:33)
+    at async Object.start (http://localhost:5173/src/stores/stats.ts:77:3) @ http://localhost:5173/src/stores/stats.ts:48
+[     131ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:5173/api/v1/sessions?include_deleted=true:0
+[     132ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:5173/api/v1/tool-calls:0
+[     144ms] [WARNING] [Vue warn]: Component provided template option but runtime compilation is not supported in this build of Vue. Configure your bundler to alias "vue" to "vue/dist/vue.esm-bundler.js". 
+  at <Anonymous status="active" > 
+  at <SessionsView onVnodeUnmounted=fn<onVnodeUnmounted> ref=Ref< Proxy(Object) > > 
+  at <RouterView> 
+  at <AppLayout realtime-mode="sse" last-updated-at=null onRefresh=fn<handleRefresh> > 
+  at <App> @ http://localhost:5173/node_modules/.vite/deps/chunk-RPDAN5VS.js?v=6882060d:2228
+[     145ms] [WARNING] [Vue warn]: Component provided template option but runtime compilation is not supported in this build of Vue. Configure your bundler to alias "vue" to "vue/dist/vue.esm-bundler.js". 
+  at <Anonymous status="active" > 
+  at <SessionsView onVnodeUnmounted=fn<onVnodeUnmounted> ref=Ref< Proxy(Object) > > 
+  at <RouterView> 
+  at <AppLayout realtime-mode="sse" last-updated-at=null onRefresh=fn<handleRefresh> > 
+  at <App> @ http://localhost:5173/node_modules/.vite/deps/chunk-RPDAN5VS.js?v=6882060d:2228
+[     146ms] [WARNING] [Vue warn]: Component provided template option but runtime compilation is not supported in this build of Vue. Configure your bundler to alias "vue" to "vue/dist/vue.esm-bundler.js". 
+  at <Anonymous status="active" > 
+  at <SessionsView onVnodeUnmounted=fn<onVnodeUnmounted> ref=Ref< Proxy(Object) > > 
+  at <RouterView> 
+  at <AppLayout realtime-mode="sse" last-updated-at=null onRefresh=fn<handleRefresh> > 
+  at <App> @ http://localhost:5173/node_modules/.vite/deps/chunk-RPDAN5VS.js?v=6882060d:2228

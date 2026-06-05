@@ -1,0 +1,65 @@
+- generic [ref=e3]:
+  - navigation [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: 📊
+      - generic [ref=e7]: OpenCode Stats
+    - generic [ref=e8]:
+      - link "概览" [ref=e9] [cursor=pointer]:
+        - /url: /
+      - link "效率分析" [ref=e10] [cursor=pointer]:
+        - /url: /efficiency
+      - link "模型对比" [ref=e11] [cursor=pointer]:
+        - /url: /models
+      - link "项目对比" [ref=e12] [cursor=pointer]:
+        - /url: /projects
+      - link "工具统计" [ref=e13] [cursor=pointer]:
+        - /url: /tools
+      - link "会话" [ref=e14] [cursor=pointer]:
+        - /url: /sessions
+  - generic [ref=e15]:
+    - generic [ref=e19]: Offline
+    - generic [ref=e20]:
+      - generic "所有工具调用均被完整记录" [ref=e21]: 审计完整
+      - generic "数据仅存储在本地，不会上传到云端" [ref=e22]: 本地隐私
+      - button "↻" [ref=e23] [cursor=pointer]
+  - main [ref=e24]:
+    - generic [ref=e25]:
+      - generic [ref=e26]:
+        - heading "效率分析" [level=1] [ref=e27]
+        - generic [ref=e28]:
+          - button "7天" [ref=e29] [cursor=pointer]
+          - button "30天" [ref=e30] [cursor=pointer]
+          - button "全部" [ref=e31] [cursor=pointer]
+      - generic [ref=e32]:
+        - generic [ref=e33]:
+          - generic [ref=e34]: 平均会话时长
+          - generic [ref=e35]: —
+          - generic [ref=e36]: 所有会话平均
+        - generic [ref=e37]:
+          - generic [ref=e38]: 每任务成本
+          - generic [ref=e39]: —
+          - generic [ref=e40]: 每会话平均成本
+        - generic [ref=e41]:
+          - generic [ref=e42]: Token 利用率
+          - generic [ref=e43]: —
+          - generic [ref=e44]: 输出 / 总 Token
+        - generic [ref=e45]:
+          - generic [ref=e46]: 错误率
+          - generic [ref=e47]: —
+      - generic [ref=e49]:
+        - generic [ref=e50]: 工作时段分布
+        - generic [ref=e51]: 消息活跃度按小时 × 星期
+      - generic [ref=e54]:
+        - generic [ref=e56]:
+          - generic [ref=e57]: 消息轮次效率
+          - generic [ref=e58]: 每轮对话平均 Token 消耗
+        - generic [ref=e62]:
+          - generic [ref=e63]: 响应时间分布
+          - generic [ref=e64]: 工具调用耗时分位数
+      - generic [ref=e67]:
+        - generic [ref=e69]:
+          - generic [ref=e70]: 任务完成率
+          - generic [ref=e71]: 工具调用成功 / 失败
+        - generic [ref=e75]:
+          - generic [ref=e76]: 代码产出效率
+          - generic [ref=e77]: 每日代码变更量趋势

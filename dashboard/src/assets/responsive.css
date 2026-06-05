@@ -1,0 +1,165 @@
+/*
+ * Responsive Design System
+ * Breakpoints per design doc §11.9:
+ *   Desktop: ≥1280px  — full layout
+ *   Tablet:  768-1279px — metric cards 2x2, charts single column
+ *   Mobile:  <768px   — metric cards single column, charts full width
+ */
+
+/* ── Responsive Grid Utilities ──────────────────────────────────────── */
+
+/* Metric cards: 5 columns → 2×2 → single column */
+.resp-metrics-5 {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: var(--spacing-3);
+}
+
+/* Metric cards: 4 columns → 2×2 → single column */
+.resp-metrics-4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--spacing-3);
+}
+
+/* Two-column chart row → single column on tablet */
+.resp-two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-3);
+}
+
+/* View header: title + controls, stacks on mobile */
+.resp-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* ── Tablet Breakpoint (768-1279px) ────────────────────────────────── */
+
+@media (max-width: 1279px) {
+  .resp-metrics-5 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .resp-metrics-4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* ── Mobile Breakpoint (<768px) ────────────────────────────────────── */
+
+@media (max-width: 767px) {
+  .resp-metrics-5 {
+    grid-template-columns: 1fr;
+  }
+
+  .resp-metrics-4 {
+    grid-template-columns: 1fr;
+  }
+
+  .resp-two-col {
+    grid-template-columns: 1fr;
+  }
+
+  .resp-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-2);
+  }
+}
+
+/* ── Responsive Navigation ─────────────────────────────────────────── */
+
+.nav-hamburger {
+  display: none;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-1) var(--spacing-2);
+  cursor: pointer;
+  color: var(--text);
+  font-size: var(--text-lg);
+  line-height: 1;
+}
+
+.nav-hamburger:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+@media (max-width: 767px) {
+  .nav-hamburger {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .nav-links-collapsible {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background-color: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: var(--spacing-2) var(--spacing-4);
+    flex-direction: column;
+    gap: var(--spacing-1);
+    z-index: 10;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  }
+
+  .nav-links-collapsible.open {
+    display: flex;
+  }
+}
+
+/* ── Responsive Table ──────────────────────────────────────────────── */
+
+.resp-table-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 767px) {
+  .resp-table-wrapper {
+    margin-left: calc(-1 * var(--spacing-2));
+    margin-right: calc(-1 * var(--spacing-2));
+    padding-left: var(--spacing-2);
+    padding-right: var(--spacing-2);
+  }
+}
+
+/* ── Responsive Chart Container ────────────────────────────────────── */
+
+.resp-chart-container {
+  min-width: 0;
+}
+
+@media (max-width: 767px) {
+  .resp-chart-container {
+    min-height: 200px;
+  }
+}
+
+/* ── Responsive App Layout ─────────────────────────────────────────── */
+
+@media (max-width: 767px) {
+  .app-main {
+    padding: var(--spacing-3);
+  }
+}
+
+/* ── Responsive Filter Bar ─────────────────────────────────────────── */
+
+@media (max-width: 767px) {
+  .resp-filter-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .resp-filter-bar > * {
+    width: 100%;
+  }
+}

@@ -1,0 +1,37 @@
+- generic [ref=e3]:
+  - navigation [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: 📊
+      - generic [ref=e7]: OpenCode Stats
+    - generic [ref=e8]:
+      - link "概览" [ref=e9] [cursor=pointer]:
+        - /url: /
+      - link "效率分析" [ref=e10] [cursor=pointer]:
+        - /url: /efficiency
+      - link "模型对比" [ref=e11] [cursor=pointer]:
+        - /url: /models
+      - link "项目对比" [ref=e12] [cursor=pointer]:
+        - /url: /projects
+      - link "工具统计" [ref=e13] [cursor=pointer]:
+        - /url: /tools
+      - link "会话" [ref=e14] [cursor=pointer]:
+        - /url: /sessions
+  - generic [ref=e15]:
+    - generic [ref=e19]: Live
+    - generic [ref=e20]:
+      - generic "所有工具调用均被完整记录" [ref=e21]: 审计完整
+      - generic "数据仅存储在本地，不会上传到云端" [ref=e22]: 本地隐私
+  - main [ref=e23]:
+    - generic [ref=e24]:
+      - generic [ref=e25]:
+        - heading "模型对比" [level=1] [ref=e26]
+        - generic [ref=e27]:
+          - button "7天" [ref=e28] [cursor=pointer]
+          - button "30天" [ref=e29] [cursor=pointer]
+          - button "全部" [ref=e30] [cursor=pointer]
+      - generic [ref=e31]:
+        - generic [ref=e32]: ⚠
+        - generic [ref=e33]:
+          - heading "数据加载失败" [level=3] [ref=e34]
+          - paragraph [ref=e35]: "API error: 404 Not Found"
+        - button "重试" [ref=e36] [cursor=pointer]

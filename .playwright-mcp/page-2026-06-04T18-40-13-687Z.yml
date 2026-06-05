@@ -1,0 +1,80 @@
+- generic [ref=e3]:
+  - navigation [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: 📊
+      - generic [ref=e7]: OpenCode Stats
+    - generic [ref=e8]:
+      - link "概览" [ref=e9] [cursor=pointer]:
+        - /url: /
+      - link "效率分析" [ref=e10] [cursor=pointer]:
+        - /url: /efficiency
+      - link "模型对比" [ref=e11] [cursor=pointer]:
+        - /url: /models
+      - link "项目对比" [ref=e12] [cursor=pointer]:
+        - /url: /projects
+      - link "工具统计" [ref=e13] [cursor=pointer]:
+        - /url: /tools
+      - link "会话" [active] [ref=e14] [cursor=pointer]:
+        - /url: /sessions
+  - generic [ref=e15]:
+    - generic [ref=e19]: Live
+    - generic [ref=e20]:
+      - generic "所有工具调用均被完整记录" [ref=e21]: 审计完整
+      - generic "数据仅存储在本地，不会上传到云端" [ref=e22]: 本地隐私
+  - main [ref=e23]:
+    - generic [ref=e24]:
+      - generic [ref=e26]:
+        - button "7 天" [ref=e27] [cursor=pointer]
+        - button "30 天" [ref=e28] [cursor=pointer]
+        - button "全部" [ref=e29] [cursor=pointer]
+      - generic [ref=e30]:
+        - generic [ref=e31]:
+          - generic [ref=e32]: 总会话
+          - generic [ref=e33]: "3"
+          - generic [ref=e34]: 3 活跃 · 0 已删除
+        - generic [ref=e35]:
+          - generic [ref=e36]: 总 Token
+          - generic [ref=e37]: 3.6K
+          - generic [ref=e38]: 入 0 · 出 0
+        - generic [ref=e39]:
+          - generic [ref=e40]: 总成本
+          - generic [ref=e41]: $0.01
+          - generic [ref=e42]: 工具 0 次
+        - generic [ref=e43]:
+          - generic [ref=e44]: 工具调用
+          - generic [ref=e45]: "0"
+          - generic [ref=e46]: 错误 0 · 成功率 100%
+        - generic [ref=e47]:
+          - generic [ref=e48]: 代码变更
+          - generic [ref=e49]: "+0"
+          - generic [ref=e50]: "-0 · 净增 0 行"
+      - heading "使用趋势" [level=3] [ref=e53]
+      - generic [ref=e56]:
+        - heading "模型成本分布" [level=3] [ref=e58]
+        - heading "项目使用排行 Top 5" [level=3] [ref=e62]
+      - generic [ref=e65]:
+        - heading "工具调用 Top 5" [level=3] [ref=e67]
+        - generic [ref=e70]:
+          - heading "近期会话" [level=3] [ref=e71]
+          - generic [ref=e72]:
+            - generic [ref=e73]:
+              - generic [ref=e74]:
+                - generic "/Users/test/project-alpha" [ref=e75]: .../test/project-alpha
+                - generic [ref=e76]: claude-sonnet-4-20250514
+              - generic [ref=e77]:
+                - generic [ref=e78]: 1.2K
+                - generic [ref=e79]: 活跃
+            - generic [ref=e80]:
+              - generic [ref=e81]:
+                - generic "/Users/test/project-beta" [ref=e82]: .../test/project-beta
+                - generic [ref=e83]: gpt-4o
+              - generic [ref=e84]:
+                - generic [ref=e85]: 1.2K
+                - generic [ref=e86]: 活跃
+            - generic [ref=e87]:
+              - generic [ref=e88]:
+                - generic "/Users/test/project-alpha" [ref=e89]: .../test/project-alpha
+                - generic [ref=e90]: claude-sonnet-4-20250514
+              - generic [ref=e91]:
+                - generic [ref=e92]: 1.2K
+                - generic [ref=e93]: 活跃

@@ -1,0 +1,49 @@
+- generic [ref=e3]:
+  - navigation [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: 📊
+      - generic [ref=e7]: OpenCode Stats
+    - generic [ref=e8]:
+      - link "概览" [ref=e9] [cursor=pointer]:
+        - /url: /
+      - link "效率分析" [ref=e10] [cursor=pointer]:
+        - /url: /efficiency
+      - link "模型对比" [ref=e11] [cursor=pointer]:
+        - /url: /models
+      - link "项目对比" [ref=e12] [cursor=pointer]:
+        - /url: /projects
+      - link "工具统计" [ref=e13] [cursor=pointer]:
+        - /url: /tools
+      - link "会话" [ref=e14] [cursor=pointer]:
+        - /url: /sessions
+  - generic [ref=e15]:
+    - generic [ref=e19]: Offline
+    - generic [ref=e20]:
+      - generic "所有工具调用均被完整记录" [ref=e21]: 审计完整
+      - generic "数据仅存储在本地，不会上传到云端" [ref=e22]: 本地隐私
+      - button "↻" [ref=e23] [cursor=pointer]
+  - main [ref=e24]:
+    - generic [ref=e25]:
+      - generic [ref=e26]:
+        - heading "项目对比" [level=1] [ref=e27]
+        - generic [ref=e28]:
+          - button "7 天" [ref=e29] [cursor=pointer]
+          - button "30 天" [ref=e30] [cursor=pointer]
+          - button "90 天" [ref=e31] [cursor=pointer]
+          - button "全部" [ref=e32] [cursor=pointer]
+      - table [ref=e34]:
+        - rowgroup [ref=e35]:
+          - row "项目路径 ↕ 会话数 ↕ Token ↕ 成本 ↓ 主模型 最后活跃" [ref=e36]:
+            - columnheader "项目路径 ↕" [ref=e37] [cursor=pointer]
+            - columnheader "会话数 ↕" [ref=e38] [cursor=pointer]
+            - columnheader "Token ↕" [ref=e39] [cursor=pointer]
+            - columnheader "成本 ↓" [ref=e40] [cursor=pointer]
+            - columnheader "主模型" [ref=e41]
+            - columnheader "最后活跃" [ref=e42]
+        - rowgroup [ref=e43]:
+          - row "暂无项目数据" [ref=e44]:
+            - cell "暂无项目数据" [ref=e45]
+      - generic [ref=e49]: 项目活跃度趋势
+      - generic [ref=e52]:
+        - generic [ref=e55]: 模型使用分布
+        - generic [ref=e60]: 工具使用分布

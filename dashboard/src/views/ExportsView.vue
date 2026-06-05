@@ -2,6 +2,22 @@
   <div class="view-container">
     <h1 class="view-title">导出与清理</h1>
 
+    <!-- Loading State -->
+    <LoadingState v-if="store.loading.value" message="加载数据中..." test-id="exports-loading" />
+
+    <!-- Error State -->
+    <EmptyState
+      v-else-if="store.error.value"
+      variant="error"
+      title="数据加载失败"
+      :description="store.error.value"
+      action-label="重试"
+      test-id="exports-error"
+      @action="store.refreshData"
+    />
+
+    <!-- Content -->
+    <template v-else>
     <!-- Export Section -->
     <section class="section">
       <h2 class="section-title">数据导出</h2>
@@ -111,6 +127,7 @@
         </div>
       </div>
     </section>
+    </template>
 
     <!-- Confirm Dialog -->
     <Teleport to="body">
@@ -135,6 +152,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useStatsStore } from '../stores/stats'
+import EmptyState from '../components/EmptyState.vue'
+import LoadingState from '../components/LoadingState.vue'
 import { fetchExportSessions, fetchExportToolCalls, cleanupDeleted, cleanupAll } from '../api/client'
 
 const store = useStatsStore()

@@ -206,7 +206,7 @@ Max Concurrent: 6 (Wave 1)
 > **FORMAT**: Task labels MUST use bare numbers: `1.`, `2.`, `3.` — NOT `T1.`, `Task 1.`, `Phase 1:`.
 > Final Verification Wave labels MUST use `F1.`, `F2.`, etc. — NOT `T-F1.`, `F-1.`, `Final 1.`.
 
-- [ ] 1. Project scaffolding + config
+- [x] 1. Project scaffolding + config
 
   **What to do**:
   - 初始化 Bun + TypeScript 项目
@@ -270,7 +270,7 @@ Max Concurrent: 6 (Wave 1)
   - Files: package.json, tsconfig.json, .eslintrc.json, .prettierrc, src/, tests/
   - Pre-commit: `bun test`
 
-- [ ] 2. SQLite schema + migrations
+- [x] 2. SQLite schema + migrations
 
   **What to do**:
   - 创建 src/db/schema.ts
@@ -350,7 +350,7 @@ Max Concurrent: 6 (Wave 1)
   - Files: src/db/schema.ts, src/db/migrations/
   - Pre-commit: `bun test`
 
-- [ ] 3. TypeScript type definitions
+- [x] 3. TypeScript type definitions
 
   **What to do**:
   - 创建 src/types/events.ts（30 种事件类型）
@@ -422,7 +422,7 @@ Max Concurrent: 6 (Wave 1)
   - Files: src/types/
   - Pre-commit: `bun test`
 
-- [ ] 4. Event Store implementation
+- [x] 4. Event Store implementation
 
   **What to do**:
   - 创建 src/store/event.ts
@@ -502,7 +502,7 @@ Max Concurrent: 6 (Wave 1)
   - Files: src/store/event.ts
   - Pre-commit: `bun test`
 
-- [ ] 5. Projection Engine foundation
+- [x] 5. Projection Engine foundation
 
   **What to do**:
   - 创建 src/projection/engine.ts
@@ -579,7 +579,7 @@ Max Concurrent: 6 (Wave 1)
   - Files: src/projection/engine.ts, src/projection/handlers/
   - Pre-commit: `bun test`
 
-- [ ] 6. SSE infrastructure
+- [x] 6. SSE infrastructure
 
   **What to do**:
   - 创建 src/sse/broadcaster.ts
@@ -657,7 +657,7 @@ Max Concurrent: 6 (Wave 1)
   - Files: src/sse/broadcaster.ts
   - Pre-commit: `bun test`
 
-- [ ] 7. projection_sessions implementation
+- [x] 7. projection_sessions implementation
 
   **What to do**:
   - 创建 src/projection/sessions.ts
@@ -740,7 +740,7 @@ Max Concurrent: 6 (Wave 1)
   - Files: src/projection/sessions.ts
   - Pre-commit: `bun test`
 
-- [ ] 8. projection_daily implementation
+- [x] 8. projection_daily implementation
 
   **What to do**:
   - 创建 src/projection/daily.ts
@@ -820,7 +820,7 @@ Max Concurrent: 6 (Wave 1)
   - Files: src/projection/daily.ts
   - Pre-commit: `bun test`
 
-- [ ] 9. projection_tool_calls implementation
+- [x] 9. projection_tool_calls implementation
 
   **What to do**:
   - 创建 src/projection/tool-calls.ts
@@ -885,7 +885,7 @@ Max Concurrent: 6 (Wave 1)
   - Files: src/projection/tool-calls.ts
   - Pre-commit: `bun test`
 
-- [ ] 10. Snapshot system foundation
+- [x] 10. Snapshot system foundation
 
   **What to do**:
   - 创建 src/snapshot/manager.ts
@@ -969,7 +969,7 @@ Max Concurrent: 6 (Wave 1)
   - Files: src/snapshot/manager.ts
   - Pre-commit: `bun test`
 
-- [ ] 11. API Layer foundation
+- [x] 11. API Layer foundation
 
   **What to do**:
   - 创建 src/api/router.ts
@@ -1046,7 +1046,7 @@ Max Concurrent: 6 (Wave 1)
   - Files: src/api/router.ts, src/api/handlers/
   - Pre-commit: `bun test`
 
-- [ ] 12. Stats API endpoints
+- [x] 12. Stats API endpoints
 
   **What to do**:
   - 创建 src/api/stats.ts
@@ -1134,7 +1134,7 @@ Max Concurrent: 6 (Wave 1)
   - Files: src/api/stats.ts
   - Pre-commit: `bun test`
 
-- [ ] 13. SSE endpoint + integration
+- [x] 13. SSE endpoint + integration
 
   **What to do**:
   - 创建 src/api/stream.ts
@@ -1211,7 +1211,7 @@ Max Concurrent: 6 (Wave 1)
   - Files: src/api/stream.ts
   - Pre-commit: `bun test`
 
-- [ ] 14. Vue 3 project scaffolding
+- [x] 14. Vue 3 project scaffolding
 
   **What to do**:
   - 创建 dashboard/ 目录
@@ -1290,7 +1290,7 @@ Max Concurrent: 6 (Wave 1)
   - Files: dashboard/
   - Pre-commit: `cd dashboard && bun run build`
 
-- [ ] 15. ECharts integration
+- [x] 15. ECharts integration
 
   **What to do**:
   - 安装 ECharts 依赖（npm install echarts vue-echarts）
@@ -1368,7 +1368,7 @@ Max Concurrent: 6 (Wave 1)
   - Files: dashboard/src/charts/
   - Pre-commit: `cd dashboard && bun run build`
 
-- [ ] 16. Overview page
+- [x] 16. Overview page
 
   **What to do**:
   - 创建 dashboard/src/views/Overview.vue
@@ -1446,7 +1446,7 @@ Max Concurrent: 6 (Wave 1)
   - Files: dashboard/src/views/Overview.vue
   - Pre-commit: `cd dashboard && bun run build`
 
-- [ ] 17. Efficiency page
+- [x] 17. Efficiency page
 
   **What to do**:
   - 创建 dashboard/src/views/Efficiency.vue
@@ -1523,7 +1523,7 @@ Max Concurrent: 6 (Wave 1)
   - Files: dashboard/src/views/Efficiency.vue
   - Pre-commit: `cd dashboard && bun run build`
 
-- [ ] 18. Models page
+- [x] 18. Models page
 
   **What to do**:
   - 创建 dashboard/src/views/Models.vue
@@ -1599,7 +1599,7 @@ Max Concurrent: 6 (Wave 1)
   - Files: dashboard/src/views/Models.vue
   - Pre-commit: `cd dashboard && bun run build`
 
-- [ ] 19. Projects page
+- [x] 19. Projects page
 
   **What to do**:
   - 创建 dashboard/src/views/Projects.vue
@@ -1676,7 +1676,7 @@ Max Concurrent: 6 (Wave 1)
   - Files: dashboard/src/views/Projects.vue
   - Pre-commit: `cd dashboard && bun run build`
 
-- [ ] 20. Tools page
+- [x] 20. Tools page
 
   **What to do**:
   - 创建 dashboard/src/views/Tools.vue
@@ -1751,7 +1751,7 @@ Max Concurrent: 6 (Wave 1)
   - Files: dashboard/src/views/Tools.vue
   - Pre-commit: `cd dashboard && bun run build`
 
-- [ ] 21. Sessions page
+- [x] 21. Sessions page
 
   **What to do**:
   - 创建 dashboard/src/views/Sessions.vue
@@ -1845,7 +1845,7 @@ Max Concurrent: 6 (Wave 1)
   - Files: dashboard/src/views/Sessions.vue
   - Pre-commit: `cd dashboard && bun run build`
 
-- [ ] 22. Real-time update integration
+- [x] 22. Real-time update integration
 
   **What to do**:
   - 创建 dashboard/src/composables/useSSE.ts
@@ -1922,7 +1922,7 @@ Max Concurrent: 6 (Wave 1)
   - Files: dashboard/src/composables/useSSE.ts
   - Pre-commit: `cd dashboard && bun run build`
 
-- [ ] 23. Responsive design
+- [x] 23. Responsive design
 
   **What to do**:
   - 创建 dashboard/src/assets/responsive.css
@@ -1999,7 +1999,7 @@ Max Concurrent: 6 (Wave 1)
   - Files: dashboard/src/assets/responsive.css, dashboard/src/views/*.vue
   - Pre-commit: `cd dashboard && bun run build`
 
-- [ ] 24. Empty state + loading states
+- [x] 24. Empty state + loading states
 
   **What to do**:
   - 创建 dashboard/src/components/EmptyState.vue
@@ -2072,7 +2072,7 @@ Max Concurrent: 6 (Wave 1)
   - Files: dashboard/src/components/EmptyState.vue, dashboard/src/components/LoadingState.vue, dashboard/src/views/*.vue
   - Pre-commit: `cd dashboard && bun run build`
 
-- [ ] 25. SSE auto-reconnect + error handling
+- [x] 25. SSE auto-reconnect + error handling
 
   **What to do**:
   - 更新 src/sse/broadcaster.ts
@@ -2154,19 +2154,19 @@ Max Concurrent: 6 (Wave 1)
 
 > 4 review agents run in PARALLEL. ALL must APPROVE. Present consolidated results to user and get explicit "okay" before completing.
 
-- [ ] F1. **Plan Compliance Audit** — `oracle`
+- [x] F1. **Plan Compliance Audit** — `oracle`
   Read the plan end-to-end. For each "Must Have": verify implementation exists (read file, curl endpoint, run command). For each "Must NOT Have": search codebase for forbidden patterns — reject with file:line if found. Check evidence files exist in .omo/evidence/. Compare deliverables against plan.
   Output: `Must Have [N/N] | Must NOT Have [N/N] | Tasks [N/N] | VERDICT: APPROVE/REJECT`
 
-- [ ] F2. **Code Quality Review** — `unspecified-high`
+- [x] F2. **Code Quality Review** — `unspecified-high`
   Run `tsc --noEmit` + linter + `bun test`. Review all changed files for: `as any`/`@ts-ignore`, empty catches, console.log in prod, commented-out code, unused imports. Check AI slop: excessive comments, over-abstraction, generic names (data/result/item/temp).
   Output: `Build [PASS/FAIL] | Lint [PASS/FAIL] | Tests [N pass/N fail] | Files [N clean/N issues] | VERDICT`
 
-- [ ] F3. **Real Manual QA** — `unspecified-high` (+ `playwright` skill if UI)
+- [x] F3. **Real Manual QA** — `unspecified-high` (+ `playwright` skill if UI)
   Start from clean state. Execute EVERY QA scenario from EVERY task — follow exact steps, capture evidence. Test cross-task integration (features working together, not isolation). Test edge cases: empty state, invalid input, rapid actions. Save to `.omo/evidence/final-qa/`.
   Output: `Scenarios [N/N pass] | Integration [N/N] | Edge Cases [N tested] | VERDICT`
 
-- [ ] F4. **Scope Fidelity Check** — `deep`
+- [x] F4. **Scope Fidelity Check** — `deep`
   For each task: read "What to do", read actual diff (git log/diff). Verify 1:1 — everything in spec was built (no missing), nothing beyond spec was built (no creep). Check "Must NOT do" compliance. Detect cross-task contamination: Task N touching Task M's files. Flag unaccounted changes.
   Output: `Tasks [N/N compliant] | Contamination [CLEAN/N issues] | Unaccounted [CLEAN/N files] | VERDICT`
 

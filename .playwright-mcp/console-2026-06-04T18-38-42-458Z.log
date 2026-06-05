@@ -1,0 +1,8 @@
+[     125ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:5173/api/v1/overview:0
+[     125ms] [ERROR] [Stats] Failed to refresh data: Error: API error: 404 Not Found
+    at getJson (http://localhost:5173/src/api/client.ts:30:11)
+    at async Promise.all (index 0)
+    at async refreshData (http://localhost:5173/src/stores/stats.ts:35:33)
+    at async Object.start (http://localhost:5173/src/stores/stats.ts:77:3) @ http://localhost:5173/src/stores/stats.ts:48
+[     139ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:5173/api/v1/sessions?include_deleted=true:0
+[     140ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:5173/api/v1/tool-calls:0

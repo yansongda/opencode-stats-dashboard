@@ -1,0 +1,27 @@
+[      94ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:5173/api/v1/overview:0
+[      94ms] [ERROR] [Stats] Failed to refresh data: Error: API error: 404 Not Found
+    at getJson (http://localhost:5173/src/api/client.ts:30:11)
+    at async Promise.all (index 0)
+    at async refreshData (http://localhost:5173/src/stores/stats.ts:35:33)
+    at async Object.start (http://localhost:5173/src/stores/stats.ts:77:3) @ http://localhost:5173/src/stores/stats.ts:48
+[      96ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:5173/api/v1/sessions?include_deleted=true:0
+[      97ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:5173/api/v1/tool-calls:0
+[     120ms] [WARNING] [Vue warn]: Unhandled error during execution of mounted hook 
+  at <Echarts key=0 option= {tooltip: Object, legend: Object, grid: Object, xAxis: Object, yAxis: Object} autoresize=true  ... > 
+  at <BaseChart option= {tooltip: Object, legend: Object, grid: Object, xAxis: Object, yAxis: Object} height="280px" autoresize=true  ... > 
+  at <LineChart x-data= [2026-06-04] series= [Object, Object] height="280px"  ... > 
+  at <OverviewView onVnodeUnmounted=fn<onVnodeUnmounted> ref=Ref< Proxy(Object) > > 
+  at <RouterView> 
+  at <AppLayout realtime-mode="sse" last-updated-at=null onRefresh=fn<handleRefresh> > 
+  at <App> @ http://localhost:5173/node_modules/.vite/deps/chunk-RPDAN5VS.js?v=6882060d:2228
+[     124ms] Error: Renderer 'undefined' is not imported. Please import it first.
+    at new ZRender2 (http://localhost:5173/node_modules/.vite/deps/vue-echarts.js?v=6882060d:6701:15)
+    at init (http://localhost:5173/node_modules/.vite/deps/vue-echarts.js?v=6882060d:6942:12)
+    at new ECharts2 (http://localhost:5173/node_modules/.vite/deps/vue-echarts.js?v=6882060d:21797:28)
+    at init2 (http://localhost:5173/node_modules/.vite/deps/vue-echarts.js?v=6882060d:23324:15)
+    at init$1 (http://localhost:5173/node_modules/.vite/deps/vue-echarts.js?v=6882060d:28246:38)
+    at http://localhost:5173/node_modules/.vite/deps/vue-echarts.js?v=6882060d:28326:7
+    at http://localhost:5173/node_modules/.vite/deps/chunk-RPDAN5VS.js?v=6882060d:5290:40
+    at callWithErrorHandling (http://localhost:5173/node_modules/.vite/deps/chunk-RPDAN5VS.js?v=6882060d:2376:19)
+    at callWithAsyncErrorHandling (http://localhost:5173/node_modules/.vite/deps/chunk-RPDAN5VS.js?v=6882060d:2383:17)
+    at hook.__weh.hook.__weh (http://localhost:5173/node_modules/.vite/deps/chunk-RPDAN5VS.js?v=6882060d:5270:19)

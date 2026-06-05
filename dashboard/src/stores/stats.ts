@@ -3,13 +3,15 @@ import {
   fetchOverview,
   fetchSessions,
   fetchToolCalls,
-  connectSSE,
+  fetchStatsModels,
   fetchLatest,
   type OverviewResponse,
   type SessionRow,
   type ToolCallRow,
-  type StatsUpdate,
+  type StatsModelItem,
 } from '../api/client'
+import { useSSE } from '../composables/useSSE'
+import type { StatsUpdate } from '../../../src/types/sse'
 
 export type RealtimeMode = 'sse' | 'polling' | 'disconnected'
 
@@ -17,9 +19,12 @@ export interface StatsStore {
   overview: Ref<OverviewResponse | null>
   sessions: Ref<SessionRow[]>
   toolCalls: Ref<ToolCallRow[]>
+  models: Ref<StatsModelItem[]>
   realtimeMode: Ref<RealtimeMode>
   lastEventId: Ref<string | null>
   lastUpdatedAt: Ref<Date | null>
+  loading: Ref<boolean>
+  error: Ref<string | null>
   start: () => Promise<void>
   stop: () => void
   refreshData: () => Promise<void>
@@ -30,24 +35,48 @@ const POLL_INTERVAL_MS = 5000
 const overview = ref<OverviewResponse | null>(null) as Ref<OverviewResponse | null>
 const sessions = ref<SessionRow[]>([]) as Ref<SessionRow[]>
 const toolCalls = ref<ToolCallRow[]>([]) as Ref<ToolCallRow[]>
+const models = ref<StatsModelItem[]>([]) as Ref<StatsModelItem[]>
 const realtimeMode = ref<RealtimeMode>('disconnected') as Ref<RealtimeMode>
 const lastEventId = ref<string | null>(null) as Ref<string | null>
 const lastUpdatedAt = ref<Date | null>(null) as Ref<Date | null>
+const loading = ref(false) as Ref<boolean>
+const error = ref<string | null>(null) as Ref<string | null>
 
-let eventSource: EventSource | null = null
 let pollTimer: ReturnType<typeof setInterval> | null = null
 let started = false
 
+const sse = useSSE({
+  onMessage: (update: StatsUpdate) => {
+    lastEventId.value = update.event_id
+    realtimeMode.value = 'sse'
+    refreshData().catch((err) => {
+      console.error('[SSE] refreshData failed:', err)
+    })
+  },
+})
+
 async function refreshData(): Promise<void> {
-  const [ov, sess, tc] = await Promise.all([
-    fetchOverview(),
-    fetchSessions({ include_deleted: true }),
-    fetchToolCalls(),
-  ])
-  overview.value = ov
-  sessions.value = sess.sessions
-  toolCalls.value = tc.tool_calls
-  lastUpdatedAt.value = new Date()
+  loading.value = true
+  error.value = null
+  try {
+    const [ov, sess, tc, mdl] = await Promise.all([
+      fetchOverview(),
+      fetchSessions({ include_deleted: true }),
+      fetchToolCalls(),
+      fetchStatsModels(),
+    ])
+    overview.value = ov
+    sessions.value = sess.sessions
+    toolCalls.value = tc.tool_calls
+    models.value = mdl.models
+    lastUpdatedAt.value = new Date()
+    sse.markSynced()
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : '加载数据时发生未知错误'
+    console.error('[Stats] Failed to refresh data:', err)
+  } finally {
+    loading.value = false
+  }
 }
 
 function stopPolling(): void {
@@ -73,53 +102,23 @@ function startPolling(): void {
   }, POLL_INTERVAL_MS)
 }
 
-function connectSSEWithFallback(): void {
-  try {
-    console.log('[SSE] Connecting to', connectSSE())
-    eventSource = connectSSE()
-    realtimeMode.value = 'sse'
-
-    eventSource.addEventListener('stats-update', ((event: MessageEvent) => {
-      console.log('[SSE] Received event:', event.data)
-      try {
-        const update: StatsUpdate = JSON.parse(event.data)
-        lastEventId.value = update.last_event_id
-        console.log('[SSE] Calling refreshData...')
-        refreshData().then(() => {
-          console.log('[SSE] refreshData completed')
-        }).catch((err) => {
-          console.error('[SSE] refreshData failed:', err)
-        })
-      } catch (err) {
-        console.error('[SSE] Parse error:', err)
-      }
-    }) as EventListener)
-
-    eventSource.onerror = (err) => {
-      console.error('[SSE] Connection error:', err)
-      eventSource?.close()
-      eventSource = null
-      startPolling()
-    }
-  } catch (err) {
-    console.error('[SSE] Constructor failed:', err)
-    startPolling()
-  }
-}
-
 async function start(): Promise<void> {
   if (started) return
   started = true
   await refreshData()
-  connectSSEWithFallback()
+
+  sse.connect()
+
+  if (sse.connectionState.value === 'connected' || sse.connectionState.value === 'connecting') {
+    realtimeMode.value = 'sse'
+  } else {
+    startPolling()
+  }
 }
 
 function stop(): void {
   started = false
-  if (eventSource) {
-    eventSource.close()
-    eventSource = null
-  }
+  sse.disconnect()
   stopPolling()
   realtimeMode.value = 'disconnected'
 }
@@ -129,9 +128,12 @@ export function useStatsStore(): StatsStore {
     overview,
     sessions,
     toolCalls,
+    models,
     realtimeMode,
     lastEventId,
     lastUpdatedAt,
+    loading,
+    error,
     start,
     stop,
     refreshData,
