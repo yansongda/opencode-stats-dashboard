@@ -15,10 +15,9 @@ import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { createStatsHandler } from "@api/stats";
-import { createStreamHandler } from "@api/stream";
+import { buildStatsUpdate, createStreamHandler } from "@api/stream";
 import { configurePragmas, runMigrations } from "@db/schema";
 import type { StatsEvent, ToolEventInput, ToolEventOutput } from "@defs/events";
-import type { SSEAction, SSEEventType, StatsUpdate } from "@defs/sse";
 import { convertEvent, convertToolEvent } from "@event/converter";
 import type { Hooks, Plugin, PluginInput } from "@opencode-ai/plugin";
 import { DailyProjectionHandler } from "@projection/daily";
@@ -43,64 +42,131 @@ interface StatsState {
 }
 
 let state: StatsState | null = null;
+let initPromise: Promise<StatsState> | null = null;
 
 // ============================================================================
 // Helpers
 // ============================================================================
 
 function log(input: PluginInput, msg: string): void {
-  void input.client?.app?.log?.({
-    body: { service: "stats-plugin", level: "info", message: msg },
+  try {
+    const result = input.client?.app?.log?.({
+      body: { service: "stats-plugin", level: "info", message: msg },
+    });
+    // Surface async errors instead of swallowing them silently.
+    if (result && typeof (result as Promise<unknown>).catch === "function") {
+      (result as Promise<unknown>).catch((err) => {
+        console.error("[stats-plugin] log failed:", err);
+      });
+    }
+  } catch (err) {
+    console.error("[stats-plugin] log threw:", err);
+  }
+}
+
+function logError(input: PluginInput, msg: string, err: unknown): void {
+  const detail =
+    err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+  log(input, `${msg} — ${detail}`);
+  // Always echo to console so failures are visible even if remote log is down.
+  console.error(`[stats-plugin] ${msg}`, err);
+}
+
+/**
+ * Process an event through the full pipeline with per-stage error isolation:
+ *  1. Insert into EventStore (idempotent)
+ *  2. Process through ProjectionEngine
+ *  3. Broadcast SSE update
+ *
+ * A failure in one stage MUST NOT prevent the others from running. In
+ * particular, a slow/dead SSE client should never block persistence, and a
+ * projection bug should never silence the live broadcast.
+ */
+function processEvent(event: StatsEvent, input: PluginInput): void {
+  if (!state) return;
+  const { eventStore, projectionEngine, broadcaster } = state;
+
+  try {
+    eventStore.insertEvent(event);
+  } catch (err) {
+    logError(
+      input,
+      `eventStore.insertEvent failed for ${event.event_type}`,
+      err,
+    );
+  }
+
+  try {
+    projectionEngine.processEvent(event);
+  } catch (err) {
+    logError(
+      input,
+      `projectionEngine.processEvent failed for ${event.event_type}`,
+      err,
+    );
+  }
+
+  try {
+    const statsUpdate = buildStatsUpdate(event);
+    broadcaster.broadcast(statsUpdate);
+  } catch (err) {
+    logError(
+      input,
+      `broadcaster.broadcast failed for ${event.event_type}`,
+      err,
+    );
+  }
+}
+
+// ============================================================================
+// App construction
+// ============================================================================
+
+interface AppDeps {
+  db: Database;
+  broadcaster: SSEBroadcaster;
+  dashboardDist: string;
+}
+
+/**
+ * Build the Hono application. Pure: takes deps, returns app.
+ *
+ * Route ordering matters:
+ *  1. /assets/*           — dashboard bundles
+ *  2. /api/*              — JSON endpoints (stats + SSE stream)
+ *  3. catch-all GET *     — SPA fallback (only for non-/api routes)
+ *
+ * Unknown /api/* requests get a JSON 404 instead of an HTML SPA shell, so
+ * frontend fetch errors are debuggable.
+ */
+function createApp({ db, broadcaster, dashboardDist }: AppDeps): Hono {
+  const app = new Hono();
+
+  app.use("/assets/*", serveStatic({ root: dashboardDist }));
+
+  const statsRegistrar = createStatsHandler(db);
+  statsRegistrar(app);
+
+  const streamHandler = createStreamHandler(broadcaster);
+  app.get("/api/v1/events/stream", (c) => streamHandler(c.req.raw));
+
+  // Explicit JSON 404 for unhandled API routes — keep them out of SPA fallback.
+  app.all("/api/*", (c) => c.json({ error: "not_found" }, 404));
+
+  const indexPath = join(dashboardDist, "index.html");
+  const indexHtml = existsSync(indexPath)
+    ? readFileSync(indexPath, "utf-8")
+    : null;
+
+  app.get("*", (c) => {
+    if (indexHtml) return c.html(indexHtml);
+    return c.text(
+      `Dashboard not built. Run: bun run build:dashboard\n\nDebug: indexPath=${indexPath}, exists=false`,
+      404,
+    );
   });
-}
 
-/**
- * Process an event through the full pipeline:
- * 1. Insert into EventStore (idempotent)
- * 2. Process through ProjectionEngine
- * 3. Broadcast SSE update
- */
-function processEvent(
-  event: StatsEvent,
-  eventStore: EventStore,
-  projectionEngine: ProjectionEngine,
-  broadcaster: SSEBroadcaster,
-): void {
-  eventStore.insertEvent(event);
-  projectionEngine.processEvent(event);
-
-  const statsUpdate = buildStatsUpdate(event);
-  broadcaster.broadcast(statsUpdate);
-}
-
-/**
- * Build a lightweight stats update for SSE broadcast.
- * Mirrors buildStatsUpdate from api/stream.ts to avoid circular dependency.
- */
-const EVENT_TYPE_MAP: Record<
-  string,
-  { type: SSEEventType; action: SSEAction }
-> = {
-  "session.created": { type: "session", action: "created" },
-  "session.deleted": { type: "session", action: "deleted" },
-  "tool.completed": { type: "tool", action: "updated" },
-  "file.edited": { type: "file", action: "updated" },
-};
-
-function buildStatsUpdate(event: StatsEvent): StatsUpdate {
-  const sessionId = "session_id" in event ? event.session_id : "";
-  const mapped = EVENT_TYPE_MAP[event.event_type] ?? {
-    type: "session" as SSEEventType,
-    action: "updated" as SSEAction,
-  };
-
-  return {
-    event_id: event.event_id,
-    timestamp: new Date().toISOString(),
-    session_id: sessionId,
-    ...mapped,
-    ...(event.event_type === "tool.completed" && { delta: { tool_calls: 1 } }),
-  };
+  return app;
 }
 
 // ============================================================================
@@ -147,10 +213,7 @@ function initialize(input: PluginInput): StatsState {
     `Registered ${projectionEngine.getHandlerNames().length} projection handlers`,
   );
 
-  // 5. Create Hono app and register routes
-  const app = new Hono();
-
-  // Serve dashboard static files
+  // 5. Build the HTTP app
   // import.meta.dir points to src/ when running src/index.ts
   const projectRoot = resolve(import.meta.dir, "..");
   const dashboardDist = join(projectRoot, "dashboard", "dist");
@@ -159,32 +222,7 @@ function initialize(input: PluginInput): StatsState {
     `Dashboard dist path: ${dashboardDist} (exists: ${existsSync(dashboardDist)})`,
   );
 
-  app.use("/assets/*", serveStatic({ root: dashboardDist }));
-
-  // Stats REST endpoints
-  const statsRegistrar = createStatsHandler(db);
-  statsRegistrar(app);
-
-  // SSE stream endpoint
-  const streamHandler = createStreamHandler(broadcaster);
-  app.get("/api/v1/events/stream", (c) => streamHandler(c.req.raw));
-
-  // SPA fallback — serve index.html for non-API routes
-  const indexPath = join(dashboardDist, "index.html");
-  log(
-    input,
-    `SPA fallback — indexPath: ${indexPath} (exists: ${existsSync(indexPath)})`,
-  );
-  const indexHtml = existsSync(indexPath)
-    ? readFileSync(indexPath, "utf-8")
-    : null;
-  app.get("*", (c) => {
-    if (indexHtml) return c.html(indexHtml);
-    return c.text(
-      `Dashboard not built. Run: bun run build:dashboard\n\nDebug: indexPath=${indexPath}, exists=false`,
-      404,
-    );
-  });
+  const app = createApp({ db, broadcaster, dashboardDist });
 
   // 6. Start HTTP server
   const server = Bun.serve({
@@ -198,24 +236,62 @@ function initialize(input: PluginInput): StatsState {
   return { db, eventStore, projectionEngine, broadcaster, server };
 }
 
+/**
+ * Initialize-once with a promise lock to guard against concurrent first-touch
+ * (multiple hook invocations racing before `state` is set).
+ */
+async function ensureInitialized(input: PluginInput): Promise<StatsState> {
+  if (state) return state;
+  if (!initPromise) {
+    initPromise = Promise.resolve().then(() => {
+      state = initialize(input);
+      return state;
+    });
+  }
+  return initPromise;
+}
+
+/**
+ * Release all owned resources. Safe to call multiple times.
+ */
+async function dispose(input: PluginInput): Promise<void> {
+  const s = state;
+  if (!s) return;
+  state = null;
+  initPromise = null;
+
+  try {
+    s.server?.stop();
+  } catch (err) {
+    logError(input, "server.stop failed", err);
+  }
+  try {
+    s.db.close();
+  } catch (err) {
+    logError(input, "db.close failed", err);
+  }
+  log(input, "Disposed");
+}
+
 // ============================================================================
 // Plugin Definition
 // ============================================================================
 
 const StatsPlugin: Plugin = async (input) => {
-  // Lazily initialize on first call
-  if (!state) {
-    state = initialize(input);
-  }
-
-  const { eventStore, projectionEngine, broadcaster } = state;
+  await ensureInitialized(input);
 
   const hooks: Hooks = {
+    dispose: () => dispose(input),
+
     // Generic event handler — covers session, message, file events
     event: async ({ event }) => {
-      const statsEvent = convertEvent(event, input.directory);
-      if (statsEvent) {
-        processEvent(statsEvent, eventStore, projectionEngine, broadcaster);
+      try {
+        const statsEvent = convertEvent(event, input.directory);
+        if (statsEvent) {
+          processEvent(statsEvent, input);
+        }
+      } catch (err) {
+        logError(input, `convertEvent failed for ${event.type}`, err);
       }
     },
 
@@ -224,12 +300,16 @@ const StatsPlugin: Plugin = async (input) => {
       toolInput: ToolEventInput,
       toolOutput: ToolEventOutput,
     ) => {
-      const statsEvent = convertToolEvent(
-        toolInput,
-        toolOutput,
-        input.directory,
-      );
-      processEvent(statsEvent, eventStore, projectionEngine, broadcaster);
+      try {
+        const statsEvent = convertToolEvent(
+          toolInput,
+          toolOutput,
+          input.directory,
+        );
+        processEvent(statsEvent, input);
+      } catch (err) {
+        logError(input, "convertToolEvent failed", err);
+      }
     },
   };
 

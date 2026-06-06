@@ -132,11 +132,18 @@ export class ProjectionEngine {
 
     try {
       txn();
+      // Mark as processed only after a successful commit so failed events
+      // can be retried (e.g. transient SQLite lock).
       this.processedEvents.add(event.event_id);
-    } catch {}
-
-    // Mark as processed only after successful commit
-    this.processedEvents.add(event.event_id);
+    } catch (err) {
+      // Surface the failure so it is debuggable; do NOT rethrow — callers
+      // (and existing tests) rely on processEvent not propagating handler
+      // errors so that subsequent events still get processed.
+      console.error(
+        `[projection] handler failed for event ${event.event_id} (${event.event_type}):`,
+        err,
+      );
+    }
   }
 
   // =========================================================================
