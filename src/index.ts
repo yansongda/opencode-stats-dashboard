@@ -16,9 +16,10 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { createStatsHandler } from "@api/stats";
 import { createStreamHandler } from "@api/stream";
-import { convertEvent, convertToolEvent } from "@event/converter";
 import { configurePragmas, runMigrations } from "@db/schema";
-import type { StatsEvent } from "@defs/events";
+import type { StatsEvent, ToolEventInput, ToolEventOutput } from "@defs/events";
+import type { SSEAction, SSEEventType, StatsUpdate } from "@defs/sse";
+import { convertEvent, convertToolEvent } from "@event/converter";
 import type { Hooks, Plugin, PluginInput } from "@opencode-ai/plugin";
 import { DailyProjectionHandler } from "@projection/daily";
 import { ProjectionEngine } from "@projection/engine";
@@ -69,58 +70,37 @@ function processEvent(
   projectionEngine.processEvent(event);
 
   const statsUpdate = buildStatsUpdate(event);
-  broadcaster.broadcast(statsUpdate as unknown as Record<string, unknown>);
+  broadcaster.broadcast(statsUpdate);
 }
 
 /**
  * Build a lightweight stats update for SSE broadcast.
  * Mirrors buildStatsUpdate from api/stream.ts to avoid circular dependency.
  */
-function buildStatsUpdate(event: StatsEvent): Record<string, unknown> {
-  const base: Record<string, unknown> = {
+const EVENT_TYPE_MAP: Record<
+  string,
+  { type: SSEEventType; action: SSEAction }
+> = {
+  "session.created": { type: "session", action: "created" },
+  "session.deleted": { type: "session", action: "deleted" },
+  "tool.completed": { type: "tool", action: "updated" },
+  "file.edited": { type: "file", action: "updated" },
+};
+
+function buildStatsUpdate(event: StatsEvent): StatsUpdate {
+  const sessionId = "session_id" in event ? event.session_id : "";
+  const mapped = EVENT_TYPE_MAP[event.event_type] ?? {
+    type: "session" as SSEEventType,
+    action: "updated" as SSEAction,
+  };
+
+  return {
     event_id: event.event_id,
     timestamp: new Date().toISOString(),
+    session_id: sessionId,
+    ...mapped,
+    ...(event.event_type === "tool.completed" && { delta: { tool_calls: 1 } }),
   };
-  const sessionId = "session_id" in event ? event.session_id : "";
-
-  switch (event.event_type) {
-    case "session.created":
-      return {
-        ...base,
-        type: "session",
-        action: "created",
-        session_id: sessionId,
-      };
-    case "session.deleted":
-      return {
-        ...base,
-        type: "session",
-        action: "deleted",
-        session_id: sessionId,
-      };
-    case "tool.completed":
-      return {
-        ...base,
-        type: "tool",
-        action: "updated",
-        session_id: sessionId,
-        delta: { tool_calls: 1 },
-      };
-    case "file.edited":
-      return {
-        ...base,
-        type: "file",
-        action: "updated",
-        session_id: sessionId,
-      };
-    default:
-      return {
-        ...base,
-        type: "session",
-        action: "updated",
-        session_id: sessionId,
-      };
-  }
 }
 
 // ============================================================================
@@ -195,13 +175,13 @@ function initialize(input: PluginInput): StatsState {
     input,
     `SPA fallback — indexPath: ${indexPath} (exists: ${existsSync(indexPath)})`,
   );
+  const indexHtml = existsSync(indexPath)
+    ? readFileSync(indexPath, "utf-8")
+    : null;
   app.get("*", (c) => {
-    if (existsSync(indexPath)) {
-      const html = readFileSync(indexPath, "utf-8");
-      return c.html(html);
-    }
+    if (indexHtml) return c.html(indexHtml);
     return c.text(
-      `Dashboard not built. Run: bun run build:dashboard\n\nDebug: indexPath=${indexPath}, exists=${existsSync(indexPath)}`,
+      `Dashboard not built. Run: bun run build:dashboard\n\nDebug: indexPath=${indexPath}, exists=false`,
       404,
     );
   });
@@ -240,10 +220,13 @@ const StatsPlugin: Plugin = async (input) => {
     },
 
     // Tool-specific hook — receives structured tool execution data
-    "tool.execute.after": async (toolInput, toolOutput) => {
+    "tool.execute.after": async (
+      toolInput: ToolEventInput,
+      toolOutput: ToolEventOutput,
+    ) => {
       const statsEvent = convertToolEvent(
-        toolInput as { tool: string; sessionID: string; callID: string },
-        toolOutput as { title: string; metadata: Record<string, unknown> },
+        toolInput,
+        toolOutput,
         input.directory,
       );
       processEvent(statsEvent, eventStore, projectionEngine, broadcaster);
@@ -255,4 +238,3 @@ const StatsPlugin: Plugin = async (input) => {
 
 export default StatsPlugin;
 export type { Hooks, Plugin, PluginInput };
-export { StatsPlugin };

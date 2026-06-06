@@ -1,6 +1,6 @@
 import type { SessionErrorEvent } from "@defs/events";
-import type { EventSessionError } from "@opencode-ai/sdk";
 import { createBaseEvent } from "@event/utils";
+import type { EventSessionError } from "@opencode-ai/sdk";
 
 export const eventType = "session.error";
 

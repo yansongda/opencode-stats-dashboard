@@ -1,3 +1,5 @@
+import type { StatsUpdate } from "@defs/sse";
+
 /**
  * SSE (Server-Sent Events) broadcaster for real-time stats updates.
  *
@@ -105,7 +107,7 @@ export class SSEBroadcaster {
     }
   }
 
-  broadcast(data: Record<string, unknown>): void {
+  broadcast(data: StatsUpdate): void {
     const frame = encodeSSEFrame(data);
     const dead: number[] = [];
 
@@ -166,8 +168,8 @@ export class SSEBroadcaster {
   }
 }
 
-function encodeSSEFrame(data: Record<string, unknown>): Uint8Array {
-  const eventId = (data.event_id as string) ?? "unknown";
+function encodeSSEFrame(data: StatsUpdate): Uint8Array {
+  const eventId = data.event_id ?? "unknown";
   const json = JSON.stringify(data);
   const frame = `event: stats-update\nid: ${eventId}\ndata: ${json}\n\n`;
   return new TextEncoder().encode(frame);

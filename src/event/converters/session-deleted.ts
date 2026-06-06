@@ -1,6 +1,6 @@
 import type { SessionDeletedEvent } from "@defs/events";
-import type { EventSessionDeleted } from "@opencode-ai/sdk";
 import { createBaseEvent } from "@event/utils";
+import type { EventSessionDeleted } from "@opencode-ai/sdk";
 
 export const eventType = "session.deleted";
 

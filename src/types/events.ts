@@ -134,6 +134,25 @@ export type EventContents =
   | AgentCompletedContents;
 
 // ============================================================================
+// Tool Event Input/Output Types
+// ============================================================================
+
+/** Input from tool.execute.after hook */
+export interface ToolEventInput {
+  tool: string;
+  sessionID: string;
+  callID: string;
+  args: unknown;
+}
+
+/** Output from tool.execute.after hook */
+export interface ToolEventOutput {
+  title: string;
+  output: string;
+  metadata: Record<string, unknown>;
+}
+
+// ============================================================================
 // Stats Event Types
 // ============================================================================
 

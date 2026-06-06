@@ -1,9 +1,14 @@
 import { readdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
-import type { StatsEvent, ToolCompletedEvent } from "@defs/events";
-import type { Event } from "@opencode-ai/sdk";
+import type {
+  StatsEvent,
+  ToolCompletedEvent,
+  ToolEventInput,
+  ToolEventOutput,
+} from "@defs/events";
 import { createBaseEvent } from "@event/utils";
+import type { Event } from "@opencode-ai/sdk";
 
 interface ConverterModule {
   eventType: string;
@@ -37,8 +42,8 @@ export function convertEvent(
 }
 
 export function convertToolEvent(
-  input: { tool: string; sessionID: string; callID: string },
-  output: { title: string; metadata: Record<string, unknown> },
+  input: ToolEventInput,
+  output: ToolEventOutput,
   directory: string,
 ): ToolCompletedEvent {
   const m = output.metadata;

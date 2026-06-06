@@ -1,6 +1,6 @@
 import type { SessionCreatedEvent } from "@defs/events";
-import type { EventSessionCreated } from "@opencode-ai/sdk";
 import { createBaseEvent } from "@event/utils";
+import type { EventSessionCreated } from "@opencode-ai/sdk";
 
 export const eventType = "session.created";
 
