@@ -13,10 +13,10 @@
 import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { extname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { createStatsHandler } from "@api/stats";
 import { createStreamHandler } from "@api/stream";
-import { convertEvent, convertToolEvent } from "@converter/index";
+import { convertEvent, convertToolEvent } from "@event/converter";
 import { configurePragmas, runMigrations } from "@db/schema";
 import type { StatsEvent } from "@defs/events";
 import type { Hooks, Plugin, PluginInput } from "@opencode-ai/plugin";
@@ -27,6 +27,7 @@ import { toolCallHandler } from "@projection/tool-calls";
 import { SSEBroadcaster } from "@sse/broadcaster";
 import { EventStore } from "@store/event";
 import { Hono } from "hono";
+import { serveStatic } from "hono/bun";
 
 // ============================================================================
 // Internal State
@@ -178,29 +179,7 @@ function initialize(input: PluginInput): StatsState {
     `Dashboard dist path: ${dashboardDist} (exists: ${existsSync(dashboardDist)})`,
   );
 
-  const mimeTypes: Record<string, string> = {
-    ".js": "application/javascript",
-    ".css": "text/css",
-    ".html": "text/html",
-    ".json": "application/json",
-    ".svg": "image/svg+xml",
-    ".png": "image/png",
-    ".ico": "image/x-icon",
-  };
-
-  app.get("/assets/*", (c) => {
-    const reqPath = c.req.path;
-    const filePath = join(dashboardDist, reqPath);
-    if (existsSync(filePath)) {
-      const ext = extname(filePath);
-      const contentType = mimeTypes[ext] ?? "application/octet-stream";
-      const content = readFileSync(filePath);
-      return new Response(content, {
-        headers: { "Content-Type": contentType },
-      });
-    }
-    return c.notFound();
-  });
+  app.use("/assets/*", serveStatic({ root: dashboardDist }));
 
   // Stats REST endpoints
   const statsRegistrar = createStatsHandler(db);

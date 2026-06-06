@@ -30,7 +30,7 @@
     "paths": {
       "@/*": ["src/*"],
       "@api/*": ["src/api/*"],
-      "@converter/*": ["src/converter/*"],
+      "@event/*": ["src/event/*"],
       "@db/*": ["src/db/*"],
       "@events/*": ["src/events/*"],
       "@projection/*": ["src/projection/*"],
