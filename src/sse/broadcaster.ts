@@ -32,7 +32,12 @@ interface ClientEntry {
 }
 
 export class SSEBroadcaster {
+  private static readonly encoder = new TextEncoder();
+  private static readonly keepaliveFrame =
+    SSEBroadcaster.encoder.encode(": keepalive\n\n");
+
   private clients = new Map<number, ClientEntry>();
+  private streamToId = new WeakMap<ReadableStream<Uint8Array>, number>();
   private nextId = 1;
   private keepaliveMs: number;
   private connectionTimeoutMs: number;
@@ -66,10 +71,9 @@ export class SSEBroadcaster {
       },
     });
 
-    const keepalive = new TextEncoder().encode(": keepalive\n\n");
     const keepaliveTimer = setInterval(() => {
       try {
-        controller.enqueue(keepalive);
+        controller.enqueue(SSEBroadcaster.keepaliveFrame);
         broadcaster.resetConnectionTimer(id);
       } catch {
         broadcaster.onError?.(
@@ -89,26 +93,26 @@ export class SSEBroadcaster {
       keepaliveTimer,
       connectionTimer,
     });
+    broadcaster.streamToId.set(stream, id);
 
     return stream;
   }
 
   removeClient(client: ReadableStream<Uint8Array>): void {
-    for (const [id, entry] of this.clients) {
-      if (entry.stream === client) {
-        this.cleanupClient(id);
-        try {
-          entry.controller.close();
-        } catch {
-          // Already closed
-        }
-        return;
-      }
+    const id = this.streamToId.get(client);
+    if (id === undefined) return;
+
+    const entry = this.clients.get(id);
+    this.cleanupClient(id);
+    try {
+      entry?.controller.close();
+    } catch {
+      // Already closed
     }
   }
 
   broadcast(data: StatsUpdate): void {
-    const frame = encodeSSEFrame(data);
+    const frame = SSEBroadcaster.encodeSSEFrame(data);
     const dead: number[] = [];
 
     for (const [id, entry] of this.clients) {
@@ -164,13 +168,14 @@ export class SSEBroadcaster {
     if (entry.connectionTimer) {
       clearTimeout(entry.connectionTimer);
     }
+    this.streamToId.delete(entry.stream);
     this.clients.delete(id);
   }
-}
 
-function encodeSSEFrame(data: StatsUpdate): Uint8Array {
-  const eventId = data.event_id ?? "unknown";
-  const json = JSON.stringify(data);
-  const frame = `event: stats-update\nid: ${eventId}\ndata: ${json}\n\n`;
-  return new TextEncoder().encode(frame);
+  private static encodeSSEFrame(data: StatsUpdate): Uint8Array {
+    const eventId = data.event_id ?? "unknown";
+    const json = JSON.stringify(data);
+    const frame = `event: stats-update\nid: ${eventId}\ndata: ${json}\n\n`;
+    return SSEBroadcaster.encoder.encode(frame);
+  }
 }

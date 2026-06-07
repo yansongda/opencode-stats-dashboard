@@ -11,12 +11,15 @@
  *   - Traceability: every event has timestamp + association
  */
 
-import type { Database } from "bun:sqlite";
+import type { Database, SQLQueryBindings, Statement } from "bun:sqlite";
 import type { StatsEvent } from "@defs/events";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
+
+/** SQLite-compatible parameter type — replaces `any` casts for bun:sqlite bindings */
+type SQLiteParam = SQLQueryBindings;
 
 /** Row shape returned by queries against the events table */
 export interface EventRow {
@@ -83,29 +86,23 @@ function buildWhere(filters?: EventQueryFilters): [string, unknown[]] {
 
 export class EventStore {
   private db: Database;
-  private stmtInsert: ReturnType<Database["query"]>;
-  private stmtGetById: ReturnType<Database["query"]>;
+  private stmtInsert: Statement;
+  private stmtGetById: Statement;
+  private queryCache = new Map<string, Statement>();
 
   constructor(db: Database) {
     this.db = db;
 
-    // Prepared statement: INSERT OR IGNORE for idempotent writes
     this.stmtInsert = db.query(`
       INSERT OR IGNORE INTO events
         (event_id, event_type, session_id, timestamp_ms, model, total_tokens, cost_usd, event_contents)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
-    // Prepared statement: single event lookup by PK
     this.stmtGetById = db.query("SELECT * FROM events WHERE event_id = ?");
   }
 
-  /**
-   * Insert a single event. Idempotent — returns false if event_id already exists.
-   *
-   * @returns true if inserted, false if duplicate (ignored)
-   */
-  insertEvent(event: StatsEvent): boolean {
+  private extractParams(event: StatsEvent): SQLiteParam[] {
     const session_id = "session_id" in event ? event.session_id : "";
     const model = "model" in event ? event.model : "";
     const tokens =
@@ -117,7 +114,7 @@ export class EventStore {
     const cost_usd = "cost_usd" in event ? event.cost_usd : 0;
 
     const { event_id, event_type, timestamp_ms, ...rest } = event;
-    const result = this.stmtInsert.run(
+    return [
       event_id,
       event_type,
       session_id,
@@ -126,15 +123,14 @@ export class EventStore {
       tokens,
       cost_usd,
       JSON.stringify(rest),
-    );
+    ];
+  }
+
+  insertEvent(event: StatsEvent): boolean {
+    const result = this.stmtInsert.run(...this.extractParams(event));
     return result.changes === 1;
   }
 
-  /**
-   * Insert multiple events in a single transaction.
-   *
-   * @returns count of events actually inserted (duplicates skipped)
-   */
   insertEvents(events: StatsEvent[]): number {
     if (events.length === 0) return 0;
 
@@ -150,21 +146,19 @@ export class EventStore {
     return inserted;
   }
 
-  /**
-   * Retrieve a single event by its primary key.
-   *
-   * @returns event row or null if not found
-   */
   getEventById(eventId: string): EventRow | null {
     return (this.stmtGetById.get(eventId) as EventRow) ?? null;
   }
 
-  /**
-   * Query events with optional filters.
-   *
-   * Results ordered by timestamp_ms ASC.
-   * Supports limit + offset for pagination.
-   */
+  private getCachedStatement(sql: string): Statement {
+    let stmt = this.queryCache.get(sql);
+    if (!stmt) {
+      stmt = this.db.query(sql);
+      this.queryCache.set(sql, stmt);
+    }
+    return stmt;
+  }
+
   getEvents(filters?: EventQueryFilters): EventRow[] {
     const [whereSql, params] = buildWhere(filters);
 
@@ -179,18 +173,17 @@ export class EventStore {
       params.push(filters.offset);
     }
 
-    // biome-ignore lint/suspicious/noExplicitAny: bun:sqlite API requires specific binding type
-    return this.db.query(sql).all(...(params as any)) as EventRow[];
+    return this.getCachedStatement(sql).all(
+      ...(params as SQLiteParam[]),
+    ) as EventRow[];
   }
 
-  /**
-   * Count events matching optional filters.
-   */
   countEvents(filters?: EventQueryFilters): number {
     const [whereSql, params] = buildWhere(filters);
     const sql = `SELECT COUNT(*) as cnt FROM events${whereSql}`;
-    // biome-ignore lint/suspicious/noExplicitAny: bun:sqlite API requires specific binding type
-    const row = this.db.query(sql).get(...(params as any)) as { cnt: number };
+    const row = this.getCachedStatement(sql).get(
+      ...(params as SQLiteParam[]),
+    ) as { cnt: number };
     return row.cnt;
   }
 }
