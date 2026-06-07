@@ -8,7 +8,6 @@
  *  - tool.completed / tool.failed: update tool stats
  *  - file.edited:      update file stats
  *  - session.error:    increment error_count
- *  - agent.completed:  update agent_usage
  *
  * Design doc: §4.1 — projection_sessions field source mapping.
  *
@@ -16,7 +15,6 @@
  */
 
 import type {
-  AgentCompletedEvent,
   FileEditedEvent,
   MessageUpdatedEvent,
   SessionCreatedEvent,
@@ -30,8 +28,6 @@ import type {
   ToolFailedEvent,
 } from "@defs/events";
 import type {
-  AgentUsage,
-  AgentUsageEntry,
   ModelUsage,
   ModelUsageEntry,
   ProjectionHandler,
@@ -75,25 +71,6 @@ function isModelUsage(data: unknown): data is ModelUsage {
   return true;
 }
 
-function isAgentUsageEntry(data: unknown): data is AgentUsageEntry {
-  if (typeof data !== "object" || data === null) return false;
-  const obj = data as Record<string, unknown>;
-  return (
-    typeof obj.message_count === "number" &&
-    isTokenBreakdown(obj.tokens) &&
-    typeof obj.cost_usd === "number"
-  );
-}
-
-function isAgentUsage(data: unknown): data is AgentUsage {
-  if (typeof data !== "object" || data === null) return false;
-  const obj = data as Record<string, unknown>;
-  for (const key of Object.keys(obj)) {
-    if (!isAgentUsageEntry(obj[key])) return false;
-  }
-  return true;
-}
-
 // ---------------------------------------------------------------------------
 // JSON Parse Helpers (with type guard validation)
 // ---------------------------------------------------------------------------
@@ -103,17 +80,6 @@ function parseModelUsage(json: string | null | undefined): ModelUsage {
   try {
     const parsed: unknown = JSON.parse(json);
     if (isModelUsage(parsed)) return parsed;
-    return {};
-  } catch {
-    return {};
-  }
-}
-
-function parseAgentUsage(json: string | null | undefined): AgentUsage {
-  if (!json) return {};
-  try {
-    const parsed: unknown = JSON.parse(json);
-    if (isAgentUsage(parsed)) return parsed;
     return {};
   } catch {
     return {};
@@ -168,36 +134,6 @@ function updateModelUsage(
   return { ...current, [model]: updated };
 }
 
-function updateAgentUsage(
-  current: AgentUsage,
-  agentName: string,
-  tokens: TokenBreakdown,
-  cost: number,
-): AgentUsage {
-  const existing = current[agentName];
-  const updated: AgentUsageEntry = existing
-    ? {
-        message_count: existing.message_count + 1,
-        tokens: {
-          input: existing.tokens.input + tokens.input,
-          output: existing.tokens.output + tokens.output,
-          reasoning: existing.tokens.reasoning + tokens.reasoning,
-          cache: {
-            read: existing.tokens.cache.read + tokens.cache.read,
-            write: existing.tokens.cache.write + tokens.cache.write,
-          },
-        },
-        cost_usd: existing.cost_usd + cost,
-      }
-    : {
-        message_count: 1,
-        tokens: { ...tokens },
-        cost_usd: cost,
-      };
-
-  return { ...current, [agentName]: updated };
-}
-
 function calculatePrimaryModel(usage: ModelUsage): string | null {
   let best: string | null = null;
   let bestCount = 0;
@@ -205,18 +141,6 @@ function calculatePrimaryModel(usage: ModelUsage): string | null {
     if (entry.message_count > bestCount) {
       bestCount = entry.message_count;
       best = model;
-    }
-  }
-  return best;
-}
-
-function calculatePrimaryAgent(usage: AgentUsage): string | null {
-  let best: string | null = null;
-  let bestCount = 0;
-  for (const [agent, entry] of Object.entries(usage)) {
-    if (entry.message_count > bestCount) {
-      bestCount = entry.message_count;
-      best = agent;
     }
   }
   return best;
@@ -244,8 +168,8 @@ function ensureSessionExists(
     txn.run(
       `INSERT OR IGNORE INTO projection_sessions
         (session_id, project_path, title, status, first_event_at, last_event_at,
-         model_usage, agent_usage, event_count)
-       VALUES (?, ?, '', 'active', ?, ?, '{}', '{}', 0)`,
+         model_usage, event_count)
+       VALUES (?, ?, '', 'active', ?, ?, '{}', 0)`,
       [
         event.session_id,
         event.project_path,
@@ -267,8 +191,8 @@ function handleSessionCreated(
   txn.run(
     `INSERT OR IGNORE INTO projection_sessions
       (session_id, project_path, title, status, first_event_at, last_event_at,
-       model_usage, agent_usage, event_count)
-     VALUES (?, ?, ?, 'active', ?, ?, '{}', '{}', 1)`,
+       model_usage, event_count)
+     VALUES (?, ?, ?, 'active', ?, ?, '{}', 1)`,
     [
       event.session_id,
       event.project_path,
@@ -335,11 +259,9 @@ function handleMessageUpdated(
 
   const row = txn.get<{
     model_usage: string | null;
-    agent_usage: string | null;
-  }>(
-    "SELECT model_usage, agent_usage FROM projection_sessions WHERE session_id = ?",
-    [event.session_id],
-  );
+  }>("SELECT model_usage FROM projection_sessions WHERE session_id = ?", [
+    event.session_id,
+  ]);
   if (!row) return;
 
   const tokens = event.tokens;
@@ -426,56 +348,6 @@ function handleFileEdited(
   // The SDK file.edited event only provides project_path and file_path.
 }
 
-function handleAgentCompleted(
-  event: AgentCompletedEvent,
-  txn: TransactionContext,
-): void {
-  const row = txn.get<{ agent_usage: string | null }>(
-    "SELECT agent_usage FROM projection_sessions WHERE session_id = ?",
-    [event.session_id],
-  );
-  if (!row) return;
-
-  const tokens = event.tokens;
-
-  const agentUsage = parseAgentUsage(row.agent_usage);
-  const updatedAgentUsage = updateAgentUsage(
-    agentUsage,
-    event.agent_name,
-    tokens,
-    event.cost_usd,
-  );
-  const primaryAgent = calculatePrimaryAgent(updatedAgentUsage);
-
-  txn.run(
-    `UPDATE projection_sessions
-     SET agent_usage = ?, primary_agent = ?,
-         total_tokens = total_tokens + ?,
-         input_tokens = input_tokens + ?,
-         output_tokens = output_tokens + ?,
-         reasoning_tokens = reasoning_tokens + ?,
-         cache_read = cache_read + ?,
-         cache_write = cache_write + ?,
-         total_cost_usd = total_cost_usd + ?,
-         last_event_at = ?, duration_ms = ? - first_event_at, event_count = event_count + 1
-     WHERE session_id = ?`,
-    [
-      JSON.stringify(updatedAgentUsage),
-      primaryAgent,
-      totalTokens(tokens),
-      tokens.input,
-      tokens.output,
-      tokens.reasoning,
-      tokens.cache.read,
-      tokens.cache.write,
-      event.cost_usd,
-      event.timestamp_ms,
-      event.timestamp_ms,
-      event.session_id,
-    ],
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Handler Factory
 // ---------------------------------------------------------------------------
@@ -489,7 +361,6 @@ const HANDLED_EVENTS: StatsEventType[] = [
   "tool.completed",
   "tool.failed",
   "file.edited",
-  "agent.completed",
 ];
 
 /**
@@ -530,10 +401,6 @@ export function createSessionProjectionHandler(): ProjectionHandler {
 
         case "file.edited":
           handleFileEdited(event, txn);
-          break;
-
-        case "agent.completed":
-          handleAgentCompleted(event, txn);
           break;
 
         default:

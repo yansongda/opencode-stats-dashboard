@@ -73,16 +73,6 @@ export interface ModelUsageEntry {
 /** Model usage map: model name -> usage stats */
 export type ModelUsage = Record<string, ModelUsageEntry>;
 
-/** Agent usage statistics per agent */
-export interface AgentUsageEntry {
-  message_count: number;
-  tokens: TokenBreakdown;
-  cost_usd: number;
-}
-
-/** Agent usage map: agent name -> usage stats */
-export type AgentUsage = Record<string, AgentUsageEntry>;
-
 // ============================================================================
 // projection_sessions
 // ============================================================================
@@ -132,10 +122,6 @@ export interface ProjectionSession {
   lines_added: number;
   lines_deleted: number;
 
-  // Agent stats
-  primary_agent: string | null;
-  agent_usage: AgentUsage | null;
-
   // Error stats
   error_count: number;
 
@@ -183,9 +169,6 @@ export interface ProjectionDaily {
   files_edited: number;
   lines_added: number;
   lines_deleted: number;
-
-  // Agent stats
-  agent_usage: AgentUsage | null;
 
   // Error stats
   error_count: number;
@@ -281,14 +264,6 @@ export interface DailyAggregateFiles {
   edited: number;
   lines_added: number;
   lines_deleted: number;
-}
-
-/** Daily aggregate agents */
-export interface DailyAggregateAgents {
-  [agent: string]: {
-    sessions: number;
-    tokens: number;
-  };
 }
 
 /** Daily aggregate errors */

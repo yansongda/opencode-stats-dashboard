@@ -19,6 +19,7 @@ import { buildStatsUpdate, createStreamHandler } from "@api/stream";
 import { configurePragmas, runMigrations } from "@db/schema";
 import type { StatsEvent, ToolEventInput, ToolEventOutput } from "@defs/events";
 import { convertEvent, convertToolEvent } from "@event/converter";
+import { tryConvert as tryToolFailed } from "@event/converters/tool-failed";
 import type { Hooks, Plugin, PluginInput } from "@opencode-ai/plugin";
 import { DailyProjectionHandler } from "@projection/daily";
 import { ProjectionEngine } from "@projection/engine";
@@ -29,117 +30,20 @@ import { EventStore } from "@store/event";
 import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
 
-// ============================================================================
-// Internal State
-// ============================================================================
+type AppLog = NonNullable<
+  NonNullable<NonNullable<PluginInput["client"]>["app"]>["log"]
+>;
 
-interface StatsState {
-  db: Database;
-  eventStore: EventStore;
-  projectionEngine: ProjectionEngine;
-  broadcaster: SSEBroadcaster;
-  server: ReturnType<typeof Bun.serve> | null;
-}
-
-let state: StatsState | null = null;
-let initPromise: Promise<StatsState> | null = null;
-
-// ============================================================================
-// Helpers
-// ============================================================================
-
-function log(input: PluginInput, msg: string): void {
-  try {
-    const result = input.client?.app?.log?.({
-      body: { service: "stats-plugin", level: "info", message: msg },
-    });
-    // Surface async errors instead of swallowing them silently.
-    if (result && typeof (result as Promise<unknown>).catch === "function") {
-      (result as Promise<unknown>).catch((err) => {
-        console.error("[stats-plugin] log failed:", err);
-      });
-    }
-  } catch (err) {
-    console.error("[stats-plugin] log threw:", err);
-  }
-}
-
-function logError(input: PluginInput, msg: string, err: unknown): void {
-  const detail =
-    err instanceof Error ? `${err.name}: ${err.message}` : String(err);
-  log(input, `${msg} — ${detail}`);
-  // Always echo to console so failures are visible even if remote log is down.
-  console.error(`[stats-plugin] ${msg}`, err);
-}
-
-/**
- * Process an event through the full pipeline with per-stage error isolation:
- *  1. Insert into EventStore (idempotent)
- *  2. Process through ProjectionEngine
- *  3. Broadcast SSE update
- *
- * A failure in one stage MUST NOT prevent the others from running. In
- * particular, a slow/dead SSE client should never block persistence, and a
- * projection bug should never silence the live broadcast.
- */
-function processEvent(event: StatsEvent, input: PluginInput): void {
-  if (!state) return;
-  const { eventStore, projectionEngine, broadcaster } = state;
-
-  try {
-    eventStore.insertEvent(event);
-  } catch (err) {
-    logError(
-      input,
-      `eventStore.insertEvent failed for ${event.event_type}`,
-      err,
-    );
-  }
-
-  try {
-    projectionEngine.processEvent(event);
-  } catch (err) {
-    logError(
-      input,
-      `projectionEngine.processEvent failed for ${event.event_type}`,
-      err,
-    );
-  }
-
-  try {
-    const statsUpdate = buildStatsUpdate(event);
-    broadcaster.broadcast(statsUpdate);
-  } catch (err) {
-    logError(
-      input,
-      `broadcaster.broadcast failed for ${event.event_type}`,
-      err,
-    );
-  }
-}
-
-// ============================================================================
-// App construction
-// ============================================================================
-
-interface AppDeps {
+/** Build the Hono application. Pure: takes deps, returns app. */
+function createApp({
+  db,
+  broadcaster,
+  dashboardDist,
+}: {
   db: Database;
   broadcaster: SSEBroadcaster;
   dashboardDist: string;
-}
-
-/**
- * Build the Hono application. Pure: takes deps, returns app.
- *
- * Route ordering matters:
- *  1. /assets/*           — dashboard bundles
- *  2. /api/*              — JSON endpoints (stats + SSE stream)
- *  3. catch-all GET *     — SPA fallback (only for non-/api routes)
- *
- * Unknown /api/* requests get a JSON 404 instead of an HTML SPA shell, so
- * frontend fetch errors are debuggable.
- */
-function createApp({ db, broadcaster, dashboardDist }: AppDeps): Hono {
+}): Hono {
   const app = new Hono();
 
   app.use("/assets/*", serveStatic({ root: dashboardDist }));
@@ -169,148 +73,198 @@ function createApp({ db, broadcaster, dashboardDist }: AppDeps): Hono {
   return app;
 }
 
-// ============================================================================
-// Initialization
-// ============================================================================
-
-function initialize(input: PluginInput): StatsState {
-  const defaultDir = join(
-    homedir(),
-    ".local",
-    "share",
-    "opencode-stats-dashboard",
-  );
-  const dbDir = process.env.STATS_DB_DIR ?? defaultDir;
-  const dbPath = process.env.STATS_DB_PATH ?? join(dbDir, "stats.db");
-  const port = Number(process.env.STATS_PORT ?? 11133);
-
-  mkdirSync(dbDir, { recursive: true });
-
-  log(input, `Initializing — db=${dbPath}, port=${port}`);
-
-  // 1. Open SQLite database
-  const db = new Database(dbPath);
-
-  // 2. Configure pragmas and run migrations
-  configurePragmas(db);
-  const applied = runMigrations(db);
-  log(input, `Database ready — applied ${applied} migration(s)`);
-
-  // 3. Create stores and engines
-  const eventStore = new EventStore(db);
-  const projectionEngine = new ProjectionEngine(db);
-  const broadcaster = new SSEBroadcaster();
-
-  // 4. Register projection handlers
-  projectionEngine.registerHandler(
-    "sessions",
-    createSessionProjectionHandler(),
-  );
-  projectionEngine.registerHandler("daily", new DailyProjectionHandler());
-  projectionEngine.registerHandler("tool-calls", toolCallHandler);
-  log(
-    input,
-    `Registered ${projectionEngine.getHandlerNames().length} projection handlers`,
-  );
-
-  // 5. Build the HTTP app
-  // import.meta.dir points to src/ when running src/index.ts
-  const projectRoot = resolve(import.meta.dir, "..");
-  const dashboardDist = join(projectRoot, "dashboard", "dist");
-  log(
-    input,
-    `Dashboard dist path: ${dashboardDist} (exists: ${existsSync(dashboardDist)})`,
-  );
-
-  const app = createApp({ db, broadcaster, dashboardDist });
-
-  // 6. Start HTTP server
-  const server = Bun.serve({
-    port,
-    idleTimeout: 0,
-    fetch: app.fetch,
-  });
-
-  log(input, `HTTP server listening on port ${server.port}`);
-
-  return { db, eventStore, projectionEngine, broadcaster, server };
-}
-
 /**
- * Initialize-once with a promise lock to guard against concurrent first-touch
- * (multiple hook invocations racing before `state` is set).
+ * Owns all plugin state — DB, projection engine, SSE broadcaster, HTTP server,
+ * and the logger. Constructed lazily on first plugin invocation; subsequent
+ * invocations of the exported `StatsPlugin` factory reuse the same instance.
  */
-async function ensureInitialized(input: PluginInput): Promise<StatsState> {
-  if (state) return state;
-  if (!initPromise) {
-    initPromise = Promise.resolve().then(() => {
-      state = initialize(input);
-      return state;
+class StatsPluginInstance {
+  private readonly db: Database;
+  private readonly eventStore: EventStore;
+  private readonly projectionEngine: ProjectionEngine;
+  private readonly broadcaster: SSEBroadcaster;
+  private server: ReturnType<typeof Bun.serve> | null;
+  private appLog: AppLog | undefined;
+
+  constructor(appLog: AppLog | undefined) {
+    this.appLog = appLog;
+
+    const defaultDir = join(
+      homedir(),
+      ".local",
+      "share",
+      "opencode-stats-dashboard",
+    );
+    const dbDir = process.env.STATS_DB_DIR ?? defaultDir;
+    const dbPath = process.env.STATS_DB_PATH ?? join(dbDir, "stats.db");
+    const port = Number(process.env.STATS_PORT ?? 11133);
+
+    mkdirSync(dbDir, { recursive: true });
+
+    this.log("info", `Initializing — db=${dbPath}, port=${port}`);
+
+    this.db = new Database(dbPath);
+    configurePragmas(this.db);
+    const applied = runMigrations(this.db);
+    this.log("info", `Database ready — applied ${applied} migration(s)`);
+
+    this.eventStore = new EventStore(this.db);
+    this.projectionEngine = new ProjectionEngine(this.db);
+    this.broadcaster = new SSEBroadcaster();
+
+    this.projectionEngine.registerHandler(
+      "sessions",
+      createSessionProjectionHandler(),
+    );
+    this.projectionEngine.registerHandler(
+      "daily",
+      new DailyProjectionHandler(),
+    );
+    this.projectionEngine.registerHandler("tool-calls", toolCallHandler);
+    this.log(
+      "info",
+      `Registered ${this.projectionEngine.getHandlerNames().length} projection handlers`,
+    );
+
+    // import.meta.dir points to src/ when running src/index.ts
+    const projectRoot = resolve(import.meta.dir, "..");
+    const dashboardDist = join(projectRoot, "dashboard", "dist");
+    this.log(
+      "info",
+      `Dashboard dist path: ${dashboardDist} (exists: ${existsSync(dashboardDist)})`,
+    );
+
+    const app = createApp({
+      db: this.db,
+      broadcaster: this.broadcaster,
+      dashboardDist,
+    });
+
+    this.server = Bun.serve({ port, idleTimeout: 0, fetch: app.fetch });
+    this.log("info", `HTTP server listening on port ${this.server.port}`);
+  }
+
+  /** Refresh the upstream logger sink. Each plugin invocation may bring a new client. */
+  setAppLog(appLog: AppLog | undefined): void {
+    this.appLog = appLog;
+  }
+
+  log(level: "info" | "error", msg: string, err?: unknown): void {
+    const detail =
+      err === undefined
+        ? msg
+        : err instanceof Error
+          ? `${msg} — ${err.name}: ${err.message}`
+          : `${msg} — ${String(err)}`;
+
+    try {
+      this.appLog?.({
+        body: { service: "stats-plugin", level, message: detail },
+      })?.catch((e: unknown) => {
+        console.error("[stats-plugin] log failed:", e);
+      });
+    } catch (e) {
+      console.error("[stats-plugin] log threw:", e);
+    }
+
+    if (level === "error") {
+      console.error(`[stats-plugin] ${msg}`, err);
+    }
+  }
+
+  /** Wrap a sync block with try/catch + structured error logging. */
+  private safely(desc: string, fn: () => void): void {
+    try {
+      fn();
+    } catch (err) {
+      this.log("error", desc, err);
+    }
+  }
+
+  /**
+   * Process an event through the full pipeline with per-stage error isolation:
+   *  1. Insert into EventStore (idempotent)
+   *  2. Process through ProjectionEngine
+   *  3. Broadcast SSE update
+   *
+   * A failure in one stage MUST NOT prevent the others from running. In
+   * particular, a slow/dead SSE client should never block persistence, and a
+   * projection bug should never silence the live broadcast.
+   */
+  processEvent(event: StatsEvent): void {
+    const tag = event.event_type;
+    this.safely(`eventStore.insertEvent failed for ${tag}`, () =>
+      this.eventStore.insertEvent(event),
+    );
+    this.safely(`projectionEngine.processEvent failed for ${tag}`, () =>
+      this.projectionEngine.processEvent(event),
+    );
+    this.safely(`broadcaster.broadcast failed for ${tag}`, () =>
+      this.broadcaster.broadcast(buildStatsUpdate(event)),
+    );
+  }
+
+  handleEvent(
+    event: Parameters<NonNullable<Hooks["event"]>>[0]["event"],
+    directory: string,
+  ): void {
+    this.safely(`convertEvent failed for ${event.type}`, () => {
+      const statsEvent = convertEvent(event, directory);
+      if (statsEvent) this.processEvent(statsEvent);
+    });
+    this.safely(`tryToolFailed failed for ${event.type}`, () => {
+      const failedEvent = tryToolFailed(event, directory);
+      if (failedEvent) this.processEvent(failedEvent);
     });
   }
-  return initPromise;
+
+  handleToolExecuteAfter(
+    toolInput: ToolEventInput,
+    toolOutput: ToolEventOutput,
+    directory: string,
+  ): void {
+    this.safely("convertToolEvent failed", () => {
+      const event = convertToolEvent(toolInput, toolOutput, directory);
+      this.processEvent(event);
+    });
+  }
+
+  /** Release all owned resources. Safe to call multiple times. */
+  dispose(): void {
+    if (!this.server) return;
+    try {
+      this.server.stop();
+    } catch (err) {
+      this.log("error", "server.stop failed", err);
+    }
+    this.server = null;
+    try {
+      this.db.close();
+    } catch (err) {
+      this.log("error", "db.close failed", err);
+    }
+    this.log("info", "Disposed");
+  }
 }
 
-/**
- * Release all owned resources. Safe to call multiple times.
- */
-async function dispose(input: PluginInput): Promise<void> {
-  const s = state;
-  if (!s) return;
-  state = null;
-  initPromise = null;
-
-  try {
-    s.server?.stop();
-  } catch (err) {
-    logError(input, "server.stop failed", err);
-  }
-  try {
-    s.db.close();
-  } catch (err) {
-    logError(input, "db.close failed", err);
-  }
-  log(input, "Disposed");
-}
-
-// ============================================================================
-// Plugin Definition
-// ============================================================================
+let instance: StatsPluginInstance | null = null;
 
 const StatsPlugin: Plugin = async (input) => {
-  await ensureInitialized(input);
+  if (!instance) {
+    instance = new StatsPluginInstance(input.client?.app?.log);
+  } else {
+    instance.setAppLog(input.client?.app?.log);
+  }
+  const self = instance;
 
   const hooks: Hooks = {
-    dispose: () => dispose(input),
-
-    // Generic event handler — covers session, message, file events
-    event: async ({ event }) => {
-      try {
-        const statsEvent = convertEvent(event, input.directory);
-        if (statsEvent) {
-          processEvent(statsEvent, input);
-        }
-      } catch (err) {
-        logError(input, `convertEvent failed for ${event.type}`, err);
-      }
+    dispose: async () => {
+      self.dispose();
+      instance = null;
     },
-
-    // Tool-specific hook — receives structured tool execution data
-    "tool.execute.after": async (
-      toolInput: ToolEventInput,
-      toolOutput: ToolEventOutput,
-    ) => {
-      try {
-        const statsEvent = convertToolEvent(
-          toolInput,
-          toolOutput,
-          input.directory,
-        );
-        processEvent(statsEvent, input);
-      } catch (err) {
-        logError(input, "convertToolEvent failed", err);
-      }
-    },
+    event: async ({ event }) => self.handleEvent(event, input.directory),
+    "tool.execute.after": async (toolInput, toolOutput) =>
+      self.handleToolExecuteAfter(toolInput, toolOutput, input.directory),
   };
 
   return hooks;

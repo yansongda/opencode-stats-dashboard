@@ -4,7 +4,7 @@
  * REST API endpoints for querying stats, sessions, tools, models, and projects.
  */
 
-import type { AgentUsage, ModelUsage } from "@defs/projections";
+import type { ModelUsage } from "@defs/projections";
 import type { Hono } from "hono";
 
 // ============================================================================
@@ -192,10 +192,6 @@ export interface SessionDetail extends SessionListItem {
   files_edited: number;
   lines_added: number;
   lines_deleted: number;
-
-  // Agent stats
-  primary_agent: string | null;
-  agent_usage: AgentUsage | null;
 
   // Error stats
   error_count: number;

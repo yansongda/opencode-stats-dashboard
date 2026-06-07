@@ -2,8 +2,12 @@
  * projection_tool_calls handler — tracks individual tool call lifecycle.
  *
  * Processes:
- *  - tool.completed  → INSERT/UPDATE row with status='completed', duration, tokens, cost
- *  - tool.failed     → UPDATE row with status='error', error_message
+ *  - tool.completed  → INSERT (or UPDATE) row with status='completed'
+ *  - tool.failed     → INSERT (or UPDATE) row with status='error'
+ *
+ * Both handlers self-INSERT when no prior row exists, because the upstream
+ * SDK does not emit a tool.started event — tool.failed is derived from
+ * message.part.updated where state.status === "error" (no preamble).
  *
  * Design doc: §4.3 projection_tool_calls
  */
@@ -99,16 +103,31 @@ function handleToolFailed(
   txn: TransactionContext,
 ): void {
   const callId = event.call_id;
+  const errorMessage = event.error_message;
+  const durationMs = event.duration_ms;
 
-  // Check if the tool call record exists
   const existing = txn.get(
     "SELECT call_id FROM projection_tool_calls WHERE call_id = ?",
     [callId],
   );
-  if (!existing) return;
 
-  const errorMessage = event.error_message;
-  const durationMs = event.duration_ms;
+  if (!existing) {
+    txn.run(
+      `INSERT OR IGNORE INTO projection_tool_calls
+         (call_id, session_id, tool_name, status, started_at, completed_at, duration_ms, error_message)
+       VALUES (?, ?, ?, 'error', ?, ?, ?, ?)`,
+      [
+        callId,
+        event.session_id,
+        event.tool_name,
+        event.timestamp_ms,
+        event.timestamp_ms,
+        durationMs || null,
+        errorMessage,
+      ],
+    );
+    return;
+  }
 
   txn.run(
     `UPDATE projection_tool_calls

@@ -1,9 +1,13 @@
 /**
  * Event type definitions for the Event-Sourced Stats Engine.
  *
- * Covers the 9 event types actually used by the stats plugin:
- * session.created, session.deleted, session.error, session.diff,
- * message.updated, tool.completed, tool.failed, file.edited, agent.completed
+ * Each event maps 1:1 to an upstream opencode SDK event. We deliberately
+ * do NOT synthesize derived events; every StatsEvent must trace back to a
+ * concrete SDK Event delivered via a plugin hook.
+ *
+ * Covers 8 event types:
+ *   session.created, session.deleted, session.error, session.diff,
+ *   message.updated, tool.completed, tool.failed, file.edited
  */
 
 // ============================================================================
@@ -27,11 +31,8 @@ export type ToolStatus = "started" | "completed" | "failed";
 /** Session status */
 export type SessionStatus = "active" | "deleted";
 
-/** Agent role */
-export type AgentRole = "user" | "assistant" | "system";
-
 // ============================================================================
-// Event Type Union (9 types actually used)
+// Event Type Union (8 types, each maps 1:1 to an SDK event)
 // ============================================================================
 
 export type EventType =
@@ -42,8 +43,7 @@ export type EventType =
   | "message.updated"
   | "tool.completed"
   | "tool.failed"
-  | "file.edited"
-  | "agent.completed";
+  | "file.edited";
 
 // ============================================================================
 // Tool Event Input/Output Types
@@ -188,21 +188,6 @@ export interface FileEditedEvent extends BaseStatsEvent {
   file_path: string;
 }
 
-/** Agent completed */
-export interface AgentCompletedEvent extends BaseStatsEvent {
-  event_type: "agent.completed";
-  /** ← event.properties.sessionID */
-  session_id: string;
-  /** ← input.directory */
-  project_path: string;
-  /** ← event.properties.agent.name */
-  agent_name: string;
-  /** ← event.properties.tokens */
-  tokens: TokenBreakdown;
-  /** ← event.properties.cost_usd ?? 0 */
-  cost_usd: number;
-}
-
 /** Union of all stats event types */
 export type StatsEvent =
   | SessionCreatedEvent
@@ -212,8 +197,7 @@ export type StatsEvent =
   | MessageUpdatedEvent
   | ToolCompletedEvent
   | ToolFailedEvent
-  | FileEditedEvent
-  | AgentCompletedEvent;
+  | FileEditedEvent;
 
 /** Extracted union of all event_type literal values */
 export type StatsEventType = StatsEvent["event_type"];

@@ -224,10 +224,6 @@
             <span class="detail-value">{{ selectedDetail.primary_model ?? '—' }}</span>
           </div>
           <div class="detail-item">
-            <span class="detail-label">Agent</span>
-            <span class="detail-value">{{ selectedDetail.primary_agent ?? '—' }}</span>
-          </div>
-          <div class="detail-item">
             <span class="detail-label">状态</span>
             <span class="detail-value"><StatusBadge :status="selectedDetail.status" /></span>
           </div>

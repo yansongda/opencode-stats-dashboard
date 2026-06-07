@@ -1,6 +1,5 @@
 import type {
   StatsEvent,
-  TokenBreakdown,
   ToolCompletedEvent,
   ToolEventInput,
   ToolEventOutput,
@@ -11,7 +10,7 @@ import * as sessionCreated from "@event/converters/session-created";
 import * as sessionDeleted from "@event/converters/session-deleted";
 import * as sessionDiff from "@event/converters/session-diff";
 import * as sessionError from "@event/converters/session-error";
-import { createBaseEvent } from "@event/utils";
+import { createBaseEvent, normalizeTokens } from "@event/utils";
 import type { Event } from "@opencode-ai/sdk";
 
 type ConvertFn = (event: Event, directory: string) => StatsEvent | null;
@@ -25,35 +24,16 @@ const REGISTERED = [
   sessionError,
 ] as const;
 
-const converters: Record<string, ConvertFn> = {};
-for (const m of REGISTERED) {
-  converters[m.eventType] = m.convert as ConvertFn;
-}
+const converters = new Map<string, ConvertFn>(
+  REGISTERED.map((m) => [m.eventType, m.convert as ConvertFn]),
+);
 
 export function convertEvent(
   event: Event,
   directory: string,
 ): StatsEvent | null {
-  const fn = converters[event.type];
+  const fn = converters.get(event.type);
   return fn ? fn(event, directory) : null;
-}
-
-function normalizeTokens(value: unknown): TokenBreakdown | undefined {
-  if (!value || typeof value !== "object") return undefined;
-  const t = value as Record<string, unknown>;
-  const cacheRaw =
-    t.cache && typeof t.cache === "object"
-      ? (t.cache as Record<string, unknown>)
-      : {};
-  return {
-    input: typeof t.input === "number" ? t.input : 0,
-    output: typeof t.output === "number" ? t.output : 0,
-    reasoning: typeof t.reasoning === "number" ? t.reasoning : 0,
-    cache: {
-      read: typeof cacheRaw.read === "number" ? cacheRaw.read : 0,
-      write: typeof cacheRaw.write === "number" ? cacheRaw.write : 0,
-    },
-  };
 }
 
 export function convertToolEvent(

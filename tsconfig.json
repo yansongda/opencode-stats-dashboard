@@ -32,7 +32,6 @@
       "@api/*": ["src/api/*"],
       "@event/*": ["src/event/*"],
       "@db/*": ["src/db/*"],
-      "@events/*": ["src/events/*"],
       "@projection/*": ["src/projection/*"],
       "@snapshot/*": ["src/snapshot/*"],
       "@sse/*": ["src/sse/*"],

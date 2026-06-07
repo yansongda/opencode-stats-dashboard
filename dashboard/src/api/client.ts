@@ -303,7 +303,6 @@ export interface SessionDetail {
   title: string | null
   status: 'active' | 'deleted'
   primary_model: string | null
-  primary_agent: string | null
   total_tokens: number
   input_tokens: number
   output_tokens: number
@@ -324,7 +323,6 @@ export interface SessionDetail {
   lines_deleted: number
   error_count: number
   model_usage: Record<string, unknown> | null
-  agent_usage: Record<string, unknown> | null
 }
 
 // ── New Stats API Client ─────────────────────────────────────────────

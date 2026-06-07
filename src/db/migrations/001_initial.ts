@@ -60,8 +60,6 @@ export function up(db: Database): void {
       files_edited              INTEGER DEFAULT 0,
       lines_added               INTEGER DEFAULT 0,
       lines_deleted             INTEGER DEFAULT 0,
-      primary_agent             TEXT,
-      agent_usage               TEXT,
       error_count               INTEGER DEFAULT 0,
       projected_at              DATETIME DEFAULT CURRENT_TIMESTAMP,
       event_count               INTEGER DEFAULT 0
@@ -91,7 +89,6 @@ export function up(db: Database): void {
       files_edited        INTEGER DEFAULT 0,
       lines_added         INTEGER DEFAULT 0,
       lines_deleted       INTEGER DEFAULT 0,
-      agent_usage         TEXT,
       error_count         INTEGER DEFAULT 0,
       projected_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
       event_count         INTEGER DEFAULT 0,

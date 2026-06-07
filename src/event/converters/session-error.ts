@@ -20,8 +20,6 @@ export const convert = (
     project_path: directory,
     error_type: err?.name ?? "unknown",
     error_message:
-      typeof errorData?.message === "string"
-        ? (errorData.message as string)
-        : "",
+      typeof errorData?.message === "string" ? errorData.message : "",
   };
 };
