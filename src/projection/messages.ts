@@ -36,7 +36,7 @@ export class MessagesProjectionHandler implements ProjectionHandler {
     const total = totalTokens(e.tokens);
 
     txn.run(
-      `INSERT OR IGNORE INTO messages (
+      `INSERT OR REPLACE INTO messages (
         message_id, event_id, session_id, project_path, model, role, agent,
         input_tokens, output_tokens, reasoning_tokens, cache_read, cache_write, total_tokens,
         cost_usd, lines_added, lines_deleted, files_changed,
