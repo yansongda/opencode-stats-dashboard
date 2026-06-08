@@ -3,7 +3,7 @@ import type { BaseStatsEvent, TokenBreakdown } from "@defs/events";
 export function createBaseEvent(): BaseStatsEvent {
   return {
     event_id: crypto.randomUUID(),
-    timestamp_ms: Date.now(),
+    created_at_ms: Date.now(),
   };
 }
 

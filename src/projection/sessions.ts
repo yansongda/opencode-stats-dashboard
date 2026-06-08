@@ -26,7 +26,7 @@ import type {
   StatsEvent,
   StatsEventType,
   TokenBreakdown,
-  ToolCompletedEvent,
+  ToolExecuteAfterEvent,
   ToolFailedEvent,
 } from "@defs/events";
 import type {
@@ -155,7 +155,7 @@ function calculatePrimaryModel(usage: ModelUsage): string | null {
 interface SessionIdentifiers {
   session_id: string;
   project_path: string;
-  timestamp_ms: number;
+  created_at_ms: number;
 }
 
 function ensureSessionExists(
@@ -175,8 +175,8 @@ function ensureSessionExists(
       [
         event.session_id,
         event.project_path,
-        event.timestamp_ms,
-        event.timestamp_ms,
+        event.created_at_ms,
+        event.created_at_ms,
       ],
     );
   }
@@ -199,8 +199,8 @@ function handleSessionCreated(
       event.session_id,
       event.project_path,
       event.title,
-      event.timestamp_ms,
-      event.timestamp_ms,
+      event.created_at_ms,
+      event.created_at_ms,
     ],
   );
 }
@@ -213,7 +213,7 @@ function handleSessionUpdated(
     `UPDATE projection_sessions
      SET title = ?, last_event_at = ?, duration_ms = ? - first_event_at, event_count = event_count + 1
      WHERE session_id = ?`,
-    [event.title, event.timestamp_ms, event.timestamp_ms, event.session_id],
+    [event.title, event.created_at_ms, event.created_at_ms, event.session_id],
   );
 }
 
@@ -226,9 +226,9 @@ function handleSessionDeleted(
      SET status = 'deleted', deleted_at = ?, last_event_at = ?, duration_ms = ? - first_event_at, event_count = event_count + 1
      WHERE session_id = ?`,
     [
-      event.timestamp_ms,
-      event.timestamp_ms,
-      event.timestamp_ms,
+      event.created_at_ms,
+      event.created_at_ms,
+      event.created_at_ms,
       event.session_id,
     ],
   );
@@ -242,7 +242,7 @@ function handleSessionError(
     `UPDATE projection_sessions
      SET error_count = error_count + 1, last_event_at = ?, duration_ms = ? - first_event_at, event_count = event_count + 1
      WHERE session_id = ?`,
-    [event.timestamp_ms, event.timestamp_ms, event.session_id],
+    [event.created_at_ms, event.created_at_ms, event.session_id],
   );
 }
 
@@ -258,8 +258,8 @@ function handleSessionDiff(
     [
       event.lines_added,
       event.lines_deleted,
-      event.timestamp_ms,
-      event.timestamp_ms,
+      event.created_at_ms,
+      event.created_at_ms,
       event.session_id,
     ],
   );
@@ -286,7 +286,7 @@ function handleMessageUpdated(
        SET user_message_count = user_message_count + 1,
            last_event_at = ?, duration_ms = ? - first_event_at, event_count = event_count + 1
        WHERE session_id = ?`,
-      [event.timestamp_ms, event.timestamp_ms, event.session_id],
+      [event.created_at_ms, event.created_at_ms, event.session_id],
     );
   } else if (event.role === "assistant") {
     const modelUsage = parseModelUsage(row.model_usage);
@@ -322,8 +322,8 @@ function handleMessageUpdated(
         event.cost_usd,
         JSON.stringify(updatedModelUsage),
         primaryModel,
-        event.timestamp_ms,
-        event.timestamp_ms,
+        event.created_at_ms,
+        event.created_at_ms,
         event.session_id,
       ],
     );
@@ -331,7 +331,7 @@ function handleMessageUpdated(
 }
 
 function handleToolExecuteAfter(
-  event: ToolCompletedEvent | ToolFailedEvent,
+  event: ToolExecuteAfterEvent | ToolFailedEvent,
   txn: TransactionContext,
 ): void {
   ensureSessionExists(event, txn);
@@ -342,14 +342,14 @@ function handleToolExecuteAfter(
       `UPDATE projection_sessions
        SET tool_call_count = tool_call_count + 1, tool_error_count = tool_error_count + 1, last_event_at = ?, duration_ms = ? - first_event_at, event_count = event_count + 1
        WHERE session_id = ?`,
-      [event.timestamp_ms, event.timestamp_ms, event.session_id],
+      [event.created_at_ms, event.created_at_ms, event.session_id],
     );
   } else {
     txn.run(
       `UPDATE projection_sessions
        SET tool_call_count = tool_call_count + 1, last_event_at = ?, duration_ms = ? - first_event_at, event_count = event_count + 1
        WHERE session_id = ?`,
-      [event.timestamp_ms, event.timestamp_ms, event.session_id],
+      [event.created_at_ms, event.created_at_ms, event.session_id],
     );
   }
 }
@@ -373,7 +373,7 @@ const HANDLED_EVENTS: StatsEventType[] = [
   "session.error",
   "session.diff",
   "message.updated",
-  "tool.completed",
+  "tool.execute.after",
   "tool.failed",
   "file.edited",
 ];
@@ -413,7 +413,7 @@ export function createSessionProjectionHandler(): ProjectionHandler {
           handleMessageUpdated(event, txn);
           break;
 
-        case "tool.completed":
+        case "tool.execute.after":
         case "tool.failed":
           handleToolExecuteAfter(event, txn);
           break;

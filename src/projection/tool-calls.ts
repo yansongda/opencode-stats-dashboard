@@ -2,12 +2,9 @@
  * projection_tool_calls handler — tracks individual tool call lifecycle.
  *
  * Processes:
- *  - tool.completed  → INSERT (or UPDATE) row with status='completed'
- *  - tool.failed     → INSERT (or UPDATE) row with status='error'
- *
- * Both handlers self-INSERT when no prior row exists, because the upstream
- * SDK does not emit a tool.started event — tool.failed is derived from
- * message.part.updated where state.status === "error" (no preamble).
+ *  - tool.execute.before → INSERT row with started_at timestamp
+ *  - tool.execute.after  → UPDATE row with status='completed'
+ *  - tool.failed         → UPDATE row with status='error'
  *
  * Design doc: §4.3 projection_tool_calls
  */
@@ -15,7 +12,8 @@
 import type {
   StatsEvent,
   StatsEventType,
-  ToolCompletedEvent,
+  ToolExecuteAfterEvent,
+  ToolExecuteBeforeEvent,
   ToolFailedEvent,
 } from "@defs/events";
 import type { ProjectionHandler, TransactionContext } from "@defs/projections";
@@ -24,21 +22,26 @@ import type { ProjectionHandler, TransactionContext } from "@defs/projections";
 // Event Handlers
 // ---------------------------------------------------------------------------
 
-function handleToolCompleted(
-  event: ToolCompletedEvent,
+function handleToolExecuteBefore(
+  event: ToolExecuteBeforeEvent,
+  txn: TransactionContext,
+): void {
+  txn.run(
+    `INSERT OR IGNORE INTO projection_tool_calls
+       (call_id, session_id, tool_name, status, started_at)
+     VALUES (?, ?, ?, 'running', ?)`,
+    [event.call_id, event.session_id, event.tool_name, event.created_at_ms],
+  );
+}
+
+function handleToolExecuteAfter(
+  event: ToolExecuteAfterEvent,
   txn: TransactionContext,
 ): void {
   const callId = event.call_id;
   const toolName = event.tool_name;
   const title = event.title;
   const durationMs = event.duration_ms;
-
-  // Extract token breakdown
-  const tokens = event.tokens;
-  const input = tokens?.input ?? 0;
-  const output = tokens?.output ?? 0;
-  const cache_read = tokens?.cache?.read ?? 0;
-  const cache_write = tokens?.cache?.write ?? 0;
 
   // Check if the tool call record exists
   const existing = txn.get(
@@ -50,21 +53,15 @@ function handleToolCompleted(
     // Insert new record if it doesn't exist (no prior tool.started event)
     txn.run(
       `INSERT OR IGNORE INTO projection_tool_calls
-         (call_id, session_id, tool_name, status, started_at, completed_at, duration_ms,
-          input_tokens, output_tokens, cache_read, cache_write, cost_usd, title)
-       VALUES (?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (call_id, session_id, tool_name, status, started_at, completed_at, duration_ms, title)
+       VALUES (?, ?, ?, 'completed', ?, ?, ?, ?)`,
       [
         callId,
         event.session_id,
         toolName,
-        event.timestamp_ms,
-        event.timestamp_ms,
+        event.created_at_ms,
+        event.created_at_ms,
         durationMs || null,
-        input,
-        output,
-        cache_read,
-        cache_write,
-        event.cost_usd,
         title,
       ],
     );
@@ -76,25 +73,10 @@ function handleToolCompleted(
      SET status = 'completed',
          completed_at = ?,
          duration_ms = ?,
-         input_tokens = ?,
-         output_tokens = ?,
-         cache_read = ?,
-         cache_write = ?,
-         cost_usd = ?,
          title = COALESCE(?, title),
          projected_at = CURRENT_TIMESTAMP
      WHERE call_id = ?`,
-    [
-      event.timestamp_ms,
-      durationMs || null,
-      input,
-      output,
-      cache_read,
-      cache_write,
-      event.cost_usd,
-      title,
-      callId,
-    ],
+    [event.created_at_ms, durationMs || null, title, callId],
   );
 }
 
@@ -120,8 +102,8 @@ function handleToolFailed(
         callId,
         event.session_id,
         event.tool_name,
-        event.timestamp_ms,
-        event.timestamp_ms,
+        event.created_at_ms,
+        event.created_at_ms,
         durationMs || null,
         errorMessage,
       ],
@@ -137,7 +119,7 @@ function handleToolFailed(
          error_message = ?,
          projected_at = CURRENT_TIMESTAMP
      WHERE call_id = ?`,
-    [event.timestamp_ms, durationMs || null, errorMessage, callId],
+    [event.created_at_ms, durationMs || null, errorMessage, callId],
   );
 }
 
@@ -145,22 +127,22 @@ function handleToolFailed(
 // Handler Export
 // ---------------------------------------------------------------------------
 
-const HANDLED_EVENTS: StatsEventType[] = ["tool.completed", "tool.failed"];
+const HANDLED_EVENTS: StatsEventType[] = [
+  "tool.execute.before",
+  "tool.execute.after",
+  "tool.failed",
+];
 
-/**
- * ProjectionHandler for projection_tool_calls table.
- *
- * Handles tool lifecycle events:
- *  - tool.completed  → update record (completed + stats)
- *  - tool.failed     → update record (error + message)
- */
 export const toolCallHandler: ProjectionHandler = {
   handles: HANDLED_EVENTS,
 
   handle(event: StatsEvent, txn: TransactionContext): void {
     switch (event.event_type) {
-      case "tool.completed":
-        handleToolCompleted(event, txn);
+      case "tool.execute.before":
+        handleToolExecuteBefore(event, txn);
+        break;
+      case "tool.execute.after":
+        handleToolExecuteAfter(event, txn);
         break;
       case "tool.failed":
         handleToolFailed(event, txn);

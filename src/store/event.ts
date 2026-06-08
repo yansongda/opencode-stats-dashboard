@@ -26,11 +26,8 @@ export interface EventRow {
   event_id: string;
   event_type: string;
   session_id: string;
-  timestamp_ms: number;
-  ingested_at: string;
-  model: string | null;
-  total_tokens: number;
-  cost_usd: number;
+  created_at_ms: number;
+  created_at: string;
   event_contents: string;
 }
 
@@ -67,11 +64,11 @@ function buildWhere(filters?: EventQueryFilters): [string, unknown[]] {
     params.push(filters.event_type);
   }
   if (filters.start_ms !== undefined) {
-    conditions.push("timestamp_ms >= ?");
+    conditions.push("created_at_ms >= ?");
     params.push(filters.start_ms);
   }
   if (filters.end_ms !== undefined) {
-    conditions.push("timestamp_ms <= ?");
+    conditions.push("created_at_ms <= ?");
     params.push(filters.end_ms);
   }
 
@@ -95,8 +92,8 @@ export class EventStore {
 
     this.stmtInsert = db.query(`
       INSERT OR IGNORE INTO events
-        (event_id, event_type, session_id, timestamp_ms, model, total_tokens, cost_usd, event_contents)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        (event_id, event_type, session_id, created_at_ms, event_contents)
+      VALUES (?, ?, ?, ?, ?)
     `);
 
     this.stmtGetById = db.query("SELECT * FROM events WHERE event_id = ?");
@@ -104,24 +101,13 @@ export class EventStore {
 
   private extractParams(event: StatsEvent): SQLiteParam[] {
     const session_id = "session_id" in event ? event.session_id : "";
-    const model = "model" in event ? event.model : "";
-    const tokens =
-      "tokens" in event && event.tokens
-        ? typeof event.tokens === "number"
-          ? event.tokens
-          : event.tokens.input + event.tokens.output + event.tokens.reasoning
-        : 0;
-    const cost_usd = "cost_usd" in event ? event.cost_usd : 0;
 
-    const { event_id, event_type, timestamp_ms, ...rest } = event;
+    const { event_id, event_type, created_at_ms, ...rest } = event;
     return [
       event_id,
       event_type,
       session_id,
-      timestamp_ms,
-      model,
-      tokens,
-      cost_usd,
+      created_at_ms,
       JSON.stringify(rest),
     ];
   }
@@ -162,7 +148,7 @@ export class EventStore {
   getEvents(filters?: EventQueryFilters): EventRow[] {
     const [whereSql, params] = buildWhere(filters);
 
-    let sql = `SELECT * FROM events${whereSql} ORDER BY timestamp_ms ASC`;
+    let sql = `SELECT * FROM events${whereSql} ORDER BY created_at_ms ASC`;
 
     if (filters?.limit !== undefined) {
       sql += ` LIMIT ?`;

@@ -126,7 +126,7 @@ export interface ProjectionSession {
   error_count: number;
 
   // Projection metadata
-  projected_at: string;
+  created_at: string;
   event_count: number;
 }
 

@@ -42,28 +42,9 @@ export type EventType =
   | "session.error"
   | "session.diff"
   | "message.updated"
-  | "tool.completed"
+  | "tool.execute.after"
   | "tool.failed"
   | "file.edited";
-
-// ============================================================================
-// Tool Event Input/Output Types
-// ============================================================================
-
-/** Input from tool.execute.after hook */
-export interface ToolEventInput {
-  tool: string;
-  sessionID: string;
-  callID: string;
-  args: unknown;
-}
-
-/** Output from tool.execute.after hook */
-export interface ToolEventOutput {
-  title: string;
-  output: string;
-  metadata: Record<string, unknown>;
-}
 
 // ============================================================================
 // Stats Event Types
@@ -74,7 +55,7 @@ export interface BaseStatsEvent {
   /** Unique event identifier — idempotency key for deduplication */
   event_id: string;
   /** Event timestamp in milliseconds since epoch */
-  timestamp_ms: number;
+  created_at_ms: number;
 }
 
 /** Session created */
@@ -153,9 +134,22 @@ export interface MessageUpdatedEvent extends BaseStatsEvent {
   cost_usd: number;
 }
 
-/** Tool execution completed */
-export interface ToolCompletedEvent extends BaseStatsEvent {
-  event_type: "tool.completed";
+/** Tool execution started (from tool.execute.before hook) */
+export interface ToolExecuteBeforeEvent extends BaseStatsEvent {
+  event_type: "tool.execute.before";
+  /** ← input.sessionID */
+  session_id: string;
+  /** ← ctx.directory */
+  project_path: string;
+  /** ← input.tool */
+  tool_name: string;
+  /** ← input.callID */
+  call_id: string;
+}
+
+/** Tool execution completed (from tool.execute.after hook) */
+export interface ToolExecuteAfterEvent extends BaseStatsEvent {
+  event_type: "tool.execute.after";
   /** ← input.sessionID */
   session_id: string;
   /** ← ctx.directory */
@@ -168,10 +162,6 @@ export interface ToolCompletedEvent extends BaseStatsEvent {
   duration_ms: number;
   /** ← output.title */
   title: string;
-  /** ← output.metadata.tokens */
-  tokens?: TokenBreakdown;
-  /** ← output.metadata.cost_usd ?? 0 */
-  cost_usd: number;
 }
 
 /** Tool execution failed */
@@ -208,7 +198,8 @@ export type StatsEvent =
   | SessionErrorEvent
   | SessionDiffEvent
   | MessageUpdatedEvent
-  | ToolCompletedEvent
+  | ToolExecuteBeforeEvent
+  | ToolExecuteAfterEvent
   | ToolFailedEvent
   | FileEditedEvent;
 

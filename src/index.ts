@@ -17,8 +17,12 @@ import { join, resolve } from "node:path";
 import { createStatsHandler } from "@api/stats";
 import { buildStatsUpdate, createStreamHandler } from "@api/stream";
 import { configurePragmas, runMigrations } from "@db/schema";
-import type { StatsEvent, ToolEventInput, ToolEventOutput } from "@defs/events";
-import { convertEvent, convertToolEvent } from "@event/converter";
+import type { StatsEvent } from "@defs/events";
+import {
+  convertEvent,
+  convertToolExecuteAfterEvent,
+  convertToolExecuteBeforeEvent,
+} from "@event/converter";
 import { tryConvert as tryToolFailed } from "@event/converters/tool-failed";
 import type { Hooks, Plugin, PluginInput } from "@opencode-ai/plugin";
 import { DailyProjectionHandler } from "@projection/daily";
@@ -147,18 +151,16 @@ class StatsPluginInstance {
           ? `${msg} — ${err.name}: ${err.message}`
           : `${msg} — ${String(err)}`;
 
-    this.appendLog(level, detail);
+    try {
+      appendFileSync(
+        this.logFile,
+        `[${new Date().toISOString()}] [${level}] ${detail}\n`,
+      );
+    } catch {}
 
     if (level === "error") {
       console.error(`[stats-plugin] ${msg}`, err);
     }
-  }
-
-  private appendLog(level: string, msg: string): void {
-    try {
-      const ts = new Date().toISOString();
-      appendFileSync(this.logFile, `[${ts}] [${level}] ${msg}\n`);
-    } catch {}
   }
 
   /** Wrap a sync block with try/catch + structured error logging. */
@@ -207,13 +209,36 @@ class StatsPluginInstance {
     });
   }
 
-  handleToolExecuteAfter(
-    toolInput: ToolEventInput,
-    toolOutput: ToolEventOutput,
+  handleToolExecuteBefore(
+    toolInput: { tool: string; sessionID: string; callID: string },
     directory: string,
   ): void {
-    this.safely("convertToolEvent failed", () => {
-      const event = convertToolEvent(toolInput, toolOutput, directory);
+    this.safely("convertToolExecuteBeforeEvent failed", () => {
+      const event = convertToolExecuteBeforeEvent(toolInput, directory);
+      this.processEvent(event);
+    });
+  }
+
+  handleToolExecuteAfter(
+    toolInput: {
+      tool: string;
+      sessionID: string;
+      callID: string;
+      args: unknown;
+    },
+    toolOutput: {
+      title: string;
+      output: string;
+      metadata: Record<string, unknown>;
+    },
+    directory: string,
+  ): void {
+    this.safely("convertToolExecuteAfterEvent failed", () => {
+      const event = convertToolExecuteAfterEvent(
+        toolInput,
+        toolOutput,
+        directory,
+      );
       this.processEvent(event);
     });
   }
@@ -250,6 +275,8 @@ const StatsPlugin: Plugin = async (input) => {
       instance = null;
     },
     event: async ({ event }) => self.handleEvent(event, input.directory),
+    "tool.execute.before": async (toolInput) =>
+      self.handleToolExecuteBefore(toolInput, input.directory),
     "tool.execute.after": async (toolInput, toolOutput) =>
       self.handleToolExecuteAfter(toolInput, toolOutput, input.directory),
   };

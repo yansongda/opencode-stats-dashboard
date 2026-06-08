@@ -19,20 +19,16 @@ export function up(db: Database): void {
       event_id        TEXT PRIMARY KEY,
       event_type      TEXT NOT NULL,
       session_id      TEXT NOT NULL,
-      timestamp_ms    INTEGER NOT NULL,
-      ingested_at     DATETIME DEFAULT CURRENT_TIMESTAMP,
-      model           TEXT,
-      total_tokens    INTEGER DEFAULT 0,
-      cost_usd        REAL DEFAULT 0,
-      event_contents  TEXT NOT NULL DEFAULT '{}'
+      event_contents  TEXT NOT NULL DEFAULT '{}',
+      created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+      created_at_ms   INTEGER NOT NULL
     )
   `);
   db.run("CREATE INDEX IF NOT EXISTS idx_events_session ON events(session_id)");
   db.run("CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type)");
   db.run(
-    "CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp_ms)",
+    "CREATE INDEX IF NOT EXISTS idx_events_created_at ON events(created_at_ms)",
   );
-  db.run("CREATE INDEX IF NOT EXISTS idx_events_model ON events(model)");
 
   db.run(`
     CREATE TABLE IF NOT EXISTS projection_sessions (
@@ -61,8 +57,8 @@ export function up(db: Database): void {
       lines_added               INTEGER DEFAULT 0,
       lines_deleted             INTEGER DEFAULT 0,
       error_count               INTEGER DEFAULT 0,
-      projected_at              DATETIME DEFAULT CURRENT_TIMESTAMP,
-      event_count               INTEGER DEFAULT 0
+      event_count               INTEGER DEFAULT 0,
+      created_at                DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
 
@@ -105,11 +101,6 @@ export function up(db: Database): void {
       started_at      INTEGER,
       completed_at    INTEGER,
       duration_ms     INTEGER,
-      input_tokens    INTEGER DEFAULT 0,
-      output_tokens   INTEGER DEFAULT 0,
-      cache_read      INTEGER DEFAULT 0,
-      cache_write     INTEGER DEFAULT 0,
-      cost_usd        REAL DEFAULT 0,
       title           TEXT,
       error_message   TEXT,
       projected_at    DATETIME DEFAULT CURRENT_TIMESTAMP

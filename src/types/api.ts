@@ -214,8 +214,6 @@ export interface ToolStatsItem {
   error_count: number;
   success_rate: number;
   avg_duration_ms: number;
-  total_tokens: number;
-  total_cost_usd: number;
 }
 
 /** Tools stats response */
