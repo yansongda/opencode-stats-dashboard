@@ -10,7 +10,7 @@
           class="period-btn"
           :class="{ active: selectedPeriod === p.value }"
           :data-testid="`period-${p.value}`"
-          @click="selectedPeriod = p.value"
+          @click="selectPeriod(p.value)"
         >
           {{ p.label }}
         </button>
@@ -28,7 +28,7 @@
       :description="error"
       action-label="重试"
       test-id="tools-error"
-      @action="loadData"
+      @action="store.refreshData"
     />
 
     <!-- Content -->
@@ -159,15 +159,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed } from 'vue'
 import EmptyState from '../components/EmptyState.vue'
 import LoadingState from '../components/LoadingState.vue'
 import LineChart from '../charts/LineChart.vue'
 import PieChart from '../charts/PieChart.vue'
 import BarChart from '../charts/BarChart.vue'
-import { fetchStatsTools, fetchStatsTrend, type StatsToolsResponse, type ToolStatsItem, type TrendDataPoint, type StatsTimeRange } from '../api/client'
+import { useStatsStore, type Period } from '../stores/stats'
+import type { ToolStatsItem } from '../api/client'
 
-// ── Time Range ───────────────────────────────────────────────────────
+// ── Store ──────────────────────────────────────────────────────────
+
+const store = useStatsStore()
 
 const periods = [
   { value: '7d' as const, label: '7天' },
@@ -175,49 +178,20 @@ const periods = [
   { value: 'all' as const, label: '全部' },
 ]
 
-type Period = '7d' | '30d' | 'all'
-const selectedPeriod = ref<Period>('7d')
-
-function getTimeRange(period: Period): StatsTimeRange | undefined {
-  if (period === 'all') return undefined
-  const now = new Date()
-  const days = period === '7d' ? 7 : 30
-  const start = new Date(now)
-  start.setDate(start.getDate() - days)
-  return {
-    start: start.toISOString().slice(0, 10),
-    end: now.toISOString().slice(0, 10),
-  }
+function selectPeriod(period: Period): void {
+  void store.setPeriod(period)
 }
 
-// ── Data Fetching ────────────────────────────────────────────────────
+// ── Data from Store ────────────────────────────────────────────────
 
-const toolsData = ref<StatsToolsResponse | null>(null)
-const trendData = ref<TrendDataPoint[]>([])
-const loading = ref(false)
-const error = ref<string | null>(null)
-
-async function loadData(): Promise<void> {
-  loading.value = true
-  error.value = null
-  try {
-    const range = getTimeRange(selectedPeriod.value)
-    const [tools, trend] = await Promise.all([
-      fetchStatsTools(range),
-      fetchStatsTrend(range),
-    ])
-    toolsData.value = tools
-    trendData.value = trend.data
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : '加载工具数据时发生未知错误'
-    console.error('[Tools] Failed to load data:', err)
-  } finally {
-    loading.value = false
-  }
-}
-
-onMounted(loadData)
-watch(selectedPeriod, loadData)
+const loading = computed(() => store.loading.value)
+const error = computed(() => store.error.value)
+const toolsData = computed(() => ({
+  tools: store.toolCalls.value,
+  ...store.toolSummary.value,
+}))
+const trendData = computed(() => store.trend.value)
+const selectedPeriod = computed(() => store.selectedPeriod.value)
 
 // ── Sorting ──────────────────────────────────────────────────────────
 

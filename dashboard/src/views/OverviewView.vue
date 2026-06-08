@@ -11,7 +11,7 @@
       :description="error"
       action-label="重试"
       test-id="overview-error"
-      @action="fetchAll"
+      @action="store.refreshData"
     />
 
     <!-- Empty State -->
@@ -155,31 +155,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { computed } from 'vue'
 import MetricCard from '../components/MetricCard.vue'
 import EmptyState from '../components/EmptyState.vue'
 import LoadingState from '../components/LoadingState.vue'
 import LineChart from '../charts/LineChart.vue'
 import PieChart from '../charts/PieChart.vue'
 import BarChart from '../charts/BarChart.vue'
-import {
-  fetchStatsOverview,
-  fetchStatsTrend,
-  fetchStatsTools,
-  fetchStatsModels,
-  fetchStatsProjects,
-  fetchStatsSessions,
-  type StatsOverviewResponse,
-  type TrendDataPoint,
-  type ToolStatsItem,
-  type StatsModelItem,
-  type ProjectStatsItem,
-  type StatsSessionListItem,
-} from '../api/client'
+import { useStatsStore, type Period } from '../stores/stats'
 
-// ── Period / Time Range ────────────────────────────────────────────
+// ── Store ──────────────────────────────────────────────────────────
 
-type Period = '7d' | '30d' | 'all'
+const store = useStatsStore()
 
 const periods: Array<{ value: Period; label: string }> = [
   { value: '7d', label: '7 天' },
@@ -187,70 +174,9 @@ const periods: Array<{ value: Period; label: string }> = [
   { value: 'all', label: '全部' },
 ]
 
-const selectedPeriod = ref<Period>('7d')
-
-function getDateRange(period: Period): { start?: string; end?: string } {
-  if (period === 'all') return {}
-  const now = new Date()
-  const end = formatDate(now)
-  const start = new Date(now)
-  start.setDate(start.getDate() - (period === '7d' ? 6 : 29))
-  return { start: formatDate(start), end }
-}
-
-function formatDate(d: Date): string {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
-
-// ── Data Fetching ──────────────────────────────────────────────────
-
-const overview = ref<StatsOverviewResponse | null>(null)
-const trendData = ref<TrendDataPoint[]>([])
-const tools = ref<ToolStatsItem[]>([])
-const models = ref<StatsModelItem[]>([])
-const projects = ref<ProjectStatsItem[]>([])
-const recentSessions = ref<StatsSessionListItem[]>([])
-const loading = ref(false)
-const error = ref<string | null>(null)
-
-async function fetchAll(): Promise<void> {
-  loading.value = true
-  error.value = null
-  try {
-    const range = getDateRange(selectedPeriod.value)
-    const [ov, trend, tl, md, pj, sess] = await Promise.all([
-      fetchStatsOverview(),
-      fetchStatsTrend(range),
-      fetchStatsTools(),
-      fetchStatsModels(range),
-      fetchStatsProjects(range),
-      fetchStatsSessions({ limit: 10 }),
-    ])
-    overview.value = ov
-    trendData.value = trend.data
-    tools.value = tl.tools
-    models.value = md.models
-    projects.value = pj.projects
-    recentSessions.value = sess.sessions
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : '加载数据时发生未知错误'
-    console.error('[Overview] Failed to fetch data:', err)
-  } finally {
-    loading.value = false
-  }
-}
-
 function selectPeriod(period: Period): void {
-  selectedPeriod.value = period
-  fetchAll()
+  void store.setPeriod(period)
 }
-
-onMounted(() => {
-  fetchAll()
-})
 
 // ── Formatting Helpers ─────────────────────────────────────────────
 
@@ -272,6 +198,16 @@ function formatProjectPath(path: string | null): string {
 }
 
 // ── Derived Chart Data ─────────────────────────────────────────────
+
+const overview = computed(() => store.overview.value)
+const loading = computed(() => store.loading.value)
+const error = computed(() => store.error.value)
+const trendData = computed(() => store.trend.value)
+const tools = computed(() => store.toolCalls.value)
+const models = computed(() => store.models.value)
+const projects = computed(() => store.projects.value)
+const recentSessions = computed(() => store.recentSessions.value)
+const selectedPeriod = computed(() => store.selectedPeriod.value)
 
 const toolSuccessRate = computed(() => {
   if (!overview.value) return '100'
