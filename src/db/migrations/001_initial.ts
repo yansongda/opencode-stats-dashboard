@@ -133,8 +133,8 @@ export function up(db: Database): void {
       error_type        TEXT,
 
       -- 元数据
-      created_at        DATETIME DEFAULT CURRENT_TIMESTAMP
-      created_at_ms     INTEGER NOT NULL,
+      created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
+      created_at_ms     INTEGER NOT NULL
     )
   `);
   db.run("CREATE INDEX IF NOT EXISTS idx_models_session ON models(session_id)");
