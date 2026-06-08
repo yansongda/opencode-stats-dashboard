@@ -10,6 +10,7 @@ import * as sessionCreated from "@event/converters/session-created";
 import * as sessionDeleted from "@event/converters/session-deleted";
 import * as sessionDiff from "@event/converters/session-diff";
 import * as sessionError from "@event/converters/session-error";
+import * as sessionUpdated from "@event/converters/session-updated";
 import { createBaseEvent, normalizeTokens } from "@event/utils";
 import type { Event } from "@opencode-ai/sdk";
 
@@ -19,6 +20,7 @@ const REGISTERED = [
   fileEdited,
   messageUpdated,
   sessionCreated,
+  sessionUpdated,
   sessionDeleted,
   sessionDiff,
   sessionError,
@@ -41,7 +43,7 @@ export function convertToolEvent(
   output: ToolEventOutput,
   directory: string,
 ): ToolCompletedEvent {
-  const m = output.metadata;
+  const m = output.metadata ?? {};
   return {
     ...createBaseEvent(),
     event_type: "tool.completed",

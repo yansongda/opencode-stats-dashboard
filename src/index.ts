@@ -11,7 +11,7 @@
  */
 
 import { Database } from "bun:sqlite";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { createStatsHandler } from "@api/stats";
@@ -29,10 +29,6 @@ import { SSEBroadcaster } from "@sse/broadcaster";
 import { EventStore } from "@store/event";
 import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
-
-type AppLog = NonNullable<
-  NonNullable<NonNullable<PluginInput["client"]>["app"]>["log"]
->;
 
 /** Build the Hono application. Pure: takes deps, returns app. */
 function createApp({
@@ -58,12 +54,12 @@ function createApp({
   app.all("/api/*", (c) => c.json({ error: "not_found" }, 404));
 
   const indexPath = join(dashboardDist, "index.html");
-  const indexHtml = existsSync(indexPath)
-    ? readFileSync(indexPath, "utf-8")
-    : null;
 
   app.get("*", (c) => {
-    if (indexHtml) return c.html(indexHtml);
+    if (existsSync(indexPath)) {
+      const html = readFileSync(indexPath, "utf-8");
+      return c.html(html);
+    }
     return c.text(
       `Dashboard not built. Run: bun run build:dashboard\n\nDebug: indexPath=${indexPath}, exists=false`,
       404,
@@ -84,11 +80,9 @@ class StatsPluginInstance {
   private readonly projectionEngine: ProjectionEngine;
   private readonly broadcaster: SSEBroadcaster;
   private server: ReturnType<typeof Bun.serve> | null;
-  private appLog: AppLog | undefined;
+  private readonly logFile: string;
 
-  constructor(appLog: AppLog | undefined) {
-    this.appLog = appLog;
-
+  constructor() {
     const defaultDir = join(
       homedir(),
       ".local",
@@ -99,6 +93,7 @@ class StatsPluginInstance {
     const dbPath = process.env.STATS_DB_PATH ?? join(dbDir, "stats.db");
     const port = Number(process.env.STATS_PORT ?? 11133);
 
+    this.logFile = join(dbDir, "stats.log");
     mkdirSync(dbDir, { recursive: true });
 
     this.log("info", `Initializing — db=${dbPath}, port=${port}`);
@@ -144,11 +139,6 @@ class StatsPluginInstance {
     this.log("info", `HTTP server listening on port ${this.server.port}`);
   }
 
-  /** Refresh the upstream logger sink. Each plugin invocation may bring a new client. */
-  setAppLog(appLog: AppLog | undefined): void {
-    this.appLog = appLog;
-  }
-
   log(level: "info" | "error", msg: string, err?: unknown): void {
     const detail =
       err === undefined
@@ -157,19 +147,18 @@ class StatsPluginInstance {
           ? `${msg} — ${err.name}: ${err.message}`
           : `${msg} — ${String(err)}`;
 
-    try {
-      this.appLog?.({
-        body: { service: "stats-plugin", level, message: detail },
-      })?.catch((e: unknown) => {
-        console.error("[stats-plugin] log failed:", e);
-      });
-    } catch (e) {
-      console.error("[stats-plugin] log threw:", e);
-    }
+    this.appendLog(level, detail);
 
     if (level === "error") {
       console.error(`[stats-plugin] ${msg}`, err);
     }
+  }
+
+  private appendLog(level: string, msg: string): void {
+    try {
+      const ts = new Date().toISOString();
+      appendFileSync(this.logFile, `[${ts}] [${level}] ${msg}\n`);
+    } catch {}
   }
 
   /** Wrap a sync block with try/catch + structured error logging. */
@@ -251,9 +240,7 @@ let instance: StatsPluginInstance | null = null;
 
 const StatsPlugin: Plugin = async (input) => {
   if (!instance) {
-    instance = new StatsPluginInstance(input.client?.app?.log);
-  } else {
-    instance.setAppLog(input.client?.app?.log);
+    instance = new StatsPluginInstance();
   }
   const self = instance;
 

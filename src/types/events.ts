@@ -5,9 +5,9 @@
  * do NOT synthesize derived events; every StatsEvent must trace back to a
  * concrete SDK Event delivered via a plugin hook.
  *
- * Covers 8 event types:
- *   session.created, session.deleted, session.error, session.diff,
- *   message.updated, tool.completed, tool.failed, file.edited
+ * Covers 9 event types:
+ *   session.created, session.updated, session.deleted, session.error,
+ *   session.diff, message.updated, tool.completed, tool.failed, file.edited
  */
 
 // ============================================================================
@@ -32,11 +32,12 @@ export type ToolStatus = "started" | "completed" | "failed";
 export type SessionStatus = "active" | "deleted";
 
 // ============================================================================
-// Event Type Union (8 types, each maps 1:1 to an SDK event)
+// Event Type Union (9 types, each maps 1:1 to an SDK event)
 // ============================================================================
 
 export type EventType =
   | "session.created"
+  | "session.updated"
   | "session.deleted"
   | "session.error"
   | "session.diff"
@@ -84,6 +85,17 @@ export interface SessionCreatedEvent extends BaseStatsEvent {
   /** ← event.properties.info.directory || input.directory */
   project_path: string;
   /** ← event.properties.info.title ?? "" */
+  title: string;
+}
+
+/** Session updated (title change, etc.) */
+export interface SessionUpdatedEvent extends BaseStatsEvent {
+  event_type: "session.updated";
+  /** ← event.properties.info.id */
+  session_id: string;
+  /** ← event.properties.info.directory || input.directory */
+  project_path: string;
+  /** ← event.properties.info.title */
   title: string;
 }
 
@@ -191,6 +203,7 @@ export interface FileEditedEvent extends BaseStatsEvent {
 /** Union of all stats event types */
 export type StatsEvent =
   | SessionCreatedEvent
+  | SessionUpdatedEvent
   | SessionDeletedEvent
   | SessionErrorEvent
   | SessionDiffEvent

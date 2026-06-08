@@ -13,7 +13,7 @@
       :description="error"
       action-label="重试"
       test-id="sessions-error"
-      @action="loadSessions"
+      @action="store.refreshData"
     />
 
     <!-- Content -->
@@ -321,41 +321,25 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, h } from 'vue'
 import EmptyState from '../components/EmptyState.vue'
 import LoadingState from '../components/LoadingState.vue'
+import { useStatsStore } from '../stores/stats'
 import {
-  fetchStatsSessions,
   fetchStatsSessionDetail,
   type StatsSessionListItem,
   type SessionDetail,
 } from '../api/client'
 
-// ── Data ──────────────────────────────────────────────────────────────
+// ── Store ──────────────────────────────────────────────────────────────
 
-const allSessions = ref<StatsSessionListItem[]>([])
-const dataTotal = ref(0)
-const loading = ref(false)
-const error = ref<string | null>(null)
+const store = useStatsStore()
 
-async function loadSessions(): Promise<void> {
-  loading.value = true
-  error.value = null
-  try {
-    const resp = await fetchStatsSessions({ limit: 100, offset: 0 })
-    allSessions.value = resp.sessions
-    dataTotal.value = resp.total
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : '加载会话数据时发生未知错误'
-    console.error('[Sessions] Failed to load data:', err)
-  } finally {
-    loading.value = false
-  }
-}
+// ── Data (from global store, auto-updates via SSE) ─────────────────────
 
-onMounted(() => {
-  void loadSessions()
-})
+const allSessions = computed<StatsSessionListItem[]>(() => store.sessions.value)
+const loading = computed(() => store.loading.value)
+const error = computed(() => store.error.value)
 
 // ── Filters ──────────────────────────────────────────────────────────
 
@@ -590,11 +574,18 @@ const StatusBadge = {
   props: {
     status: { type: String, required: true },
   },
-  template: `
-    <span :class="['status-badge', status === 'active' ? 'badge-active' : 'badge-deleted']">
-      {{ status === 'active' ? '活跃' : '已删除' }}
-    </span>
-  `,
+  setup(props: { status: string }) {
+    return () => {
+      const isActive = props.status === 'active'
+      return h(
+        'span',
+        {
+          class: ['status-badge', isActive ? 'badge-active' : 'badge-deleted'],
+        },
+        isActive ? '活跃' : '已删除',
+      )
+    }
+  },
 }
 </script>
 

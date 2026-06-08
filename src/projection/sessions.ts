@@ -3,6 +3,7 @@
  *
  * Handles:
  *  - session.created:  create session record
+ *  - session.updated:  update title
  *  - session.deleted:  update status to deleted
  *  - message.updated:  update token/message stats, model_usage
  *  - tool.completed / tool.failed: update tool stats
@@ -21,6 +22,7 @@ import type {
   SessionDeletedEvent,
   SessionDiffEvent,
   SessionErrorEvent,
+  SessionUpdatedEvent,
   StatsEvent,
   StatsEventType,
   TokenBreakdown,
@@ -203,6 +205,18 @@ function handleSessionCreated(
   );
 }
 
+function handleSessionUpdated(
+  event: SessionUpdatedEvent,
+  txn: TransactionContext,
+): void {
+  txn.run(
+    `UPDATE projection_sessions
+     SET title = ?, last_event_at = ?, duration_ms = ? - first_event_at, event_count = event_count + 1
+     WHERE session_id = ?`,
+    [event.title, event.timestamp_ms, event.timestamp_ms, event.session_id],
+  );
+}
+
 function handleSessionDeleted(
   event: SessionDeletedEvent,
   txn: TransactionContext,
@@ -354,6 +368,7 @@ function handleFileEdited(
 
 const HANDLED_EVENTS: StatsEventType[] = [
   "session.created",
+  "session.updated",
   "session.deleted",
   "session.error",
   "session.diff",
@@ -376,6 +391,10 @@ export function createSessionProjectionHandler(): ProjectionHandler {
       switch (event.event_type) {
         case "session.created":
           handleSessionCreated(event, txn);
+          break;
+
+        case "session.updated":
+          handleSessionUpdated(event, txn);
           break;
 
         case "session.deleted":
