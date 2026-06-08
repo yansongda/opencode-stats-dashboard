@@ -103,6 +103,8 @@ export interface SessionErrorEvent extends BaseStatsEvent {
 /** Message updated (tokens/cost finalized) */
 export interface MessageUpdatedEvent extends BaseStatsEvent {
   event_type: "message.updated";
+  /** ← event.properties.info.id */
+  message_id: string;
   /** ← event.properties.info.sessionID */
   session_id: string;
   /** ← input.directory */
@@ -111,10 +113,8 @@ export interface MessageUpdatedEvent extends BaseStatsEvent {
   model: string;
   /** ← event.properties.info.role */
   role: string;
-  /** ← event.properties.info.agent (user messages) */
+  /** ← event.properties.info.agent (user) || event.properties.info.mode (assistant) */
   agent?: string;
-  /** ← event.properties.info.mode (assistant messages) */
-  mode?: string;
   /** ← event.properties.info.tokens */
   tokens: TokenBreakdown;
   /** ← event.properties.info.cost ?? 0 */

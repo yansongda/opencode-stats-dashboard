@@ -78,19 +78,19 @@
 
 ---
 
-## 3. models 表
+## 3. messages 表
 
-仅处理 `message.updated` 事件，每条事件写入一行明细记录。
+仅处理 `message.updated` 事件，每条消息写入一行明细记录。使用 `message_id` 作为主键实现幂等性（同一消息的多次更新只保留最新数据）。
 
 | 字段 | SDK 事件原始字段 | SDK 事件名称 | SDK 事件 | 映射事件 |
 |------|----------------|------------|---------|---------|
+| `message_id` | `event.properties.info.id` | `message.updated` | `EventMessageUpdated` | `MessageUpdatedEvent` |
 | `event_id` | `crypto.randomUUID()` 自动生成 | `message.updated` | `EventMessageUpdated` | `MessageUpdatedEvent` |
 | `session_id` | `event.properties.info.sessionID` | `message.updated` | `EventMessageUpdated` | `MessageUpdatedEvent` |
 | `project_path` | `input.directory` | `message.updated` | `EventMessageUpdated` | `MessageUpdatedEvent` |
 | `model` | `${event.properties.info.providerID}/${event.properties.info.modelID}` | `message.updated` | `EventMessageUpdated` | `MessageUpdatedEvent` |
 | `role` | `event.properties.info.role` | `message.updated` | `EventMessageUpdated` | `MessageUpdatedEvent` |
-| `agent` | `event.properties.info.agent` | `message.updated` (role=user) | `EventMessageUpdated` | `MessageUpdatedEvent` |
-| `mode` | `event.properties.info.mode` | `message.updated` (role=assistant) | `EventMessageUpdated` | `MessageUpdatedEvent` |
+| `agent` | `event.properties.info.agent` (user) 或 `event.properties.info.mode` (assistant) | `message.updated` | `EventMessageUpdated` | `MessageUpdatedEvent` |
 | `input_tokens` | `event.properties.info.tokens.input` | `message.updated` | `EventMessageUpdated` | `MessageUpdatedEvent` |
 | `output_tokens` | `event.properties.info.tokens.output` | `message.updated` | `EventMessageUpdated` | `MessageUpdatedEvent` |
 | `reasoning_tokens` | `event.properties.info.tokens.reasoning` | `message.updated` | `EventMessageUpdated` | `MessageUpdatedEvent` |

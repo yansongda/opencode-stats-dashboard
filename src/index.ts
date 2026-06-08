@@ -26,7 +26,7 @@ import {
 import { tryConvert as tryToolFailed } from "@event/converters/tool-failed";
 import type { Hooks, Plugin, PluginInput } from "@opencode-ai/plugin";
 import { ProjectionEngine } from "@projection/engine";
-import { modelsProjectionHandler } from "@projection/models";
+import { messagesProjectionHandler } from "@projection/messages";
 import { createSessionProjectionHandler } from "@projection/sessions";
 import { toolCallHandler } from "@projection/tool-calls";
 import { SSEBroadcaster } from "@sse/broadcaster";
@@ -115,7 +115,10 @@ class StatsPluginInstance {
       "sessions",
       createSessionProjectionHandler(),
     );
-    this.projectionEngine.registerHandler("models", modelsProjectionHandler);
+    this.projectionEngine.registerHandler(
+      "messages",
+      messagesProjectionHandler,
+    );
     this.projectionEngine.registerHandler("tool-calls", toolCallHandler);
     this.log(
       "info",

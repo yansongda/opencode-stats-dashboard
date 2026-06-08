@@ -4,7 +4,7 @@
  * Tables:
  *   - events              (Event Store, §3.1)
  *   - sessions            (§4.1)
- *   - models              (§4.2)
+ *   - messages            (§4.2)
  *   - tool_calls          (§4.3)
  *   - snapshots            (§5.1)
  */
@@ -31,11 +31,6 @@ export function up(db: Database): void {
       created_at_ms   INTEGER NOT NULL
     )
   `);
-  db.run("CREATE INDEX IF NOT EXISTS idx_events_session ON events(session_id)");
-  db.run("CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type)");
-  db.run(
-    "CREATE INDEX IF NOT EXISTS idx_events_created_at ON events(created_at_ms)",
-  );
 
   db.run(`
     CREATE TABLE IF NOT EXISTS sessions (
@@ -93,11 +88,12 @@ export function up(db: Database): void {
   `);
 
   db.run(`
-    CREATE TABLE IF NOT EXISTS models (
+    CREATE TABLE IF NOT EXISTS messages (
       -- 主键
-      event_id          TEXT PRIMARY KEY,
+      message_id        TEXT PRIMARY KEY,
 
       -- 关联
+      event_id          TEXT NOT NULL,
       session_id        TEXT NOT NULL,
 
       -- 维度字段
@@ -105,7 +101,6 @@ export function up(db: Database): void {
       model             TEXT NOT NULL,
       role              TEXT NOT NULL,
       agent             TEXT,
-      mode              TEXT,
 
       -- Token 度量
       input_tokens      INTEGER DEFAULT 0,
@@ -124,6 +119,7 @@ export function up(db: Database): void {
       files_changed     INTEGER DEFAULT 0,
 
       -- 时间
+      created_at_ms     INTEGER NOT NULL,
       completed_at_ms   INTEGER,
       duration_ms       INTEGER,
 
@@ -133,18 +129,9 @@ export function up(db: Database): void {
       error_type        TEXT,
 
       -- 元数据
-      created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
-      created_at_ms     INTEGER NOT NULL
+      created_at        DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
-  db.run("CREATE INDEX IF NOT EXISTS idx_models_session ON models(session_id)");
-  db.run("CREATE INDEX IF NOT EXISTS idx_models_model ON models(model)");
-  db.run(
-    "CREATE INDEX IF NOT EXISTS idx_models_created ON models(created_at_ms)",
-  );
-  db.run(
-    "CREATE INDEX IF NOT EXISTS idx_models_project_date ON models(project_path, created_at_ms)",
-  );
 
   db.run(`
     CREATE TABLE IF NOT EXISTS tool_calls (
@@ -172,7 +159,4 @@ export function up(db: Database): void {
       updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
-  db.run("CREATE INDEX IF NOT EXISTS idx_tc_session ON tool_calls(session_id)");
-  db.run("CREATE INDEX IF NOT EXISTS idx_tc_tool ON tool_calls(tool_name)");
-  db.run("CREATE INDEX IF NOT EXISTS idx_tc_status ON tool_calls(status)");
 }

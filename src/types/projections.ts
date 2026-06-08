@@ -2,7 +2,7 @@
  * Projection type definitions for the Event-Sourced Stats Engine.
  *
  * Projections are materialized views derived from events.
- * Three main projections: sessions, daily, and tool_calls.
+ * Three main projections: sessions, messages, and tool_calls.
  */
 
 import type { StatsEvent, StatsEventType, TokenBreakdown } from "@defs/events";
@@ -128,35 +128,6 @@ export interface ProjectionSession {
   // Projection metadata
   created_at: string;
   event_count: number;
-}
-
-// ============================================================================
-// projection_daily_model_usage
-// ============================================================================
-
-export interface ProjectionDailyModelUsage {
-  // Composite primary key
-  date: string; // YYYY-MM-DD
-  project_path: string;
-  model: string;
-
-  // Message stats (assistant only)
-  assistant_messages: number;
-
-  // Token stats
-  total_tokens: number;
-  input_tokens: number;
-  output_tokens: number;
-  reasoning_tokens: number;
-  cache_read: number;
-  cache_write: number;
-
-  // Cost stats
-  total_cost_usd: number;
-
-  // Projection metadata
-  created_at: string;
-  updated_at: string;
 }
 
 // ============================================================================
