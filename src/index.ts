@@ -93,7 +93,7 @@ class StatsPluginInstance {
       homedir(),
       ".local",
       "share",
-      "opencode-stats-dashboard",
+      "opencode-stats-engine",
     );
     const dbDir = process.env.STATS_DB_DIR ?? defaultDir;
     const dbPath = process.env.STATS_DB_PATH ?? join(dbDir, "stats.db");
