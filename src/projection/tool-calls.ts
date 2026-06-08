@@ -41,16 +41,13 @@ function handleToolExecuteAfter(
   const callId = event.call_id;
   const toolName = event.tool_name;
   const title = event.title;
-  const durationMs = event.duration_ms;
 
-  // Check if the tool call record exists
   const existing = txn.get(
-    "SELECT call_id FROM projection_tool_calls WHERE call_id = ?",
+    "SELECT call_id, started_at FROM projection_tool_calls WHERE call_id = ?",
     [callId],
   );
 
   if (!existing) {
-    // Insert new record if it doesn't exist (no prior tool.started event)
     txn.run(
       `INSERT OR IGNORE INTO projection_tool_calls
          (call_id, session_id, tool_name, status, started_at, completed_at, duration_ms, title)
@@ -61,12 +58,15 @@ function handleToolExecuteAfter(
         toolName,
         event.created_at_ms,
         event.created_at_ms,
-        durationMs || null,
+        event.duration_ms || null,
         title,
       ],
     );
     return;
   }
+
+  const durationMs =
+    event.duration_ms || event.created_at_ms - (existing.started_at as number);
 
   txn.run(
     `UPDATE projection_tool_calls
@@ -74,9 +74,9 @@ function handleToolExecuteAfter(
          completed_at = ?,
          duration_ms = ?,
          title = COALESCE(?, title),
-         projected_at = CURRENT_TIMESTAMP
+         updated_at = CURRENT_TIMESTAMP
      WHERE call_id = ?`,
-    [event.created_at_ms, durationMs || null, title, callId],
+    [event.created_at_ms, durationMs, title, callId],
   );
 }
 
@@ -86,10 +86,9 @@ function handleToolFailed(
 ): void {
   const callId = event.call_id;
   const errorMessage = event.error_message;
-  const durationMs = event.duration_ms;
 
   const existing = txn.get(
-    "SELECT call_id FROM projection_tool_calls WHERE call_id = ?",
+    "SELECT call_id, started_at FROM projection_tool_calls WHERE call_id = ?",
     [callId],
   );
 
@@ -104,12 +103,15 @@ function handleToolFailed(
         event.tool_name,
         event.created_at_ms,
         event.created_at_ms,
-        durationMs || null,
+        event.duration_ms || null,
         errorMessage,
       ],
     );
     return;
   }
+
+  const durationMs =
+    event.duration_ms || event.created_at_ms - (existing.started_at as number);
 
   txn.run(
     `UPDATE projection_tool_calls
@@ -117,9 +119,9 @@ function handleToolFailed(
          completed_at = ?,
          duration_ms = ?,
          error_message = ?,
-         projected_at = CURRENT_TIMESTAMP
+         updated_at = CURRENT_TIMESTAMP
      WHERE call_id = ?`,
-    [event.created_at_ms, durationMs || null, errorMessage, callId],
+    [event.created_at_ms, durationMs, errorMessage, callId],
   );
 }
 

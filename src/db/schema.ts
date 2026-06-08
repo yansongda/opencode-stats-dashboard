@@ -4,9 +4,8 @@
  * Tables created:
  *   - events              (Event Store, §3.1)
  *   - projection_sessions  (§4.1)
- *   - projection_daily     (§4.2)
+ *   - projection_daily_model_usage (§4.2)
  *   - projection_tool_calls(§4.3)
- *   - snapshots            (§5.1)
  *
  * `schema_migrations` tracks applied versions for idempotent runs.
  */

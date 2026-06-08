@@ -5,9 +5,9 @@
  * do NOT synthesize derived events; every StatsEvent must trace back to a
  * concrete SDK Event delivered via a plugin hook.
  *
- * Covers 9 event types:
+ * Covers 8 event types:
  *   session.created, session.updated, session.deleted, session.error,
- *   session.diff, message.updated, tool.completed, tool.failed, file.edited
+ *   message.updated, tool.completed, tool.failed, file.edited
  */
 
 // ============================================================================
@@ -40,7 +40,6 @@ export type EventType =
   | "session.updated"
   | "session.deleted"
   | "session.error"
-  | "session.diff"
   | "message.updated"
   | "tool.execute.after"
   | "tool.failed"
@@ -102,21 +101,6 @@ export interface SessionErrorEvent extends BaseStatsEvent {
   error_message: string;
 }
 
-/** Session diff (git diff stats) */
-export interface SessionDiffEvent extends BaseStatsEvent {
-  event_type: "session.diff";
-  /** ← event.properties.sessionID */
-  session_id: string;
-  /** ← input.directory */
-  project_path: string;
-  /** ← event.properties.diff.reduce(sum => sum.additions) */
-  lines_added: number;
-  /** ← event.properties.diff.reduce(sum => sum.deletions) */
-  lines_deleted: number;
-  /** ← event.properties.diff.length */
-  files_changed: number;
-}
-
 /** Message updated (tokens/cost finalized) */
 export interface MessageUpdatedEvent extends BaseStatsEvent {
   event_type: "message.updated";
@@ -132,6 +116,12 @@ export interface MessageUpdatedEvent extends BaseStatsEvent {
   tokens: TokenBreakdown;
   /** ← event.properties.info.cost ?? 0 */
   cost_usd: number;
+  /** ← event.properties.info.summary?.diffs.reduce(sum => sum.additions) */
+  lines_added: number;
+  /** ← event.properties.info.summary?.diffs.reduce(sum => sum.deletions) */
+  lines_deleted: number;
+  /** ← event.properties.info.summary?.diffs.length */
+  files_changed: number;
 }
 
 /** Tool execution started (from tool.execute.before hook) */
@@ -196,7 +186,6 @@ export type StatsEvent =
   | SessionUpdatedEvent
   | SessionDeletedEvent
   | SessionErrorEvent
-  | SessionDiffEvent
   | MessageUpdatedEvent
   | ToolExecuteBeforeEvent
   | ToolExecuteAfterEvent

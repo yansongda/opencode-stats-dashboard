@@ -135,8 +135,6 @@ export interface TrendDataPoint {
   date: string;
   tokens: number;
   cost_usd: number;
-  messages: number;
-  sessions: number;
   tool_calls: number;
   errors: number;
 }

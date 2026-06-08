@@ -4,7 +4,7 @@
  * Tables:
  *   - events              (Event Store, §3.1)
  *   - projection_sessions  (§4.1)
- *   - projection_daily     (§4.2)
+ *   - projection_daily_model_usage (§4.2)
  *   - projection_tool_calls(§4.3)
  *   - snapshots            (§5.1)
  */
@@ -63,15 +63,10 @@ export function up(db: Database): void {
   `);
 
   db.run(`
-    CREATE TABLE IF NOT EXISTS projection_daily (
+    CREATE TABLE IF NOT EXISTS projection_daily_model_usage (
       date                TEXT NOT NULL,
       project_path        TEXT NOT NULL,
       model               TEXT NOT NULL,
-      session_count       INTEGER DEFAULT 0,
-      active_sessions     INTEGER DEFAULT 0,
-      deleted_sessions    INTEGER DEFAULT 0,
-      message_count       INTEGER DEFAULT 0,
-      user_messages       INTEGER DEFAULT 0,
       assistant_messages  INTEGER DEFAULT 0,
       total_tokens        INTEGER DEFAULT 0,
       input_tokens        INTEGER DEFAULT 0,
@@ -86,8 +81,9 @@ export function up(db: Database): void {
       lines_added         INTEGER DEFAULT 0,
       lines_deleted       INTEGER DEFAULT 0,
       error_count         INTEGER DEFAULT 0,
-      projected_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
       event_count         INTEGER DEFAULT 0,
+      created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY (date, project_path, model)
     )
   `);
@@ -103,7 +99,8 @@ export function up(db: Database): void {
       duration_ms     INTEGER,
       title           TEXT,
       error_message   TEXT,
-      projected_at    DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
   db.run(
@@ -115,23 +112,4 @@ export function up(db: Database): void {
   db.run(
     "CREATE INDEX IF NOT EXISTS idx_tc_status ON projection_tool_calls(status)",
   );
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS snapshots (
-      snapshot_id     TEXT PRIMARY KEY,
-      snapshot_type   TEXT NOT NULL,
-      target_id       TEXT NOT NULL,
-      snapshot_at     INTEGER NOT NULL,
-      period_start    INTEGER,
-      period_end      INTEGER,
-      snapshot_data   TEXT NOT NULL,
-      event_count     INTEGER,
-      created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-  db.run(
-    "CREATE INDEX IF NOT EXISTS idx_snap_type ON snapshots(snapshot_type)",
-  );
-  db.run("CREATE INDEX IF NOT EXISTS idx_snap_target ON snapshots(target_id)");
-  db.run("CREATE INDEX IF NOT EXISTS idx_snap_time ON snapshots(snapshot_at)");
 }

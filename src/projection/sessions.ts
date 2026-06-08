@@ -20,7 +20,6 @@ import type {
   MessageUpdatedEvent,
   SessionCreatedEvent,
   SessionDeletedEvent,
-  SessionDiffEvent,
   SessionErrorEvent,
   SessionUpdatedEvent,
   StatsEvent,
@@ -246,25 +245,6 @@ function handleSessionError(
   );
 }
 
-function handleSessionDiff(
-  event: SessionDiffEvent,
-  txn: TransactionContext,
-): void {
-  txn.run(
-    `UPDATE projection_sessions
-     SET lines_added = lines_added + ?, lines_deleted = lines_deleted + ?,
-         last_event_at = ?, duration_ms = ? - first_event_at, event_count = event_count + 1
-     WHERE session_id = ?`,
-    [
-      event.lines_added,
-      event.lines_deleted,
-      event.created_at_ms,
-      event.created_at_ms,
-      event.session_id,
-    ],
-  );
-}
-
 function handleMessageUpdated(
   event: MessageUpdatedEvent,
   txn: TransactionContext,
@@ -284,9 +264,16 @@ function handleMessageUpdated(
     txn.run(
       `UPDATE projection_sessions
        SET user_message_count = user_message_count + 1,
+           lines_added = lines_added + ?, lines_deleted = lines_deleted + ?,
            last_event_at = ?, duration_ms = ? - first_event_at, event_count = event_count + 1
        WHERE session_id = ?`,
-      [event.created_at_ms, event.created_at_ms, event.session_id],
+      [
+        event.lines_added,
+        event.lines_deleted,
+        event.created_at_ms,
+        event.created_at_ms,
+        event.session_id,
+      ],
     );
   } else if (event.role === "assistant") {
     const modelUsage = parseModelUsage(row.model_usage);
@@ -371,7 +358,6 @@ const HANDLED_EVENTS: StatsEventType[] = [
   "session.updated",
   "session.deleted",
   "session.error",
-  "session.diff",
   "message.updated",
   "tool.execute.after",
   "tool.failed",
@@ -403,10 +389,6 @@ export function createSessionProjectionHandler(): ProjectionHandler {
 
         case "session.error":
           handleSessionError(event, txn);
-          break;
-
-        case "session.diff":
-          handleSessionDiff(event, txn);
           break;
 
         case "message.updated":

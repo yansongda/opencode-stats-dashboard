@@ -51,9 +51,9 @@
         test-id="metric-tools"
       />
       <MetricCard
-        label="代码变更"
-        :value="`+${overview?.lines_added ?? 0}`"
-        :subtitle="`-${overview?.lines_deleted ?? 0} · 净增 ${(overview?.lines_added ?? 0) - (overview?.lines_deleted ?? 0)} 行`"
+        label="变更代码 / 变更文件"
+        :value="`${((overview?.lines_added ?? 0) - (overview?.lines_deleted ?? 0)).toLocaleString()} / ${overview?.files_edited ?? 0}`"
+        :subtitle="`+${overview?.lines_added ?? 0} 行 · -${overview?.lines_deleted ?? 0} 行`"
         test-id="metric-code"
       />
     </div>

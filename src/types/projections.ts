@@ -131,23 +131,16 @@ export interface ProjectionSession {
 }
 
 // ============================================================================
-// projection_daily
+// projection_daily_model_usage
 // ============================================================================
 
-export interface ProjectionDaily {
+export interface ProjectionDailyModelUsage {
   // Composite primary key
   date: string; // YYYY-MM-DD
   project_path: string;
   model: string;
 
-  // Session stats
-  session_count: number;
-  active_sessions: number;
-  deleted_sessions: number;
-
-  // Message stats
-  message_count: number;
-  user_messages: number;
+  // Message stats (assistant only)
   assistant_messages: number;
 
   // Token stats
@@ -174,7 +167,8 @@ export interface ProjectionDaily {
   error_count: number;
 
   // Projection metadata
-  projected_at: string;
+  created_at: string;
+  updated_at: string;
   event_count: number;
 }
 
@@ -214,7 +208,8 @@ export interface ProjectionToolCall {
   error_message: string | null;
 
   // Projection metadata
-  projected_at: string;
+  created_at: string;
+  updated_at: string;
 }
 
 // ============================================================================

@@ -330,7 +330,7 @@ function errorRateClass(m: StatsModelItem): string {
   padding: var(--spacing-2) var(--spacing-3);
   background-color: var(--surface);
   border-bottom: 1px solid var(--border);
-  text-align: left;
+  text-align: center;
   font-weight: 600;
   color: var(--text-muted);
   font-size: var(--text-sm);
@@ -343,6 +343,7 @@ function errorRateClass(m: StatsModelItem): string {
   border-bottom: 1px solid rgba(51, 65, 85, 0.4);
   color: var(--text);
   white-space: nowrap;
+  text-align: center;
 }
 
 .data-table tbody tr:hover {
@@ -363,7 +364,7 @@ function errorRateClass(m: StatsModelItem): string {
 }
 
 .col-right {
-  text-align: right;
+  text-align: center;
 }
 
 .col-monospace {

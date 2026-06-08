@@ -67,7 +67,7 @@ src/
 ├── projection/       # 投影处理器（事件 → 聚合统计表）
 │   ├── engine.ts     # ProjectionEngine：在事务中将事件路由到处理器
 │   ├── sessions.ts   # projection_sessions 处理器
-│   ├── daily.ts      # projection_daily 处理器（按日期+项目+模型）
+│   ├── daily.ts      # projection_daily_model_usage 处理器（按日期+项目+模型）
 │   └── tool-calls.ts # projection_tool_calls 处理器
 ├── snapshot/         # 快照管理器（状态序列化）
 ├── sse/              # SSE 广播器（实时推送到仪表盘）

@@ -72,17 +72,11 @@
               <th class="sortable col-right" :class="{ sorted: sortKey === 'avg_duration_ms' }" @click="toggleSort('avg_duration_ms')">
                 平均耗时 <span class="sort-indicator">{{ sortIndicator('avg_duration_ms') }}</span>
               </th>
-              <th class="sortable col-right" :class="{ sorted: sortKey === 'total_tokens' }" @click="toggleSort('total_tokens')">
-                Token <span class="sort-indicator">{{ sortIndicator('total_tokens') }}</span>
-              </th>
-              <th class="sortable col-right" :class="{ sorted: sortKey === 'total_cost_usd' }" @click="toggleSort('total_cost_usd')">
-                成本 <span class="sort-indicator">{{ sortIndicator('total_cost_usd') }}</span>
-              </th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="sortedTools.length === 0">
-              <td colspan="6">
+              <td colspan="4">
                 <EmptyState
                   title="暂无工具调用数据"
                   description="开始使用 OpenCode 后，工具调用记录将显示在这里"
@@ -97,8 +91,6 @@
                 <span :class="rateClass(tool.success_rate)">{{ formatPercent(tool.success_rate) }}</span>
               </td>
               <td class="col-right">{{ formatDuration(tool.avg_duration_ms) }}</td>
-              <td class="col-right">{{ formatCompactNumber(tool.total_tokens) }}</td>
-              <td class="col-right">{{ formatCost(tool.total_cost_usd) }}</td>
             </tr>
           </tbody>
         </table>
@@ -302,12 +294,6 @@ function formatNumber(n: number): string {
   return n.toLocaleString('en-US')
 }
 
-function formatCompactNumber(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
-  return n.toLocaleString('en-US')
-}
-
 function formatPercent(rate: number): string {
   return `${(rate * 100).toFixed(1)}%`
 }
@@ -315,10 +301,6 @@ function formatPercent(rate: number): string {
 function formatDuration(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)}ms`
   return `${(ms / 1000).toFixed(1)}s`
-}
-
-function formatCost(usd: number): string {
-  return `$${usd.toFixed(4)}`
 }
 
 function rateClass(rate: number): string {
@@ -447,7 +429,7 @@ function rateClass(rate: number): string {
 
 .data-table th {
   padding: var(--spacing-2) var(--spacing-3);
-  text-align: left;
+  text-align: center;
   font-weight: 500;
   color: var(--text-muted);
   border-bottom: 1px solid var(--border);
@@ -479,6 +461,7 @@ function rateClass(rate: number): string {
   border-bottom: 1px solid var(--border);
   color: var(--text);
   vertical-align: middle;
+  text-align: center;
 }
 
 .data-table tbody tr {
@@ -490,7 +473,7 @@ function rateClass(rate: number): string {
 }
 
 .col-right {
-  text-align: right;
+  text-align: center;
   font-variant-numeric: tabular-nums;
 }
 

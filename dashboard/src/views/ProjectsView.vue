@@ -440,7 +440,7 @@ function formatLastActive(ts: number | null): string {
 
 .data-table th {
   padding: var(--spacing-2) var(--spacing-3);
-  text-align: left;
+  text-align: center;
   font-weight: 500;
   color: var(--text-muted);
   border-bottom: 1px solid var(--border);
@@ -472,6 +472,7 @@ function formatLastActive(ts: number | null): string {
   border-bottom: 1px solid var(--border);
   color: var(--text);
   vertical-align: middle;
+  text-align: center;
 }
 
 .data-table tbody tr {
@@ -499,7 +500,7 @@ function formatLastActive(ts: number | null): string {
 }
 
 .col-number {
-  text-align: right;
+  text-align: center;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
   min-width: 80px;

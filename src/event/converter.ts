@@ -7,7 +7,6 @@ import * as fileEdited from "@event/converters/file-edited";
 import * as messageUpdated from "@event/converters/message-updated";
 import * as sessionCreated from "@event/converters/session-created";
 import * as sessionDeleted from "@event/converters/session-deleted";
-import * as sessionDiff from "@event/converters/session-diff";
 import * as sessionError from "@event/converters/session-error";
 import * as sessionUpdated from "@event/converters/session-updated";
 import { createBaseEvent } from "@event/utils";
@@ -21,7 +20,6 @@ const REGISTERED = [
   sessionCreated,
   sessionUpdated,
   sessionDeleted,
-  sessionDiff,
   sessionError,
 ] as const;
 
