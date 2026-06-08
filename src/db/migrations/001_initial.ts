@@ -3,9 +3,9 @@
  *
  * Tables:
  *   - events              (Event Store, §3.1)
- *   - projection_sessions  (§4.1)
+ *   - sessions            (§4.1)
  *   - projection_daily_model_usage (§4.2)
- *   - projection_tool_calls(§4.3)
+ *   - tool_calls          (§4.3)
  *   - snapshots            (§5.1)
  */
 
@@ -31,7 +31,7 @@ export function up(db: Database): void {
   );
 
   db.run(`
-    CREATE TABLE IF NOT EXISTS projection_sessions (
+    CREATE TABLE IF NOT EXISTS sessions (
       session_id                TEXT PRIMARY KEY,
       project_path              TEXT,
       title                     TEXT,
@@ -75,13 +75,6 @@ export function up(db: Database): void {
       cache_read          INTEGER DEFAULT 0,
       cache_write         INTEGER DEFAULT 0,
       total_cost_usd      REAL DEFAULT 0,
-      tool_calls          INTEGER DEFAULT 0,
-      tool_errors         INTEGER DEFAULT 0,
-      files_edited        INTEGER DEFAULT 0,
-      lines_added         INTEGER DEFAULT 0,
-      lines_deleted       INTEGER DEFAULT 0,
-      error_count         INTEGER DEFAULT 0,
-      event_count         INTEGER DEFAULT 0,
       created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY (date, project_path, model)
@@ -89,7 +82,7 @@ export function up(db: Database): void {
   `);
 
   db.run(`
-    CREATE TABLE IF NOT EXISTS projection_tool_calls (
+    CREATE TABLE IF NOT EXISTS tool_calls (
       call_id         TEXT PRIMARY KEY,
       session_id      TEXT NOT NULL,
       tool_name       TEXT NOT NULL,
@@ -103,13 +96,7 @@ export function up(db: Database): void {
       updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
-  db.run(
-    "CREATE INDEX IF NOT EXISTS idx_tc_session ON projection_tool_calls(session_id)",
-  );
-  db.run(
-    "CREATE INDEX IF NOT EXISTS idx_tc_tool ON projection_tool_calls(tool_name)",
-  );
-  db.run(
-    "CREATE INDEX IF NOT EXISTS idx_tc_status ON projection_tool_calls(status)",
-  );
+  db.run("CREATE INDEX IF NOT EXISTS idx_tc_session ON tool_calls(session_id)");
+  db.run("CREATE INDEX IF NOT EXISTS idx_tc_tool ON tool_calls(tool_name)");
+  db.run("CREATE INDEX IF NOT EXISTS idx_tc_status ON tool_calls(status)");
 }

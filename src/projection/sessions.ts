@@ -162,12 +162,12 @@ function ensureSessionExists(
   txn: TransactionContext,
 ): void {
   const existing = txn.get(
-    "SELECT session_id FROM projection_sessions WHERE session_id = ?",
+    "SELECT session_id FROM sessions WHERE session_id = ?",
     [event.session_id],
   );
   if (!existing) {
     txn.run(
-      `INSERT OR IGNORE INTO projection_sessions
+      `INSERT OR IGNORE INTO sessions
         (session_id, project_path, title, status, first_event_at, last_event_at,
          model_usage, event_count)
        VALUES (?, ?, '', 'active', ?, ?, '{}', 0)`,
@@ -190,7 +190,7 @@ function handleSessionCreated(
   txn: TransactionContext,
 ): void {
   txn.run(
-    `INSERT OR IGNORE INTO projection_sessions
+    `INSERT OR IGNORE INTO sessions
       (session_id, project_path, title, status, first_event_at, last_event_at,
        model_usage, event_count)
      VALUES (?, ?, ?, 'active', ?, ?, '{}', 1)`,
@@ -209,9 +209,9 @@ function handleSessionUpdated(
   txn: TransactionContext,
 ): void {
   txn.run(
-    `UPDATE projection_sessions
-     SET title = ?, last_event_at = ?, duration_ms = ? - first_event_at, event_count = event_count + 1
-     WHERE session_id = ?`,
+    `UPDATE sessions
+       SET title = ?, last_event_at = ?, duration_ms = ? - first_event_at, event_count = event_count + 1
+       WHERE session_id = ?`,
     [event.title, event.created_at_ms, event.created_at_ms, event.session_id],
   );
 }
@@ -221,9 +221,9 @@ function handleSessionDeleted(
   txn: TransactionContext,
 ): void {
   txn.run(
-    `UPDATE projection_sessions
-     SET status = 'deleted', deleted_at = ?, last_event_at = ?, duration_ms = ? - first_event_at, event_count = event_count + 1
-     WHERE session_id = ?`,
+    `UPDATE sessions
+       SET status = 'deleted', deleted_at = ?, last_event_at = ?, duration_ms = ? - first_event_at, event_count = event_count + 1
+       WHERE session_id = ?`,
     [
       event.created_at_ms,
       event.created_at_ms,
@@ -238,9 +238,9 @@ function handleSessionError(
   txn: TransactionContext,
 ): void {
   txn.run(
-    `UPDATE projection_sessions
-     SET error_count = error_count + 1, last_event_at = ?, duration_ms = ? - first_event_at, event_count = event_count + 1
-     WHERE session_id = ?`,
+    `UPDATE sessions
+       SET error_count = error_count + 1, last_event_at = ?, duration_ms = ? - first_event_at, event_count = event_count + 1
+       WHERE session_id = ?`,
     [event.created_at_ms, event.created_at_ms, event.session_id],
   );
 }
@@ -253,7 +253,7 @@ function handleMessageUpdated(
 
   const row = txn.get<{
     model_usage: string | null;
-  }>("SELECT model_usage FROM projection_sessions WHERE session_id = ?", [
+  }>("SELECT model_usage FROM sessions WHERE session_id = ?", [
     event.session_id,
   ]);
   if (!row) return;
@@ -262,7 +262,7 @@ function handleMessageUpdated(
 
   if (event.role === "user") {
     txn.run(
-      `UPDATE projection_sessions
+      `UPDATE sessions
        SET user_message_count = user_message_count + 1,
            lines_added = lines_added + ?, lines_deleted = lines_deleted + ?,
            last_event_at = ?, duration_ms = ? - first_event_at, event_count = event_count + 1
@@ -286,7 +286,7 @@ function handleMessageUpdated(
     const primaryModel = calculatePrimaryModel(updatedModelUsage);
 
     txn.run(
-      `UPDATE projection_sessions
+      `UPDATE sessions
        SET assistant_message_count = assistant_message_count + 1,
            total_tokens = total_tokens + ?,
            input_tokens = input_tokens + ?,
@@ -326,15 +326,15 @@ function handleToolExecuteAfter(
 
   if (isError) {
     txn.run(
-      `UPDATE projection_sessions
+      `UPDATE sessions
        SET tool_call_count = tool_call_count + 1, tool_error_count = tool_error_count + 1, last_event_at = ?, duration_ms = ? - first_event_at, event_count = event_count + 1
        WHERE session_id = ?`,
       [event.created_at_ms, event.created_at_ms, event.session_id],
     );
   } else {
     txn.run(
-      `UPDATE projection_sessions
-       SET tool_call_count = tool_call_count + 1, last_event_at = ?, duration_ms = ? - first_event_at, event_count = event_count + 1
+      `UPDATE sessions
+       SET error_count = error_count + 1, last_event_at = ?, duration_ms = ? - first_event_at, event_count = event_count + 1
        WHERE session_id = ?`,
       [event.created_at_ms, event.created_at_ms, event.session_id],
     );
@@ -365,7 +365,7 @@ const HANDLED_EVENTS: StatsEventType[] = [
 ];
 
 /**
- * Create a ProjectionHandler that materializes projection_sessions.
+ * Create a ProjectionHandler that materializes sessions.
  *
  * Exported as a factory function for testability and engine registration.
  */

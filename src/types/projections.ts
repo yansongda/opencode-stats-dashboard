@@ -74,7 +74,7 @@ export interface ModelUsageEntry {
 export type ModelUsage = Record<string, ModelUsageEntry>;
 
 // ============================================================================
-// projection_sessions
+// sessions
 // ============================================================================
 
 export interface ProjectionSession {
@@ -154,26 +154,13 @@ export interface ProjectionDailyModelUsage {
   // Cost stats
   total_cost_usd: number;
 
-  // Tool stats
-  tool_calls: number;
-  tool_errors: number;
-
-  // File stats
-  files_edited: number;
-  lines_added: number;
-  lines_deleted: number;
-
-  // Error stats
-  error_count: number;
-
   // Projection metadata
   created_at: string;
   updated_at: string;
-  event_count: number;
 }
 
 // ============================================================================
-// projection_tool_calls
+// tool_calls
 // ============================================================================
 
 export type ToolCallStatus = "pending" | "running" | "completed" | "error";

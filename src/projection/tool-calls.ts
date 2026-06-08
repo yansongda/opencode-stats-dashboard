@@ -1,12 +1,12 @@
 /**
- * projection_tool_calls handler — tracks individual tool call lifecycle.
+ * tool_calls handler — tracks individual tool call lifecycle.
  *
  * Processes:
  *  - tool.execute.before → INSERT row with started_at timestamp
  *  - tool.execute.after  → UPDATE row with status='completed'
  *  - tool.failed         → UPDATE row with status='error'
  *
- * Design doc: §4.3 projection_tool_calls
+ * Design doc: §4.3 tool_calls
  */
 
 import type {
@@ -27,7 +27,7 @@ function handleToolExecuteBefore(
   txn: TransactionContext,
 ): void {
   txn.run(
-    `INSERT OR IGNORE INTO projection_tool_calls
+    `INSERT OR IGNORE INTO tool_calls
        (call_id, session_id, tool_name, status, started_at)
      VALUES (?, ?, ?, 'running', ?)`,
     [event.call_id, event.session_id, event.tool_name, event.created_at_ms],
@@ -43,13 +43,13 @@ function handleToolExecuteAfter(
   const title = event.title;
 
   const existing = txn.get(
-    "SELECT call_id, started_at FROM projection_tool_calls WHERE call_id = ?",
+    "SELECT call_id, started_at FROM tool_calls WHERE call_id = ?",
     [callId],
   );
 
   if (!existing) {
     txn.run(
-      `INSERT OR IGNORE INTO projection_tool_calls
+      `INSERT OR IGNORE INTO tool_calls
          (call_id, session_id, tool_name, status, started_at, completed_at, duration_ms, title)
        VALUES (?, ?, ?, 'completed', ?, ?, ?, ?)`,
       [
@@ -69,7 +69,7 @@ function handleToolExecuteAfter(
     event.duration_ms || event.created_at_ms - (existing.started_at as number);
 
   txn.run(
-    `UPDATE projection_tool_calls
+    `UPDATE tool_calls
      SET status = 'completed',
          completed_at = ?,
          duration_ms = ?,
@@ -88,13 +88,13 @@ function handleToolFailed(
   const errorMessage = event.error_message;
 
   const existing = txn.get(
-    "SELECT call_id, started_at FROM projection_tool_calls WHERE call_id = ?",
+    "SELECT call_id, started_at FROM tool_calls WHERE call_id = ?",
     [callId],
   );
 
   if (!existing) {
     txn.run(
-      `INSERT OR IGNORE INTO projection_tool_calls
+      `INSERT OR IGNORE INTO tool_calls
          (call_id, session_id, tool_name, status, started_at, completed_at, duration_ms, error_message)
        VALUES (?, ?, ?, 'error', ?, ?, ?, ?)`,
       [
@@ -114,7 +114,7 @@ function handleToolFailed(
     event.duration_ms || event.created_at_ms - (existing.started_at as number);
 
   txn.run(
-    `UPDATE projection_tool_calls
+    `UPDATE tool_calls
      SET status = 'error',
          completed_at = ?,
          duration_ms = ?,

@@ -135,8 +135,6 @@ export interface TrendDataPoint {
   date: string;
   tokens: number;
   cost_usd: number;
-  tool_calls: number;
-  errors: number;
 }
 
 /** Trend response */
@@ -237,8 +235,6 @@ export interface ModelComparisonItem {
   reasoning_tokens: number;
   total_cost_usd: number;
   avg_cost_per_session: number;
-  tool_call_count: number;
-  error_count: number;
 }
 
 /** Models comparison response */
