@@ -28,7 +28,7 @@ function handleToolExecuteBefore(
 ): void {
   txn.run(
     `INSERT OR IGNORE INTO tool_calls
-       (call_id, session_id, tool_name, status, started_at)
+       (call_id, session_id, tool_name, status, started_at_ms)
      VALUES (?, ?, ?, 'running', ?)`,
     [event.call_id, event.session_id, event.tool_name, event.created_at_ms],
   );
@@ -43,14 +43,14 @@ function handleToolExecuteAfter(
   const title = event.title;
 
   const existing = txn.get(
-    "SELECT call_id, started_at FROM tool_calls WHERE call_id = ?",
+    "SELECT call_id, started_at_ms FROM tool_calls WHERE call_id = ?",
     [callId],
   );
 
   if (!existing) {
     txn.run(
       `INSERT OR IGNORE INTO tool_calls
-         (call_id, session_id, tool_name, status, started_at, completed_at, duration_ms, title)
+         (call_id, session_id, tool_name, status, started_at_ms, completed_at_ms, duration_ms, title)
        VALUES (?, ?, ?, 'completed', ?, ?, ?, ?)`,
       [
         callId,
@@ -66,12 +66,13 @@ function handleToolExecuteAfter(
   }
 
   const durationMs =
-    event.duration_ms || event.created_at_ms - (existing.started_at as number);
+    event.duration_ms ||
+    event.created_at_ms - (existing.started_at_ms as number);
 
   txn.run(
     `UPDATE tool_calls
      SET status = 'completed',
-         completed_at = ?,
+         completed_at_ms = ?,
          duration_ms = ?,
          title = COALESCE(?, title),
          updated_at = CURRENT_TIMESTAMP
@@ -88,14 +89,14 @@ function handleToolFailed(
   const errorMessage = event.error_message;
 
   const existing = txn.get(
-    "SELECT call_id, started_at FROM tool_calls WHERE call_id = ?",
+    "SELECT call_id, started_at_ms FROM tool_calls WHERE call_id = ?",
     [callId],
   );
 
   if (!existing) {
     txn.run(
       `INSERT OR IGNORE INTO tool_calls
-         (call_id, session_id, tool_name, status, started_at, completed_at, duration_ms, error_message)
+         (call_id, session_id, tool_name, status, started_at_ms, completed_at_ms, duration_ms, error_message)
        VALUES (?, ?, ?, 'error', ?, ?, ?, ?)`,
       [
         callId,
@@ -111,12 +112,13 @@ function handleToolFailed(
   }
 
   const durationMs =
-    event.duration_ms || event.created_at_ms - (existing.started_at as number);
+    event.duration_ms ||
+    event.created_at_ms - (existing.started_at_ms as number);
 
   txn.run(
     `UPDATE tool_calls
      SET status = 'error',
-         completed_at = ?,
+         completed_at_ms = ?,
          duration_ms = ?,
          error_message = ?,
          updated_at = CURRENT_TIMESTAMP

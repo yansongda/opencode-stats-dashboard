@@ -5,9 +5,9 @@
  * do NOT synthesize derived events; every StatsEvent must trace back to a
  * concrete SDK Event delivered via a plugin hook.
  *
- * Covers 8 event types:
+ * Covers 7 event types:
  *   session.created, session.updated, session.deleted, session.error,
- *   message.updated, tool.completed, tool.failed, file.edited
+ *   message.updated, tool.execute.after, tool.failed
  */
 
 // ============================================================================
@@ -32,7 +32,7 @@ export type ToolStatus = "started" | "completed" | "failed";
 export type SessionStatus = "active" | "deleted";
 
 // ============================================================================
-// Event Type Union (9 types, each maps 1:1 to an SDK event)
+// Event Type Union (7 types, each maps 1:1 to an SDK event)
 // ============================================================================
 
 export type EventType =
@@ -42,8 +42,7 @@ export type EventType =
   | "session.error"
   | "message.updated"
   | "tool.execute.after"
-  | "tool.failed"
-  | "file.edited";
+  | "tool.failed";
 
 // ============================================================================
 // Stats Event Types
@@ -112,6 +111,10 @@ export interface MessageUpdatedEvent extends BaseStatsEvent {
   model: string;
   /** ← event.properties.info.role */
   role: string;
+  /** ← event.properties.info.agent (user messages) */
+  agent?: string;
+  /** ← event.properties.info.mode (assistant messages) */
+  mode?: string;
   /** ← event.properties.info.tokens */
   tokens: TokenBreakdown;
   /** ← event.properties.info.cost ?? 0 */
@@ -122,6 +125,18 @@ export interface MessageUpdatedEvent extends BaseStatsEvent {
   lines_deleted: number;
   /** ← event.properties.info.summary?.diffs.length */
   files_changed: number;
+  /** ← event.properties.info.time.created */
+  created_at_ms: number;
+  /** ← event.properties.info.time.completed (assistant messages) */
+  completed_at_ms?: number;
+  /** ← completed_at_ms - created_at_ms */
+  duration_ms?: number;
+  /** ← event.properties.info.finish (assistant messages) */
+  finish_reason?: string;
+  /** ← event.properties.info.error ? 1 : 0 */
+  has_error: number;
+  /** ← event.properties.info.error?.name */
+  error_type?: string;
 }
 
 /** Tool execution started (from tool.execute.before hook) */
@@ -171,15 +186,6 @@ export interface ToolFailedEvent extends BaseStatsEvent {
   error_message: string;
 }
 
-/** File edited */
-export interface FileEditedEvent extends BaseStatsEvent {
-  event_type: "file.edited";
-  /** ← input.directory */
-  project_path: string;
-  /** ← event.properties.file */
-  file_path: string;
-}
-
 /** Union of all stats event types */
 export type StatsEvent =
   | SessionCreatedEvent
@@ -189,8 +195,7 @@ export type StatsEvent =
   | MessageUpdatedEvent
   | ToolExecuteBeforeEvent
   | ToolExecuteAfterEvent
-  | ToolFailedEvent
-  | FileEditedEvent;
+  | ToolFailedEvent;
 
 /** Extracted union of all event_type literal values */
 export type StatsEventType = StatsEvent["event_type"];

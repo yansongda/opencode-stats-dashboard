@@ -87,15 +87,15 @@ export interface ProjectionSession {
 
   // Status
   status: "active" | "deleted";
-  deleted_at: number | null;
+  deleted_at_ms: number | null;
 
   // Model info
   primary_model: string | null;
   model_usage: ModelUsage | null;
 
   // Time dimensions
-  first_event_at: number | null;
-  last_event_at: number | null;
+  first_event_at_ms: number | null;
+  last_event_at_ms: number | null;
   duration_ms: number | null;
 
   // Message stats
@@ -118,7 +118,7 @@ export interface ProjectionSession {
   tool_error_count: number;
 
   // File stats
-  files_edited: number;
+  files_changed: number;
   lines_added: number;
   lines_deleted: number;
 
@@ -177,8 +177,8 @@ export interface ProjectionToolCall {
   status: ToolCallStatus;
 
   // Time
-  started_at: number | null;
-  completed_at: number | null;
+  started_at_ms: number | null;
+  completed_at_ms: number | null;
   duration_ms: number | null;
 
   // Token stats

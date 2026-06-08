@@ -3,7 +3,6 @@ import type {
   ToolExecuteAfterEvent,
   ToolExecuteBeforeEvent,
 } from "@defs/events";
-import * as fileEdited from "@event/converters/file-edited";
 import * as messageUpdated from "@event/converters/message-updated";
 import * as sessionCreated from "@event/converters/session-created";
 import * as sessionDeleted from "@event/converters/session-deleted";
@@ -15,7 +14,6 @@ import type { Event } from "@opencode-ai/sdk";
 type ConvertFn = (event: Event, directory: string) => StatsEvent | null;
 
 const REGISTERED = [
-  fileEdited,
   messageUpdated,
   sessionCreated,
   sessionUpdated,

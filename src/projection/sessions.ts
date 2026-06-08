@@ -7,7 +7,6 @@
  *  - session.deleted:  update status to deleted
  *  - message.updated:  update token/message stats, model_usage
  *  - tool.completed / tool.failed: update tool stats
- *  - file.edited:      update file stats
  *  - session.error:    increment error_count
  *
  * Design doc: §4.1 — projection_sessions field source mapping.
@@ -16,7 +15,6 @@
  */
 
 import type {
-  FileEditedEvent,
   MessageUpdatedEvent,
   SessionCreatedEvent,
   SessionDeletedEvent,
@@ -168,7 +166,7 @@ function ensureSessionExists(
   if (!existing) {
     txn.run(
       `INSERT OR IGNORE INTO sessions
-        (session_id, project_path, title, status, first_event_at, last_event_at,
+        (session_id, project_path, title, status, first_event_at_ms, last_event_at_ms,
          model_usage, event_count)
        VALUES (?, ?, '', 'active', ?, ?, '{}', 0)`,
       [
@@ -191,7 +189,7 @@ function handleSessionCreated(
 ): void {
   txn.run(
     `INSERT OR IGNORE INTO sessions
-      (session_id, project_path, title, status, first_event_at, last_event_at,
+      (session_id, project_path, title, status, first_event_at_ms, last_event_at_ms,
        model_usage, event_count)
      VALUES (?, ?, ?, 'active', ?, ?, '{}', 1)`,
     [
@@ -210,7 +208,7 @@ function handleSessionUpdated(
 ): void {
   txn.run(
     `UPDATE sessions
-       SET title = ?, last_event_at = ?, duration_ms = ? - first_event_at, event_count = event_count + 1
+       SET title = ?, last_event_at_ms = ?, duration_ms = ? - first_event_at_ms, event_count = event_count + 1
        WHERE session_id = ?`,
     [event.title, event.created_at_ms, event.created_at_ms, event.session_id],
   );
@@ -222,7 +220,7 @@ function handleSessionDeleted(
 ): void {
   txn.run(
     `UPDATE sessions
-       SET status = 'deleted', deleted_at = ?, last_event_at = ?, duration_ms = ? - first_event_at, event_count = event_count + 1
+       SET status = 'deleted', deleted_at_ms = ?, last_event_at_ms = ?, duration_ms = ? - first_event_at_ms, event_count = event_count + 1
        WHERE session_id = ?`,
     [
       event.created_at_ms,
@@ -239,7 +237,7 @@ function handleSessionError(
 ): void {
   txn.run(
     `UPDATE sessions
-       SET error_count = error_count + 1, last_event_at = ?, duration_ms = ? - first_event_at, event_count = event_count + 1
+       SET error_count = error_count + 1, last_event_at_ms = ?, duration_ms = ? - first_event_at_ms, event_count = event_count + 1
        WHERE session_id = ?`,
     [event.created_at_ms, event.created_at_ms, event.session_id],
   );
@@ -265,7 +263,7 @@ function handleMessageUpdated(
       `UPDATE sessions
        SET user_message_count = user_message_count + 1,
            lines_added = lines_added + ?, lines_deleted = lines_deleted + ?,
-           last_event_at = ?, duration_ms = ? - first_event_at, event_count = event_count + 1
+           last_event_at_ms = ?, duration_ms = ? - first_event_at_ms, event_count = event_count + 1
        WHERE session_id = ?`,
       [
         event.lines_added,
@@ -297,7 +295,7 @@ function handleMessageUpdated(
            total_cost_usd = total_cost_usd + ?,
            model_usage = ?,
            primary_model = ?,
-           last_event_at = ?, duration_ms = ? - first_event_at, event_count = event_count + 1
+           last_event_at_ms = ?, duration_ms = ? - first_event_at_ms, event_count = event_count + 1
        WHERE session_id = ?`,
       [
         totalTokens(tokens),
@@ -327,26 +325,18 @@ function handleToolExecuteAfter(
   if (isError) {
     txn.run(
       `UPDATE sessions
-       SET tool_call_count = tool_call_count + 1, tool_error_count = tool_error_count + 1, last_event_at = ?, duration_ms = ? - first_event_at, event_count = event_count + 1
+       SET tool_call_count = tool_call_count + 1, tool_error_count = tool_error_count + 1, last_event_at_ms = ?, duration_ms = ? - first_event_at_ms, event_count = event_count + 1
        WHERE session_id = ?`,
       [event.created_at_ms, event.created_at_ms, event.session_id],
     );
   } else {
     txn.run(
       `UPDATE sessions
-       SET error_count = error_count + 1, last_event_at = ?, duration_ms = ? - first_event_at, event_count = event_count + 1
+       SET error_count = error_count + 1, last_event_at_ms = ?, duration_ms = ? - first_event_at_ms, event_count = event_count + 1
        WHERE session_id = ?`,
       [event.created_at_ms, event.created_at_ms, event.session_id],
     );
   }
-}
-
-function handleFileEdited(
-  _event: FileEditedEvent,
-  _txn: TransactionContext,
-): void {
-  // FileEditedEvent has no session_id — cannot update a session row.
-  // The SDK file.edited event only provides project_path and file_path.
 }
 
 // ---------------------------------------------------------------------------
@@ -361,7 +351,6 @@ const HANDLED_EVENTS: StatsEventType[] = [
   "message.updated",
   "tool.execute.after",
   "tool.failed",
-  "file.edited",
 ];
 
 /**
@@ -398,10 +387,6 @@ export function createSessionProjectionHandler(): ProjectionHandler {
         case "tool.execute.after":
         case "tool.failed":
           handleToolExecuteAfter(event, txn);
-          break;
-
-        case "file.edited":
-          handleFileEdited(event, txn);
           break;
 
         default:

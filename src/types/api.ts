@@ -114,7 +114,7 @@ export interface OverviewStats {
   tool_error_count: number;
 
   /** File stats */
-  files_edited: number;
+  files_changed: number;
   lines_added: number;
   lines_deleted: number;
 
@@ -122,8 +122,8 @@ export interface OverviewStats {
   error_count: number;
 
   /** Time stats */
-  first_event_at: number | null;
-  last_event_at: number | null;
+  first_event_at_ms: number | null;
+  last_event_at_ms: number | null;
 }
 
 // ============================================================================
@@ -157,7 +157,7 @@ export interface SessionListItem {
   total_tokens: number;
   total_cost_usd: number;
   duration_ms: number | null;
-  last_event_at: number | null;
+  last_event_at_ms: number | null;
   event_count: number;
 }
 
@@ -167,7 +167,7 @@ export interface SessionDetail extends SessionListItem {
   model_usage: ModelUsage | null;
 
   // Time stats
-  first_event_at: number | null;
+  first_event_at_ms: number | null;
 
   // Message stats
   user_message_count: number;
@@ -185,7 +185,7 @@ export interface SessionDetail extends SessionListItem {
   tool_error_count: number;
 
   // File stats
-  files_edited: number;
+  files_changed: number;
   lines_added: number;
   lines_deleted: number;
 
@@ -253,7 +253,7 @@ export interface ProjectStatsItem {
   session_count: number;
   total_tokens: number;
   total_cost_usd: number;
-  last_event_at: number | null;
+  last_event_at_ms: number | null;
   primary_model: string | null;
 }
 
