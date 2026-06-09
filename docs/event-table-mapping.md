@@ -1,6 +1,15 @@
-# 事件与数据表字段映射
+# 事件与数据表映射
 
-> 每张表的字段来源，"SDK 事件原始字段" 为 SDK 事件的原始路径，"SDK 事件" 为 `@opencode-ai/sdk` 中的 interface，"映射事件" 为 `types/events.ts` 中的 interface
+> 本文档反映当前代码实际状态，基于以下源文件:
+> - `src/types/events.ts` (StatsEvent 类型定义)
+> - `src/event/converters/*.ts` (SDK 事件到 StatsEvent 的转换)
+> - `src/store/event.ts` (EventStore 持久化)
+> - `src/projection/sessions.ts` (sessions 投影处理器)
+> - `src/projection/messages.ts` (messages 投影处理器)
+> - `src/projection/tool-calls.ts` (tool_calls 投影处理器)
+> - `src/db/migrations/001_initial.ts` (数据库 schema)
+
+---
 
 ## 时间字段命名规范
 
@@ -11,130 +20,154 @@
 
 ---
 
-## 1. events 表
+## SDK 事件到 StatsEvent 映射
 
-所有事件都写入此表，`event_contents` 存储完整的 StatsEvent JSON。
+共 10 种 StatsEvent 类型。SDK 的 `session.updated`、`session.deleted`、`session.error` 保持原名；`message.updated` 按 role 拆分为两种；`message.part.updated` 按 tool status 拆分为四种。
 
-### 接收的事件来源
-
-| 钩子 | SDK 事件类型 | SDK 事件 | 转换器 | 写入的 `event_type` |
-|------|------------|---------|--------|-------------------|
-| `event` | `session.created` | `EventSessionCreated` | `session-created.ts` | `session.created` |
-| `event` | `session.updated` | `EventSessionUpdated` | `session-updated.ts` | `session.updated` |
-| `event` | `session.deleted` | `EventSessionDeleted` | `session-deleted.ts` | `session.deleted` |
-| `event` | `session.error` | `EventSessionError` | `session-error.ts` | `session.error` |
-| `event` | `message.updated` | `EventMessageUpdated` | `message-updated.ts` | `message.updated` |
-| `event` | `message.part.updated` | `EventMessagePartUpdated` | `tool-failed.ts` | `tool.failed` |
-| `tool.execute.before` | 钩子参数 | - | `converter.ts` | `tool.execute.before` |
-| `tool.execute.after` | 钩子参数 | - | `converter.ts` | `tool.execute.after` |
-
-### 字段映射
-
-| 字段 | SDK 事件原始字段 | SDK 事件名称 | SDK 事件 | 映射事件 |
-|------|----------------|------------|---------|---------|
-| `event_id` | `crypto.randomUUID()` 自动生成 | 全部 | - | `BaseStatsEvent` |
-| `event_type` | 事件类型字符串 | 全部 | - | `BaseStatsEvent` |
-| `session_id` | 见下方各表 | 全部 | - | 各事件 interface |
-| `event_contents` | StatsEvent 对象 JSON 序列化 | 全部 | - | - |
-| `created_at` | `CURRENT_TIMESTAMP` 自动生成 | 全部 | - | - |
-| `created_at_ms` | `Date.now()` 转换时生成 | 全部 | - | `BaseStatsEvent` |
+| SDK 事件类型 | SDK 事件过滤条件 | StatsEvent 类型 | 转换器文件 |
+|---|---|---|---|
+| `session.created` | - | `session.created` | `session-created.ts` |
+| `session.updated` | - | `session.updated` | `session-updated.ts` |
+| `session.deleted` | - | `session.deleted` | `session-deleted.ts` |
+| `session.error` | - | `session.error` | `session-error.ts` |
+| `message.updated` | `role=user` | `message.updated.user` | `message-updated-user.ts` |
+| `message.updated` | `role=assistant` | `message.updated.assistant` | `message-updated-assistant.ts` |
+| `message.part.updated` | `type=tool, status=pending` | `tool.execute.pending` | `message-part-updated-tool-pending.ts` |
+| `message.part.updated` | `type=tool, status=running` | `tool.execute.running` | `message-part-updated-tool-running.ts` |
+| `message.part.updated` | `type=tool, status=completed` | `tool.execute.completed` | `message-part-updated-tool-completed.ts` |
+| `message.part.updated` | `type=tool, status=error` | `tool.execute.failed` | `message-part-updated-tool-failed.ts` |
 
 ---
 
-## 2. sessions 表
+## 数据库 Schema 概览
 
-| 字段 | SDK 事件原始字段 | SDK 事件名称 | SDK 事件 | 映射事件 |
-|------|----------------|------------|---------|---------|
-| `session_id` | `event.properties.info.id` | `session.created` | `EventSessionCreated` | `SessionCreatedEvent` |
-| `project_path` | `event.properties.info.directory \|\| input.directory` | `session.created` | `EventSessionCreated` | `SessionCreatedEvent` |
-| `title` | `event.properties.info.title ?? ""` | `session.created` | `EventSessionCreated` | `SessionCreatedEvent` |
-| `title` | `event.properties.info.title` | `session.updated` | `EventSessionUpdated` | `SessionUpdatedEvent` |
-| `status` | 固定值 `'active'` | `session.created` | `EventSessionCreated` | `SessionCreatedEvent` |
-| `status` | 固定值 `'deleted'` | `session.deleted` | `EventSessionDeleted` | `SessionDeletedEvent` |
-| `deleted_at_ms` | `Date.now()` 转换时生成 | `session.deleted` | `EventSessionDeleted` | `SessionDeletedEvent` |
-| `primary_model` | 计算值：`message_count` 最多的模型 | `message.updated` | `EventMessageUpdated` | `MessageUpdatedEvent` |
-| `model_usage` | JSON：`{model: {message_count, tokens, cost_usd}}` | `message.updated` | `EventMessageUpdated` | `MessageUpdatedEvent` |
-| `first_event_at_ms` | `Date.now()` 转换时生成 | `session.created` | `EventSessionCreated` | `SessionCreatedEvent` |
-| `last_event_at_ms` | `Date.now()` 转换时生成 | 全部 | - | - |
-| `duration_ms` | 计算值：`last_event_at_ms - first_event_at_ms` | - | - | - |
-| `user_message_count` | `event.properties.info.role === "user"` 时 +1 | `message.updated` | `EventMessageUpdated` | `MessageUpdatedEvent` |
-| `assistant_message_count` | `event.properties.info.role === "assistant"` 时 +1 | `message.updated` | `EventMessageUpdated` | `MessageUpdatedEvent` |
-| `total_tokens` | `info.tokens.input + info.tokens.output + info.tokens.reasoning + info.tokens.cache.read + info.tokens.cache.write` | `message.updated` | `EventMessageUpdated` | `MessageUpdatedEvent` |
-| `input_tokens` | `event.properties.info.tokens.input` | `message.updated` | `EventMessageUpdated` | `MessageUpdatedEvent` |
-| `output_tokens` | `event.properties.info.tokens.output` | `message.updated` | `EventMessageUpdated` | `MessageUpdatedEvent` |
-| `reasoning_tokens` | `event.properties.info.tokens.reasoning` | `message.updated` | `EventMessageUpdated` | `MessageUpdatedEvent` |
-| `cache_read` | `event.properties.info.tokens.cache.read` | `message.updated` | `EventMessageUpdated` | `MessageUpdatedEvent` |
-| `cache_write` | `event.properties.info.tokens.cache.write` | `message.updated` | `EventMessageUpdated` | `MessageUpdatedEvent` |
-| `total_cost_usd` | `event.properties.info.cost ?? 0` | `message.updated` | `EventMessageUpdated` | `MessageUpdatedEvent` |
-| `tool_call_count` | +1 | `tool.execute.after` | - | `ToolExecuteAfterEvent` |
-| `tool_call_count` | +1 | `tool.failed` | - | `ToolFailedEvent` |
-| `tool_error_count` | +1 | `tool.failed` | - | `ToolFailedEvent` |
-| `files_changed` | `event.properties.info.summary?.diffs.length` | `message.updated` (role=user) | `EventMessageUpdated` | `MessageUpdatedEvent` |
-| `lines_added` | `event.properties.info.summary?.diffs.reduce(sum => sum.additions)` | `message.updated` (role=user) | `EventMessageUpdated` | `MessageUpdatedEvent` |
-| `lines_deleted` | `event.properties.info.summary?.diffs.reduce(sum => sum.deletions)` | `message.updated` (role=user) | `EventMessageUpdated` | `MessageUpdatedEvent` |
-| `error_count` | +1 | `session.error` | `EventSessionError` | `SessionErrorEvent` |
-| `event_count` | +1 | 全部 | - | - |
-| `created_at` | `CURRENT_TIMESTAMP` 自动生成 | `session.created` | `EventSessionCreated` | `SessionCreatedEvent` |
+当前迁移实际创建 4 张业务表: `events`, `sessions`, `messages`, `tool_calls`。迁移文件注释中提到的 snapshots 表未在当前 schema 中创建。
+
+### events 表
+
+所有 StatsEvent 统一写入此表，`event_contents` 存储去除了 `event_id`、`event_type`、`created_at_ms` 之后的剩余 JSON；当前实现中 `session_id` 同时存在于独立列和 `event_contents` 内。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `event_id` | TEXT PK | 事件唯一 ID (`crypto.randomUUID()`) |
+| `event_type` | TEXT NOT NULL | StatsEvent 类型字符串 |
+| `session_id` | TEXT NOT NULL | 关联会话 ID |
+| `event_contents` | TEXT NOT NULL | StatsEvent JSON (去掉公共字段) |
+| `created_at` | DATETIME | 自动生成 `CURRENT_TIMESTAMP` |
+| `created_at_ms` | INTEGER NOT NULL | 毫秒时间戳 |
+
+### sessions 表
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `session_id` | TEXT PK | 会话 ID |
+| `project_path` | TEXT | 项目目录 |
+| `title` | TEXT | 会话标题 |
+| `status` | TEXT DEFAULT 'active' | `active` 或 `deleted` |
+| `deleted_at_ms` | INTEGER | 删除时间 (毫秒) |
+| `first_event_at_ms` | INTEGER | 首次事件时间 |
+| `last_event_at_ms` | INTEGER | 最近事件时间 |
+| `duration_ms` | INTEGER | `last_event_at_ms - first_event_at_ms` |
+| `created_at` | DATETIME | 自动生成 |
+
+### messages 表
+
+每条消息一行明细记录，使用 `INSERT OR REPLACE` 实现更新。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `message_id` | TEXT PK | 消息 ID |
+| `event_id` | TEXT NOT NULL | 关联事件 ID |
+| `session_id` | TEXT NOT NULL | 关联会话 ID |
+| `project_path` | TEXT NOT NULL | 项目目录 |
+| `model` | TEXT NOT NULL | 模型标识 (如 `anthropic/claude-sonnet-4-20250514`)；注意当前 user 消息投影写入 `null`，与 schema 约束存在不一致 |
+| `role` | TEXT NOT NULL | `user` 或 `assistant` |
+| `agent` | TEXT | agent/mode 名称 |
+| `input_tokens` | INTEGER DEFAULT 0 | 输入 token 数 |
+| `output_tokens` | INTEGER DEFAULT 0 | 输出 token 数 |
+| `reasoning_tokens` | INTEGER DEFAULT 0 | 推理 token 数 |
+| `cache_read` | INTEGER DEFAULT 0 | 缓存读取 token 数 |
+| `cache_write` | INTEGER DEFAULT 0 | 缓存写入 token 数 |
+| `total_tokens` | INTEGER DEFAULT 0 | 上述五项之和 |
+| `cost_usd` | REAL DEFAULT 0 | 费用 (美元) |
+| `lines_added` | INTEGER DEFAULT 0 | 新增行数 |
+| `lines_deleted` | INTEGER DEFAULT 0 | 删除行数 |
+| `files_changed` | INTEGER DEFAULT 0 | 变更文件数 |
+| `created_at_ms` | INTEGER NOT NULL | 消息创建时间 |
+| `completed_at_ms` | INTEGER | 消息完成时间 |
+| `duration_ms` | INTEGER | `completed_at_ms - created_at_ms` |
+| `finish_reason` | TEXT | 完成原因 |
+| `has_error` | INTEGER DEFAULT 0 | 是否有错误 (0/1) |
+| `error_type` | TEXT | 错误类型名 |
+| `created_at` | DATETIME | 自动生成 |
+
+### tool_calls 表
+
+追踪工具调用生命周期，使用 call_id 做幂等 upsert。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `call_id` | TEXT PK | 工具调用 ID |
+| `session_id` | TEXT NOT NULL | 关联会话 ID |
+| `tool_name` | TEXT NOT NULL | 工具名称 |
+| `status` | TEXT | `running`、`completed` 或 `error` |
+| `started_at_ms` | INTEGER | 开始时间 |
+| `completed_at_ms` | INTEGER | 完成时间 |
+| `duration_ms` | INTEGER | 持续时间 |
+| `title` | TEXT | 工具输出标题 |
+| `error_message` | TEXT | 错误信息 |
+| `created_at` | DATETIME | 自动生成 |
+| `updated_at` | DATETIME | 自动更新 |
 
 ---
 
-## 3. messages 表
+## 事件写入矩阵
 
-仅处理 `message.updated` 事件，每条消息写入一行明细记录。使用 `message_id` 作为主键实现幂等性（同一消息的多次更新只保留最新数据）。
+所有事件首先通过 EventStore 写入 events 表 (`INSERT OR IGNORE`)，然后由投影处理器写入各自的聚合/明细表。
 
-| 字段 | SDK 事件原始字段 | SDK 事件名称 | SDK 事件 | 映射事件 |
-|------|----------------|------------|---------|---------|
-| `message_id` | `event.properties.info.id` | `message.updated` | `EventMessageUpdated` | `MessageUpdatedEvent` |
-| `event_id` | `crypto.randomUUID()` 自动生成 | `message.updated` | `EventMessageUpdated` | `MessageUpdatedEvent` |
-| `session_id` | `event.properties.info.sessionID` | `message.updated` | `EventMessageUpdated` | `MessageUpdatedEvent` |
-| `project_path` | `input.directory` | `message.updated` | `EventMessageUpdated` | `MessageUpdatedEvent` |
-| `model` | `${event.properties.info.providerID}/${event.properties.info.modelID}` | `message.updated` | `EventMessageUpdated` | `MessageUpdatedEvent` |
-| `role` | `event.properties.info.role` | `message.updated` | `EventMessageUpdated` | `MessageUpdatedEvent` |
-| `agent` | `event.properties.info.agent` (user) 或 `event.properties.info.mode` (assistant) | `message.updated` | `EventMessageUpdated` | `MessageUpdatedEvent` |
-| `input_tokens` | `event.properties.info.tokens.input` | `message.updated` | `EventMessageUpdated` | `MessageUpdatedEvent` |
-| `output_tokens` | `event.properties.info.tokens.output` | `message.updated` | `EventMessageUpdated` | `MessageUpdatedEvent` |
-| `reasoning_tokens` | `event.properties.info.tokens.reasoning` | `message.updated` | `EventMessageUpdated` | `MessageUpdatedEvent` |
-| `cache_read` | `event.properties.info.tokens.cache.read` | `message.updated` | `EventMessageUpdated` | `MessageUpdatedEvent` |
-| `cache_write` | `event.properties.info.tokens.cache.write` | `message.updated` | `EventMessageUpdated` | `MessageUpdatedEvent` |
-| `total_tokens` | `info.tokens.input + info.tokens.output + info.tokens.reasoning + info.tokens.cache.read + info.tokens.cache.write` | `message.updated` | `EventMessageUpdated` | `MessageUpdatedEvent` |
-| `cost_usd` | `event.properties.info.cost ?? 0` | `message.updated` | `EventMessageUpdated` | `MessageUpdatedEvent` |
-| `lines_added` | `event.properties.info.summary?.diffs.reduce(sum => sum.additions)` | `message.updated` (role=user) | `EventMessageUpdated` | `MessageUpdatedEvent` |
-| `lines_deleted` | `event.properties.info.summary?.diffs.reduce(sum => sum.deletions)` | `message.updated` (role=user) | `EventMessageUpdated` | `MessageUpdatedEvent` |
-| `files_changed` | `event.properties.info.summary?.diffs.length` | `message.updated` (role=user) | `EventMessageUpdated` | `MessageUpdatedEvent` |
-| `created_at_ms` | `event.properties.info.time.created` | `message.updated` | `EventMessageUpdated` | `MessageUpdatedEvent` |
-| `completed_at_ms` | `event.properties.info.time.completed` | `message.updated` (role=assistant) | `EventMessageUpdated` | `MessageUpdatedEvent` |
-| `duration_ms` | 计算值：`completed_at_ms - created_at_ms` | `message.updated` (role=assistant) | `EventMessageUpdated` | `MessageUpdatedEvent` |
-| `finish_reason` | `event.properties.info.finish` | `message.updated` (role=assistant) | `EventMessageUpdated` | `MessageUpdatedEvent` |
-| `has_error` | `event.properties.info.error ? 1 : 0` | `message.updated` (role=assistant) | `EventMessageUpdated` | `MessageUpdatedEvent` |
-| `error_type` | `event.properties.info.error?.name` | `message.updated` (role=assistant) | `EventMessageUpdated` | `MessageUpdatedEvent` |
-| `created_at` | `CURRENT_TIMESTAMP` 自动生成 | `message.updated` | `EventMessageUpdated` | `MessageUpdatedEvent` |
+| StatsEvent 类型 | events | sessions | messages | tool_calls |
+|---|---|---|---|---|
+| `session.created` | INSERT OR IGNORE | INSERT OR IGNORE | - | - |
+| `session.updated` | INSERT OR IGNORE | UPDATE | - | - |
+| `session.deleted` | INSERT OR IGNORE | UPDATE | - | - |
+| `session.error` | INSERT OR IGNORE | UPDATE | - | - |
+| `message.updated.user` | INSERT OR IGNORE | UPDATE | INSERT OR REPLACE | - |
+| `message.updated.assistant` | INSERT OR IGNORE | UPDATE | INSERT OR REPLACE | - |
+| `tool.execute.pending` | INSERT OR IGNORE | UPDATE | - | INSERT OR IGNORE |
+| `tool.execute.running` | INSERT OR IGNORE | UPDATE | - | (no-op) |
+| `tool.execute.completed` | INSERT OR IGNORE | UPDATE | - | upsert |
+| `tool.execute.failed` | INSERT OR IGNORE | UPDATE | - | upsert |
 
 ---
 
-## 4. tool_calls 表
+## 各表写入详情
 
-处理 `tool.execute.before`、`tool.execute.after`、`tool.failed` 三种事件。
+### sessions 表写入逻辑
 
-| 字段 | SDK 事件原始字段 | SDK 事件名称 | SDK 事件 | 映射事件 |
-|------|----------------|------------|---------|---------|
-| `call_id` | `input.callID` | `tool.execute.before` | 钩子参数 | `ToolExecuteBeforeEvent` |
-| `call_id` | `input.callID` | `tool.execute.after` | 钩子参数 | `ToolExecuteAfterEvent` |
-| `call_id` | `event.properties.part.callID` | `tool.failed` | `EventMessagePartUpdated` | `ToolFailedEvent` |
-| `session_id` | `input.sessionID` | `tool.execute.before` | 钩子参数 | `ToolExecuteBeforeEvent` |
-| `session_id` | `input.sessionID` | `tool.execute.after` | 钩子参数 | `ToolExecuteAfterEvent` |
-| `session_id` | `event.properties.part.sessionID` | `tool.failed` | `EventMessagePartUpdated` | `ToolFailedEvent` |
-| `tool_name` | `input.tool` | `tool.execute.before` | 钩子参数 | `ToolExecuteBeforeEvent` |
-| `tool_name` | `input.tool` | `tool.execute.after` | 钩子参数 | `ToolExecuteAfterEvent` |
-| `tool_name` | `event.properties.part.tool` | `tool.failed` | `EventMessagePartUpdated` | `ToolFailedEvent` |
-| `status` | 固定值 `'running'` | `tool.execute.before` | 钩子参数 | `ToolExecuteBeforeEvent` |
-| `status` | 固定值 `'completed'` | `tool.execute.after` | 钩子参数 | `ToolExecuteAfterEvent` |
-| `status` | 固定值 `'error'` | `tool.failed` | `EventMessagePartUpdated` | `ToolFailedEvent` |
-| `started_at_ms` | `Date.now()` 转换时生成 | `tool.execute.before` | 钩子参数 | `ToolExecuteBeforeEvent` |
-| `completed_at_ms` | `Date.now()` 转换时生成 | `tool.execute.after` | 钩子参数 | `ToolExecuteAfterEvent` |
-| `completed_at_ms` | `Date.now()` 转换时生成 | `tool.failed` | `EventMessagePartUpdated` | `ToolFailedEvent` |
-| `duration_ms` | `output.metadata.duration_ms ?? 0` | `tool.execute.after` | 钩子参数 | `ToolExecuteAfterEvent` |
-| `duration_ms` | `event.properties.part.state.time.end - event.properties.part.state.time.start` | `tool.failed` | `EventMessagePartUpdated` | `ToolFailedEvent` |
-| `title` | `output.title` | `tool.execute.after` | 钩子参数 | `ToolExecuteAfterEvent` |
-| `error_message` | `event.properties.part.state.error` | `tool.failed` | `EventMessagePartUpdated` | `ToolFailedEvent` |
-| `created_at` | `CURRENT_TIMESTAMP` 自动生成 | `tool.execute.before` | 钩子参数 | `ToolExecuteBeforeEvent` |
-| `updated_at` | `CURRENT_TIMESTAMP` 自动生成 | `tool.execute.after`, `tool.failed` | 钩子参数 | `ToolExecuteAfterEvent`, `ToolFailedEvent` |
+**session.created**: `INSERT OR IGNORE` 写入 `session_id`, `project_path`, `title`, `status='active'`, `first_event_at_ms`, `last_event_at_ms`。
+
+**session.updated**: `UPDATE` 写入 `title`, `last_event_at_ms`, `duration_ms = created_at_ms - first_event_at_ms`。
+
+**session.deleted**: `UPDATE` 写入 `status='deleted'`, `deleted_at_ms`, `last_event_at_ms`, `duration_ms`。
+
+**session.error**: `UPDATE` 写入 `last_event_at_ms`, `duration_ms`。
+
+**message.updated.user / message.updated.assistant**: 先调用 `ensureSessionExists` (如果 session 不存在则 INSERT)，然后 `UPDATE` 写入 `last_event_at_ms`, `duration_ms`。
+
+**tool.execute.* (四种)**: 先调用 `ensureSessionExists`，然后 `UPDATE` 写入 `last_event_at_ms`, `duration_ms`。
+
+### messages 表写入逻辑
+
+**message.updated.user**: `INSERT OR REPLACE` 写入一行。当前投影代码写入 `model=null`（注意这与 schema 中 `model TEXT NOT NULL` 不一致）, `role='user'`, 所有 token 字段和 `cost_usd` 为 0, `lines_added/lines_deleted/files_changed` 从 event 获取, `created_at_ms` 从 event 获取, `completed_at_ms/duration_ms/finish_reason/has_error/error_type` 为 null/0。
+
+**message.updated.assistant**: 如果 `event.model` 为空则跳过。`INSERT OR REPLACE` 写入一行。`role='assistant'`, token 字段从 `event.tokens` 获取, `total_tokens = input + output + reasoning + cache.read + cache.write`, `cost_usd` 从 event 获取, `lines_added/lines_deleted/files_changed` 为 0, `completed_at_ms/duration_ms/finish_reason/has_error/error_type` 从 event 获取。
+
+### tool_calls 表写入逻辑
+
+**tool.execute.pending**: `INSERT OR IGNORE` 写入 `call_id`, `session_id`, `tool_name`, `status='running'`, `started_at_ms`。
+
+**tool.execute.running**: 在 tool_calls 表中为 no-op (不写入)，但仍写入 events 表并通过 sessions 处理器更新会话时间戳。
+
+**tool.execute.completed**: Upsert 逻辑。如果 call_id 不存在则 `INSERT OR IGNORE` 写入 `status='completed'`；如果已存在则 `UPDATE` 写入 `status`, `completed_at_ms`, `duration_ms`, `title`, `updated_at`。
+
+**tool.execute.failed**: Upsert 逻辑。如果 call_id 不存在则 `INSERT OR IGNORE` 写入 `status='error'`；如果已存在则 `UPDATE` 写入 `status`, `completed_at_ms`, `duration_ms`, `error_message`, `updated_at`。
