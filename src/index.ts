@@ -34,12 +34,21 @@ function createApp({
   db,
   broadcaster,
   dashboardDist,
+  logger,
 }: {
   db: Database;
   broadcaster: SSEBroadcaster;
   dashboardDist: string;
+  logger: (level: "info" | "error", msg: string, err?: unknown) => void;
 }): Hono {
   const app = new Hono();
+
+  app.onError((err, c) => {
+    const method = c.req.method;
+    const path = c.req.path;
+    logger("error", `Uncaught route error: ${method} ${path}`, err);
+    return c.json({ error: "Internal Server Error" }, 500);
+  });
 
   app.use("/assets/*", serveStatic({ root: dashboardDist }));
 
@@ -105,7 +114,11 @@ class StatsPluginInstance {
 
     this.eventStore = new EventStore(this.db);
     this.projectionEngine = new ProjectionEngine(this.db);
-    this.broadcaster = new SSEBroadcaster();
+    this.broadcaster = new SSEBroadcaster({
+      onError: (error, clientId) => {
+        this.log("error", `SSE client ${clientId}: ${error.message}`, error);
+      },
+    });
 
     this.projectionEngine.registerHandler(
       "sessions",
@@ -130,6 +143,7 @@ class StatsPluginInstance {
       db: this.db,
       broadcaster: this.broadcaster,
       dashboardDist,
+      logger: this.log.bind(this),
     });
 
     this.server = Bun.serve({ port, idleTimeout: 0, fetch: app.fetch });
@@ -150,10 +164,6 @@ class StatsPluginInstance {
         `[${new Date().toISOString()}] [${level}] ${detail}\n`,
       );
     } catch {}
-
-    if (level === "error") {
-      console.error(`[stats-plugin] ${msg}`, err);
-    }
   }
 
   /** 用 try/catch 包装同步代码块，带结构化错误日志 */
@@ -168,9 +178,9 @@ class StatsPluginInstance {
   /**
    * 统一的事件处理入口：转换 → 持久化 → 投影 → 广播
    *
-   * 任何阶段的失败都不能阻止其他阶段运行。
-   * 特别是：慢速/死亡的 SSE 客户端不能阻塞持久化，
-   * 投影 bug 不能中断实时广播。
+   * 事件溯源一致性优先：持久化失败阻断投影和广播，投影失败阻断广播。
+   * 转换错误和管道错误被拦截并写入日志，不向宿主传播。
+   * 广播阶段各客户端错误通过 safely() 隔离，互不影响。
    */
   processEvent(sdkEvent: Event, directory: string): void {
     this.safely(`convertEvent failed for ${sdkEvent.type}`, () => {
@@ -179,17 +189,27 @@ class StatsPluginInstance {
 
       const tag = statsEvents[0]?.event_type ?? "unknown";
 
-      // 1. 批量持久化
-      this.safely(`eventStore.insertEvents failed for ${tag}`, () =>
-        this.eventStore.insertEvents(statsEvents),
-      );
+      // 1. 批量持久化（失败则阻断后续阶段）
+      try {
+        this.eventStore.insertEvents(statsEvents);
+      } catch (err) {
+        this.log("error", `eventStore.insertEvents failed for ${tag}`, err);
+        return;
+      }
 
-      // 2. 批量投影
-      this.safely(`projectionEngine.processEvents failed for ${tag}`, () =>
-        this.projectionEngine.processEvents(statsEvents),
-      );
+      // 2. 批量投影（失败则阻断广播）
+      try {
+        this.projectionEngine.processEvents(statsEvents);
+      } catch (err) {
+        this.log(
+          "error",
+          `projectionEngine.processEvents failed for ${tag}`,
+          err,
+        );
+        return;
+      }
 
-      // 3. 逐个广播
+      // 3. 逐个广播（各客户端错误隔离）
       for (const event of statsEvents) {
         this.safely(`broadcaster.broadcast failed for ${tag}`, () =>
           this.broadcaster.broadcast(buildStatsUpdate(event)),

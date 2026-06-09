@@ -120,17 +120,9 @@ export class ProjectionEngine {
       }
     });
 
-    try {
-      txn();
-      // 成功提交后才标记为已处理，失败的事件可以重试
-      this.processedEvents.add(event.event_id);
-    } catch (err) {
-      // 输出错误信息用于调试，不抛出异常 — 调用方依赖 processEvent 不传播错误
-      console.error(
-        `[projection] handler failed for event ${event.event_id} (${event.event_type}):`,
-        err,
-      );
-    }
+    txn();
+    // 成功提交后才标记为已处理，失败的事件可以重试
+    this.processedEvents.add(event.event_id);
   }
 
   /**
@@ -167,17 +159,10 @@ export class ProjectionEngine {
       }
     });
 
-    try {
-      txn();
-      // 成功提交后标记为已处理
-      for (const event of unprocessed) {
-        this.processedEvents.add(event.event_id);
-      }
-    } catch (err) {
-      console.error(
-        `[projection] batch handler failed for ${unprocessed.length} events:`,
-        err,
-      );
+    txn();
+    // 成功提交后标记为已处理
+    for (const event of unprocessed) {
+      this.processedEvents.add(event.event_id);
     }
   }
 
