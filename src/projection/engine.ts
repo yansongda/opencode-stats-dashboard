@@ -61,6 +61,9 @@ export class ProjectionEngine {
   private readonly handlers = new Map<string, HandlerEntry>();
   private readonly processedEvents = new Set<string>();
 
+  /** Maximum number of event IDs to keep in memory for idempotency. */
+  private static readonly MAX_PROCESSED = 10_000;
+
   constructor(db: Database) {
     this.db = db;
   }
@@ -112,6 +115,12 @@ export class ProjectionEngine {
    * is NOT marked as processed (so it can be retried).
    */
   processEvent(event: StatsEvent): void {
+    // Evict old entries when capacity is exceeded — relies on EventStore's
+    // INSERT OR IGNORE for true idempotency at the persistence layer.
+    if (this.processedEvents.size >= ProjectionEngine.MAX_PROCESSED) {
+      this.processedEvents.clear();
+    }
+
     // Idempotency check
     if (this.processedEvents.has(event.event_id)) {
       return;

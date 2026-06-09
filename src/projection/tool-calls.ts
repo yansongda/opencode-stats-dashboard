@@ -22,6 +22,68 @@ import type { ProjectionHandler, TransactionContext } from "@defs/projections";
 // Event Handlers
 // ---------------------------------------------------------------------------
 
+interface ToolCallBase {
+  call_id: string;
+  session_id: string;
+  tool_name: string;
+  created_at_ms: number;
+  duration_ms: number;
+}
+
+function upsertToolCall(
+  event: ToolCallBase,
+  status: "completed" | "error",
+  extra: { title?: string; error_message?: string },
+  txn: TransactionContext,
+): void {
+  const existing = txn.get<{ started_at_ms: number }>(
+    "SELECT started_at_ms FROM tool_calls WHERE call_id = ?",
+    [event.call_id],
+  );
+
+  if (!existing) {
+    txn.run(
+      `INSERT OR IGNORE INTO tool_calls
+         (call_id, session_id, tool_name, status, started_at_ms, completed_at_ms, duration_ms, title, error_message)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        event.call_id,
+        event.session_id,
+        event.tool_name,
+        status,
+        event.created_at_ms,
+        event.created_at_ms,
+        event.duration_ms || null,
+        extra.title ?? null,
+        extra.error_message ?? null,
+      ],
+    );
+    return;
+  }
+
+  const durationMs =
+    event.duration_ms || event.created_at_ms - existing.started_at_ms;
+
+  txn.run(
+    `UPDATE tool_calls
+     SET status = ?,
+         completed_at_ms = ?,
+         duration_ms = ?,
+         title = COALESCE(?, title),
+         error_message = COALESCE(?, error_message),
+         updated_at = CURRENT_TIMESTAMP
+     WHERE call_id = ?`,
+    [
+      status,
+      event.created_at_ms,
+      durationMs,
+      extra.title ?? null,
+      extra.error_message ?? null,
+      event.call_id,
+    ],
+  );
+}
+
 function handleToolExecuteBefore(
   event: ToolExecuteBeforeEvent,
   txn: TransactionContext,
@@ -38,93 +100,14 @@ function handleToolExecuteAfter(
   event: ToolExecuteAfterEvent,
   txn: TransactionContext,
 ): void {
-  const callId = event.call_id;
-  const toolName = event.tool_name;
-  const title = event.title;
-
-  const existing = txn.get(
-    "SELECT call_id, started_at_ms FROM tool_calls WHERE call_id = ?",
-    [callId],
-  );
-
-  if (!existing) {
-    txn.run(
-      `INSERT OR IGNORE INTO tool_calls
-         (call_id, session_id, tool_name, status, started_at_ms, completed_at_ms, duration_ms, title)
-       VALUES (?, ?, ?, 'completed', ?, ?, ?, ?)`,
-      [
-        callId,
-        event.session_id,
-        toolName,
-        event.created_at_ms,
-        event.created_at_ms,
-        event.duration_ms || null,
-        title,
-      ],
-    );
-    return;
-  }
-
-  const durationMs =
-    event.duration_ms ||
-    event.created_at_ms - (existing.started_at_ms as number);
-
-  txn.run(
-    `UPDATE tool_calls
-     SET status = 'completed',
-         completed_at_ms = ?,
-         duration_ms = ?,
-         title = COALESCE(?, title),
-         updated_at = CURRENT_TIMESTAMP
-     WHERE call_id = ?`,
-    [event.created_at_ms, durationMs, title, callId],
-  );
+  upsertToolCall(event, "completed", { title: event.title }, txn);
 }
 
 function handleToolFailed(
   event: ToolFailedEvent,
   txn: TransactionContext,
 ): void {
-  const callId = event.call_id;
-  const errorMessage = event.error_message;
-
-  const existing = txn.get(
-    "SELECT call_id, started_at_ms FROM tool_calls WHERE call_id = ?",
-    [callId],
-  );
-
-  if (!existing) {
-    txn.run(
-      `INSERT OR IGNORE INTO tool_calls
-         (call_id, session_id, tool_name, status, started_at_ms, completed_at_ms, duration_ms, error_message)
-       VALUES (?, ?, ?, 'error', ?, ?, ?, ?)`,
-      [
-        callId,
-        event.session_id,
-        event.tool_name,
-        event.created_at_ms,
-        event.created_at_ms,
-        event.duration_ms || null,
-        errorMessage,
-      ],
-    );
-    return;
-  }
-
-  const durationMs =
-    event.duration_ms ||
-    event.created_at_ms - (existing.started_at_ms as number);
-
-  txn.run(
-    `UPDATE tool_calls
-     SET status = 'error',
-         completed_at_ms = ?,
-         duration_ms = ?,
-         error_message = ?,
-         updated_at = CURRENT_TIMESTAMP
-     WHERE call_id = ?`,
-    [event.created_at_ms, durationMs, errorMessage, callId],
-  );
+  upsertToolCall(event, "error", { error_message: event.error_message }, txn);
 }
 
 // ---------------------------------------------------------------------------

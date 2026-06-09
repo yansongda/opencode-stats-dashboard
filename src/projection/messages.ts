@@ -6,34 +6,21 @@
  * Uses INSERT OR IGNORE with message_id for idempotency.
  */
 
-import type {
-  MessageUpdatedEvent,
-  StatsEvent,
-  StatsEventType,
-  TokenBreakdown,
-} from "@defs/events";
+import type { StatsEvent, StatsEventType } from "@defs/events";
 import type { ProjectionHandler, TransactionContext } from "@defs/projections";
+import { totalTokens } from "./utils";
 
-function totalTokens(tokens: TokenBreakdown): number {
-  return (
-    tokens.input +
-    tokens.output +
-    tokens.reasoning +
-    tokens.cache.read +
-    tokens.cache.write
-  );
-}
+const HANDLED_EVENTS: StatsEventType[] = ["message.updated"];
 
-export class MessagesProjectionHandler implements ProjectionHandler {
-  readonly handles: StatsEventType[] = ["message.updated"];
+export const messagesHandler: ProjectionHandler = {
+  handles: HANDLED_EVENTS,
 
   handle(event: StatsEvent, txn: TransactionContext): void {
     if (event.event_type !== "message.updated") return;
 
-    const e = event as MessageUpdatedEvent;
-    if (!e.model && e.role === "assistant") return;
+    if (!event.model && event.role === "assistant") return;
 
-    const total = totalTokens(e.tokens);
+    const total = totalTokens(event.tokens);
 
     txn.run(
       `INSERT OR REPLACE INTO messages (
@@ -44,32 +31,30 @@ export class MessagesProjectionHandler implements ProjectionHandler {
         finish_reason, has_error, error_type
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        e.message_id,
-        e.event_id,
-        e.session_id,
-        e.project_path,
-        e.model,
-        e.role,
-        e.agent ?? null,
-        e.tokens.input,
-        e.tokens.output,
-        e.tokens.reasoning,
-        e.tokens.cache.read,
-        e.tokens.cache.write,
+        event.message_id,
+        event.event_id,
+        event.session_id,
+        event.project_path,
+        event.model,
+        event.role,
+        event.agent ?? null,
+        event.tokens.input,
+        event.tokens.output,
+        event.tokens.reasoning,
+        event.tokens.cache.read,
+        event.tokens.cache.write,
         total,
-        e.cost_usd,
-        e.lines_added,
-        e.lines_deleted,
-        e.files_changed,
-        e.created_at_ms,
-        e.completed_at_ms ?? null,
-        e.duration_ms ?? null,
-        e.finish_reason ?? null,
-        e.has_error,
-        e.error_type ?? null,
+        event.cost_usd,
+        event.lines_added,
+        event.lines_deleted,
+        event.files_changed,
+        event.created_at_ms,
+        event.completed_at_ms ?? null,
+        event.duration_ms ?? null,
+        event.finish_reason ?? null,
+        event.has_error,
+        event.error_type ?? null,
       ],
     );
-  }
-}
-
-export const messagesProjectionHandler = new MessagesProjectionHandler();
+  },
+};

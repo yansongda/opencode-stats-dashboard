@@ -32,6 +32,7 @@ import type {
   ProjectionHandler,
   TransactionContext,
 } from "@defs/projections";
+import { totalTokens } from "./utils";
 
 // ---------------------------------------------------------------------------
 // Type Guards (JSON field validation)
@@ -88,20 +89,6 @@ function parseModelUsage(json: string | null | undefined): ModelUsage {
 // ---------------------------------------------------------------------------
 // Calculation Helpers
 // ---------------------------------------------------------------------------
-
-function _zeroTokenBreakdown(): TokenBreakdown {
-  return { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } };
-}
-
-function totalTokens(tokens: TokenBreakdown): number {
-  return (
-    tokens.input +
-    tokens.output +
-    tokens.reasoning +
-    tokens.cache.read +
-    tokens.cache.write
-  );
-}
 
 function updateModelUsage(
   current: ModelUsage,
@@ -332,7 +319,7 @@ function handleToolExecuteAfter(
   } else {
     txn.run(
       `UPDATE sessions
-       SET error_count = error_count + 1, last_event_at_ms = ?, duration_ms = ? - first_event_at_ms, event_count = event_count + 1
+       SET tool_call_count = tool_call_count + 1, last_event_at_ms = ?, duration_ms = ? - first_event_at_ms, event_count = event_count + 1
        WHERE session_id = ?`,
       [event.created_at_ms, event.created_at_ms, event.session_id],
     );
