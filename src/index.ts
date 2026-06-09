@@ -17,9 +17,9 @@ import { join, resolve } from "node:path";
 import { createStatsHandler } from "@api/stats";
 import { buildStatsUpdate, createStreamHandler } from "@api/stream";
 import { configurePragmas, runMigrations } from "@db/schema";
-import type { StatsEvent } from "@defs/events";
 import { convertEvent } from "@event/converter";
 import type { Hooks, Plugin, PluginInput } from "@opencode-ai/plugin";
+import type { Event } from "@opencode-ai/sdk";
 import { ProjectionEngine } from "@projection/engine";
 import { messagesHandler } from "@projection/messages";
 import { createSessionProjectionHandler } from "@projection/sessions";
@@ -165,46 +165,34 @@ class StatsPluginInstance {
   }
 
   /**
-   * Process events through the full pipeline with per-stage error isolation:
-   *  1. Batch insert into EventStore (idempotent)
-   *  2. Batch process through ProjectionEngine
-   *  3. Broadcast SSE update per event (TODO: batch later)
+   * Unified event processing entry point — convert, persist, project, broadcast.
    *
    * A failure in one stage MUST NOT prevent the others from running. In
    * particular, a slow/dead SSE client should never block persistence, and a
    * projection bug should never silence the live broadcast.
    */
-  processEvents(events: StatsEvent[]): void {
-    if (events.length === 0) return;
+  processEvent(sdkEvent: Event, directory: string): void {
+    this.safely(`convertEvent failed for ${sdkEvent.type}`, () => {
+      const statsEvents = convertEvent(sdkEvent, directory);
+      if (statsEvents.length === 0) return;
 
-    const tag = events[0]?.event_type ?? "unknown";
+      const tag = statsEvents[0]?.event_type ?? "unknown";
 
-    // 1. 批量持久化
-    this.safely(`eventStore.insertEvents failed for ${tag}`, () =>
-      this.eventStore.insertEvents(events),
-    );
-
-    // 2. 批量投影
-    this.safely(`projectionEngine.processEvents failed for ${tag}`, () =>
-      this.projectionEngine.processEvents(events),
-    );
-
-    // 3. 逐个广播（后续优化）
-    for (const event of events) {
-      this.safely(`broadcaster.broadcast failed for ${tag}`, () =>
-        this.broadcaster.broadcast(buildStatsUpdate(event)),
+      // 1. 批量持久化
+      this.safely(`eventStore.insertEvents failed for ${tag}`, () =>
+        this.eventStore.insertEvents(statsEvents),
       );
-    }
-  }
 
-  handleEvent(
-    event: Parameters<NonNullable<Hooks["event"]>>[0]["event"],
-    directory: string,
-  ): void {
-    this.safely(`convertEvent failed for ${event.type}`, () => {
-      const statsEvents = convertEvent(event, directory);
-      if (statsEvents.length > 0) {
-        this.processEvents(statsEvents);
+      // 2. 批量投影
+      this.safely(`projectionEngine.processEvents failed for ${tag}`, () =>
+        this.projectionEngine.processEvents(statsEvents),
+      );
+
+      // 3. 逐个广播
+      for (const event of statsEvents) {
+        this.safely(`broadcaster.broadcast failed for ${tag}`, () =>
+          this.broadcaster.broadcast(buildStatsUpdate(event)),
+        );
       }
     });
   }
@@ -240,7 +228,7 @@ const StatsPlugin: Plugin = async (input) => {
       self.dispose();
       instance = null;
     },
-    event: async ({ event }) => self.handleEvent(event, input.directory),
+    event: async ({ event }) => self.processEvent(event, input.directory),
   };
 
   return hooks;
