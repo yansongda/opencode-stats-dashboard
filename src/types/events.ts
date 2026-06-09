@@ -27,12 +27,6 @@ export interface TokenBreakdown {
   };
 }
 
-/** Tool execution status */
-export type ToolStatus = "started" | "completed" | "failed";
-
-/** Session status */
-export type SessionStatus = "active" | "deleted";
-
 // ============================================================================
 // Stats Event Types
 // ============================================================================

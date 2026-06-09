@@ -142,7 +142,7 @@ function handleMessageUpdatedAssistant(
   );
 }
 
-function handleToolExecuteAfter(
+function handleToolExecute(
   event:
     | ToolExecutePendingEvent
     | ToolExecuteRunningEvent
@@ -210,7 +210,7 @@ export function createSessionProjectionHandler(): ProjectionHandler {
         case "tool.execute.running":
         case "tool.execute.completed":
         case "tool.execute.failed":
-          handleToolExecuteAfter(event, txn);
+          handleToolExecute(event, txn);
           break;
 
         default:
