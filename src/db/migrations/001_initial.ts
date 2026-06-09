@@ -51,24 +51,24 @@ export function up(db: Database): void {
       project_path      TEXT NOT NULL,         -- 项目路径
       model             TEXT,                  -- 使用的模型
       role              TEXT NOT NULL,         -- 消息角色（user/assistant）
-      agent             TEXT,                  — 代理标识
-      input_tokens      INTEGER DEFAULT 0,     — 输入 Token 数
-      output_tokens     INTEGER DEFAULT 0,     — 输出 Token 数
-      reasoning_tokens  INTEGER DEFAULT 0,     — 推理 Token 数
-      cache_read        INTEGER DEFAULT 0,     — 缓存读取 Token 数
-      cache_write       INTEGER DEFAULT 0,     — 缓存写入 Token 数
-      total_tokens      INTEGER DEFAULT 0,     — 总 Token 数
-      cost_usd          REAL DEFAULT 0,        — 费用（美元）
-      lines_added       INTEGER DEFAULT 0,     — 新增行数
-      lines_deleted     INTEGER DEFAULT 0,     — 删除行数
-      files_changed     INTEGER DEFAULT 0,     — 变更文件数
-      created_at_ms     INTEGER NOT NULL,      — 创建时间（毫秒时间戳）
-      completed_at_ms   INTEGER,               — 完成时间（毫秒时间戳）
-      duration_ms       INTEGER,               — 持续时长
-      finish_reason     TEXT,                  — 完成原因
-      has_error         INTEGER DEFAULT 0,     — 是否有错误
-      error_type        TEXT,                  — 错误类型
-      created_at        DATETIME DEFAULT CURRENT_TIMESTAMP  — 创建时间
+      agent             TEXT,                  -- 代理标识
+      input_tokens      INTEGER DEFAULT 0,     -- 输入 Token 数
+      output_tokens     INTEGER DEFAULT 0,     -- 输出 Token 数
+      reasoning_tokens  INTEGER DEFAULT 0,     -- 推理 Token 数
+      cache_read        INTEGER DEFAULT 0,     -- 缓存读取 Token 数
+      cache_write       INTEGER DEFAULT 0,     -- 缓存写入 Token 数
+      total_tokens      INTEGER DEFAULT 0,     -- 总 Token 数
+      cost_usd          REAL DEFAULT 0,        -- 费用（美元）
+      lines_added       INTEGER DEFAULT 0,     -- 新增行数
+      lines_deleted     INTEGER DEFAULT 0,     -- 删除行数
+      files_changed     INTEGER DEFAULT 0,     -- 变更文件数
+      created_at_ms     INTEGER NOT NULL,      -- 创建时间（毫秒时间戳）
+      completed_at_ms   INTEGER,               -- 完成时间（毫秒时间戳）
+      duration_ms       INTEGER,               -- 持续时长
+      finish_reason     TEXT,                  -- 完成原因
+      has_error         INTEGER DEFAULT 0,     -- 是否有错误
+      error_type        TEXT,                  -- 错误类型
+      created_at        DATETIME DEFAULT CURRENT_TIMESTAMP  -- 创建时间
     )
   `);
 
@@ -79,13 +79,13 @@ export function up(db: Database): void {
       session_id      TEXT NOT NULL,         -- 所属会话 ID
       tool_name       TEXT NOT NULL,         -- 工具名称
       status          TEXT,                  -- 执行状态
-      started_at_ms   INTEGER,               — 开始时间（毫秒时间戳）
-      completed_at_ms INTEGER,               — 完成时间（毫秒时间戳）
-      duration_ms     INTEGER,               — 持续时长
-      title           TEXT,                  — 结果标题
-      error_message   TEXT,                  — 错误信息
-      created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,  — 创建时间
-      updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP   — 更新时间
+      started_at_ms   INTEGER,               -- 开始时间（毫秒时间戳）
+      completed_at_ms INTEGER,               -- 完成时间（毫秒时间戳）
+      duration_ms     INTEGER,               -- 持续时长
+      title           TEXT,                  -- 结果标题
+      error_message   TEXT,                  -- 错误信息
+      created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,  -- 创建时间
+      updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP   -- 更新时间
     )
   `);
 }
