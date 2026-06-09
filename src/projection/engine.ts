@@ -155,6 +155,54 @@ export class ProjectionEngine {
     }
   }
 
+  /**
+   * 批量处理多个事件。
+   *
+   * Steps:
+   *  1. Filter out already-processed events (idempotency)
+   *  2. Process all events in a single transaction
+   *  3. Mark all events as processed on success
+   */
+  processEvents(events: StatsEvent[]): void {
+    if (events.length === 0) return;
+
+    // Filter already-processed events
+    const unprocessed = events.filter(
+      (event) => !this.processedEvents.has(event.event_id),
+    );
+
+    if (unprocessed.length === 0) return;
+
+    // Evict old entries when capacity is exceeded
+    if (this.processedEvents.size >= ProjectionEngine.MAX_PROCESSED) {
+      this.processedEvents.clear();
+    }
+
+    // Process all events in a single transaction
+    const txn = this.db.transaction(() => {
+      const ctx = createTransactionContext(this.db);
+      for (const event of unprocessed) {
+        const matching = this.findMatchingHandlers(event.event_type);
+        for (const entry of matching) {
+          entry.handler.handle(event, ctx);
+        }
+      }
+    });
+
+    try {
+      txn();
+      // Mark as processed after successful commit
+      for (const event of unprocessed) {
+        this.processedEvents.add(event.event_id);
+      }
+    } catch (err) {
+      console.error(
+        `[projection] batch handler failed for ${unprocessed.length} events:`,
+        err,
+      );
+    }
+  }
+
   // =========================================================================
   // Internal
   // =========================================================================
