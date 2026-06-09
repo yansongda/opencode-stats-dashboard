@@ -6,20 +6,23 @@
  *  - session.updated:  update title + timestamp
  *  - session.deleted:  update status + timestamp
  *  - session.error:    update timestamp only
- *  - message.updated:  update timestamp only
- *  - tool.execute.after / tool.failed: update timestamp only
+ *  - message.updated.user / message.updated.assistant: update timestamp only
+ *  - tool.execute.* : update timestamp only
  */
 
 import type {
-  MessageUpdatedEvent,
+  MessageUpdatedAssistantEvent,
+  MessageUpdatedUserEvent,
   SessionCreatedEvent,
   SessionDeletedEvent,
   SessionErrorEvent,
   SessionUpdatedEvent,
   StatsEvent,
   StatsEventType,
-  ToolExecuteAfterEvent,
-  ToolFailedEvent,
+  ToolExecuteCompletedEvent,
+  ToolExecuteFailedEvent,
+  ToolExecutePendingEvent,
+  ToolExecuteRunningEvent,
 } from "@defs/events";
 import type { ProjectionHandler, TransactionContext } from "@defs/projections";
 
@@ -113,8 +116,21 @@ function handleSessionError(
   );
 }
 
-function handleMessageUpdated(
-  event: MessageUpdatedEvent,
+function handleMessageUpdatedUser(
+  event: MessageUpdatedUserEvent,
+  txn: TransactionContext,
+): void {
+  ensureSessionExists(event, txn);
+  txn.run(
+    `UPDATE sessions
+       SET last_event_at_ms = ?, duration_ms = ? - first_event_at_ms
+       WHERE session_id = ?`,
+    [event.created_at_ms, event.created_at_ms, event.session_id],
+  );
+}
+
+function handleMessageUpdatedAssistant(
+  event: MessageUpdatedAssistantEvent,
   txn: TransactionContext,
 ): void {
   ensureSessionExists(event, txn);
@@ -127,7 +143,11 @@ function handleMessageUpdated(
 }
 
 function handleToolExecuteAfter(
-  event: ToolExecuteAfterEvent | ToolFailedEvent,
+  event:
+    | ToolExecutePendingEvent
+    | ToolExecuteRunningEvent
+    | ToolExecuteCompletedEvent
+    | ToolExecuteFailedEvent,
   txn: TransactionContext,
 ): void {
   ensureSessionExists(event, txn);
@@ -148,9 +168,12 @@ const HANDLED_EVENTS: StatsEventType[] = [
   "session.updated",
   "session.deleted",
   "session.error",
-  "message.updated",
-  "tool.execute.after",
-  "tool.failed",
+  "message.updated.user",
+  "message.updated.assistant",
+  "tool.execute.pending",
+  "tool.execute.running",
+  "tool.execute.completed",
+  "tool.execute.failed",
 ];
 
 export function createSessionProjectionHandler(): ProjectionHandler {
@@ -175,12 +198,18 @@ export function createSessionProjectionHandler(): ProjectionHandler {
           handleSessionError(event, txn);
           break;
 
-        case "message.updated":
-          handleMessageUpdated(event, txn);
+        case "message.updated.user":
+          handleMessageUpdatedUser(event, txn);
           break;
 
-        case "tool.execute.after":
-        case "tool.failed":
+        case "message.updated.assistant":
+          handleMessageUpdatedAssistant(event, txn);
+          break;
+
+        case "tool.execute.pending":
+        case "tool.execute.running":
+        case "tool.execute.completed":
+        case "tool.execute.failed":
           handleToolExecuteAfter(event, txn);
           break;
 

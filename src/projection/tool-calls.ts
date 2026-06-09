@@ -2,9 +2,9 @@
  * tool_calls handler — tracks individual tool call lifecycle.
  *
  * Processes:
- *  - tool.execute.before → INSERT row with started_at timestamp
- *  - tool.execute.after  → UPDATE row with status='completed'
- *  - tool.failed         → UPDATE row with status='error'
+ *  - tool.execute.pending   → INSERT row with started_at timestamp (pending/running)
+ *  - tool.execute.completed → UPDATE row with status='completed'
+ *  - tool.execute.failed    → UPDATE row with status='error'
  *
  * Design doc: §4.3 tool_calls
  */
@@ -12,9 +12,9 @@
 import type {
   StatsEvent,
   StatsEventType,
-  ToolExecuteAfterEvent,
-  ToolExecuteBeforeEvent,
-  ToolFailedEvent,
+  ToolExecuteCompletedEvent,
+  ToolExecuteFailedEvent,
+  ToolExecutePendingEvent,
 } from "@defs/events";
 import type { ProjectionHandler, TransactionContext } from "@defs/projections";
 
@@ -84,8 +84,8 @@ function upsertToolCall(
   );
 }
 
-function handleToolExecuteBefore(
-  event: ToolExecuteBeforeEvent,
+function handleToolExecutePending(
+  event: ToolExecutePendingEvent,
   txn: TransactionContext,
 ): void {
   txn.run(
@@ -96,15 +96,15 @@ function handleToolExecuteBefore(
   );
 }
 
-function handleToolExecuteAfter(
-  event: ToolExecuteAfterEvent,
+function handleToolExecuteCompleted(
+  event: ToolExecuteCompletedEvent,
   txn: TransactionContext,
 ): void {
   upsertToolCall(event, "completed", { title: event.title }, txn);
 }
 
-function handleToolFailed(
-  event: ToolFailedEvent,
+function handleToolExecuteFailed(
+  event: ToolExecuteFailedEvent,
   txn: TransactionContext,
 ): void {
   upsertToolCall(event, "error", { error_message: event.error_message }, txn);
@@ -115,9 +115,10 @@ function handleToolFailed(
 // ---------------------------------------------------------------------------
 
 const HANDLED_EVENTS: StatsEventType[] = [
-  "tool.execute.before",
-  "tool.execute.after",
-  "tool.failed",
+  "tool.execute.pending",
+  "tool.execute.running",
+  "tool.execute.completed",
+  "tool.execute.failed",
 ];
 
 export const toolCallHandler: ProjectionHandler = {
@@ -125,14 +126,17 @@ export const toolCallHandler: ProjectionHandler = {
 
   handle(event: StatsEvent, txn: TransactionContext): void {
     switch (event.event_type) {
-      case "tool.execute.before":
-        handleToolExecuteBefore(event, txn);
+      case "tool.execute.pending":
+        handleToolExecutePending(event, txn);
         break;
-      case "tool.execute.after":
-        handleToolExecuteAfter(event, txn);
+      case "tool.execute.running":
+        // 可选：暂不处理 running 状态
         break;
-      case "tool.failed":
-        handleToolFailed(event, txn);
+      case "tool.execute.completed":
+        handleToolExecuteCompleted(event, txn);
+        break;
+      case "tool.execute.failed":
+        handleToolExecuteFailed(event, txn);
         break;
     }
   },
