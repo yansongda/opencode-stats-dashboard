@@ -1,12 +1,13 @@
 /**
- * Projection Engine — routes events to registered handlers inside transactions.
+ * 投影引擎 — 将事件路由到匹配的处理器
  *
- * Responsibilities:
- *  - Route events by event_type to matching handlers
- *  - Wrap handler execution in db.transaction() for atomicity
- *  - Skip already-processed events (idempotency)
+ * 负责事件分发和事务管理，不实现具体的投影逻辑。
  *
- * Does NOT implement specific projection logic — that's the handlers' job.
+ * 核心功能：
+ *  - 按事件类型路由到匹配的处理器
+ *  - 使用事务确保原子性
+ *  - 跳过已处理的事件（幂等性）
+ *  - 支持批量处理
  */
 
 import type { Database } from "bun:sqlite";
@@ -14,14 +15,10 @@ import type { StatsEvent, StatsEventType } from "@defs/events";
 import type { ProjectionHandler, TransactionContext } from "@defs/projections";
 
 // ---------------------------------------------------------------------------
-// Transaction Context Implementation
+// 事务上下文实现
 // ---------------------------------------------------------------------------
 
-/**
- * Creates a TransactionContext backed by the given Database.
- *
- * All queries run through this context are part of the enclosing transaction.
- */
+/** 创建事务上下文，所有查询都在当前事务中执行 */
 function createTransactionContext(db: Database): TransactionContext {
   return {
     run(sql: string, params?: unknown[]): void {
@@ -45,12 +42,9 @@ function createTransactionContext(db: Database): TransactionContext {
 }
 
 // ---------------------------------------------------------------------------
-// Projection Engine
+// 投影引擎
 // ---------------------------------------------------------------------------
 
-/**
- * Entry for a registered handler.
- */
 interface HandlerEntry {
   name: string;
   handler: ProjectionHandler;
@@ -61,7 +55,7 @@ export class ProjectionEngine {
   private readonly handlers = new Map<string, HandlerEntry>();
   private readonly processedEvents = new Set<string>();
 
-  /** Maximum number of event IDs to keep in memory for idempotency. */
+  /** 内存中保留的最大事件 ID 数量（用于幂等性检查） */
   private static readonly MAX_PROCESSED = 10_000;
 
   constructor(db: Database) {
@@ -69,14 +63,9 @@ export class ProjectionEngine {
   }
 
   // =========================================================================
-  // Handler Registration
+  // 处理器注册
   // =========================================================================
 
-  /**
-   * Register a projection handler under a unique name.
-   *
-   * @throws If a handler with the same name is already registered.
-   */
   registerHandler(name: string, handler: ProjectionHandler): void {
     if (this.handlers.has(name)) {
       throw new Error(`Handler "${name}" is already registered`);
@@ -84,49 +73,41 @@ export class ProjectionEngine {
     this.handlers.set(name, { name, handler });
   }
 
-  /**
-   * Check if a handler with the given name is registered.
-   */
   hasHandler(name: string): boolean {
     return this.handlers.has(name);
   }
 
-  /**
-   * Return all registered handler names.
-   */
   getHandlerNames(): string[] {
     return [...this.handlers.keys()];
   }
 
   // =========================================================================
-  // Event Processing
+  // 事件处理
   // =========================================================================
 
   /**
-   * Process a single event through matching handlers.
+   * 处理单个事件
    *
-   * Steps:
-   *  1. Check idempotency — skip if event_id already processed
-   *  2. Find handlers whose `handles` array includes the event_type
-   *  3. Execute each matching handler inside a transaction
-   *  4. Mark event_id as processed on success
+   * 流程：
+   *  1. 幂等性检查 — 跳过已处理的事件
+   *  2. 查找匹配的处理器
+   *  3. 在事务中执行处理器
+   *  4. 成功后标记为已处理
    *
-   * If any handler throws, the transaction rolls back and the event
-   * is NOT marked as processed (so it can be retried).
+   * 如果处理器抛出异常，事务回滚，事件不会被标记为已处理（可重试）。
    */
   processEvent(event: StatsEvent): void {
-    // Evict old entries when capacity is exceeded — relies on EventStore's
-    // INSERT OR IGNORE for true idempotency at the persistence layer.
+    // 超过容量时清空集合，依赖 EventStore 的 INSERT OR IGNORE 实现真正的幂等性
     if (this.processedEvents.size >= ProjectionEngine.MAX_PROCESSED) {
       this.processedEvents.clear();
     }
 
-    // Idempotency check
+    // 幂等性检查
     if (this.processedEvents.has(event.event_id)) {
       return;
     }
 
-    // Find matching handlers
+    // 查找匹配的处理器
     const matching = this.findMatchingHandlers(event.event_type);
     if (matching.length === 0) {
       return;
@@ -141,13 +122,10 @@ export class ProjectionEngine {
 
     try {
       txn();
-      // Mark as processed only after a successful commit so failed events
-      // can be retried (e.g. transient SQLite lock).
+      // 成功提交后才标记为已处理，失败的事件可以重试
       this.processedEvents.add(event.event_id);
     } catch (err) {
-      // Surface the failure so it is debuggable; do NOT rethrow — callers
-      // (and existing tests) rely on processEvent not propagating handler
-      // errors so that subsequent events still get processed.
+      // 输出错误信息用于调试，不抛出异常 — 调用方依赖 processEvent 不传播错误
       console.error(
         `[projection] handler failed for event ${event.event_id} (${event.event_type}):`,
         err,
@@ -156,29 +134,29 @@ export class ProjectionEngine {
   }
 
   /**
-   * 批量处理多个事件。
+   * 批量处理多个事件
    *
-   * Steps:
-   *  1. Filter out already-processed events (idempotency)
-   *  2. Process all events in a single transaction
-   *  3. Mark all events as processed on success
+   * 流程：
+   *  1. 过滤已处理的事件（幂等性）
+   *  2. 在单个事务中处理所有事件
+   *  3. 成功后标记所有事件为已处理
    */
   processEvents(events: StatsEvent[]): void {
     if (events.length === 0) return;
 
-    // Filter already-processed events
+    // 过滤已处理的事件
     const unprocessed = events.filter(
       (event) => !this.processedEvents.has(event.event_id),
     );
 
     if (unprocessed.length === 0) return;
 
-    // Evict old entries when capacity is exceeded
+    // 超过容量时清空集合
     if (this.processedEvents.size >= ProjectionEngine.MAX_PROCESSED) {
       this.processedEvents.clear();
     }
 
-    // Process all events in a single transaction
+    // 在单个事务中处理所有事件
     const txn = this.db.transaction(() => {
       const ctx = createTransactionContext(this.db);
       for (const event of unprocessed) {
@@ -191,7 +169,7 @@ export class ProjectionEngine {
 
     try {
       txn();
-      // Mark as processed after successful commit
+      // 成功提交后标记为已处理
       for (const event of unprocessed) {
         this.processedEvents.add(event.event_id);
       }
@@ -204,12 +182,9 @@ export class ProjectionEngine {
   }
 
   // =========================================================================
-  // Internal
+  // 内部方法
   // =========================================================================
 
-  /**
-   * Find all handlers whose `handles` array includes the given event_type.
-   */
   private findMatchingHandlers(eventType: StatsEventType): HandlerEntry[] {
     const result: HandlerEntry[] = [];
     for (const entry of this.handlers.values()) {

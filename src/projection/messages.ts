@@ -1,12 +1,12 @@
 /**
- * MessagesProjectionHandler — inserts message events into messages table.
+ * 消息投影处理器 — 将消息事件插入消息表
  *
- * Processes:
- *  - message.updated.user      → INSERT row (diff/line stats, no tokens)
- *  - message.updated.assistant → INSERT row (tokens/cost, model info)
+ * 处理的事件：
+ *  - message.updated.user：插入行（差异/行统计，无 Token）
+ *  - message.updated.assistant：插入行（Token/费用，模型信息）
  *
- * Each event becomes one row in the messages table (detail table, not aggregated).
- * Uses INSERT OR IGNORE with message_id for idempotency.
+ * 每个事件对应消息表中的一行（明细表，非聚合）。
+ * 使用 INSERT OR IGNORE 和 message_id 实现幂等性。
  */
 
 import type {
@@ -24,7 +24,7 @@ const HANDLED_EVENTS: StatsEventType[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Event Handlers
+// 事件处理器
 // ---------------------------------------------------------------------------
 
 function handleMessageUpdatedUser(
@@ -44,7 +44,7 @@ function handleMessageUpdatedUser(
       event.event_id,
       event.session_id,
       event.project_path,
-      null, // model — user messages have no model
+      null, // 用户消息没有模型
       event.role,
       event.agent ?? null,
       0,
@@ -52,17 +52,17 @@ function handleMessageUpdatedUser(
       0,
       0,
       0,
-      0, // tokens — user messages have no tokens
-      0, // cost_usd
+      0, // 用户消息没有 Token
+      0, // 费用
       event.lines_added,
       event.lines_deleted,
       event.files_changed,
       event.created_at_ms,
-      null, // completed_at_ms
-      null, // duration_ms
-      null, // finish_reason
-      0, // has_error
-      null, // error_type
+      null, // 完成时间
+      null, // 持续时长
+      null, // 完成原因
+      0, // 是否有错误
+      null, // 错误类型
     ],
   );
 }
@@ -100,7 +100,7 @@ function handleMessageUpdatedAssistant(
       event.cost_usd,
       0,
       0,
-      0, // lines_added, lines_deleted, files_changed
+      0, // 新增行数、删除行数、变更文件数
       event.created_at_ms,
       event.completed_at_ms ?? null,
       event.duration_ms ?? null,
@@ -112,7 +112,7 @@ function handleMessageUpdatedAssistant(
 }
 
 // ---------------------------------------------------------------------------
-// Handler Export
+// 处理器导出
 // ---------------------------------------------------------------------------
 
 export const messagesHandler: ProjectionHandler = {

@@ -1,12 +1,10 @@
 /**
- * tool_calls handler — tracks individual tool call lifecycle.
+ * 工具调用处理器 — 跟踪单个工具调用的生命周期
  *
- * Processes:
- *  - tool.execute.pending   → INSERT row with started_at timestamp (pending/running)
- *  - tool.execute.completed → UPDATE row with status='completed'
- *  - tool.execute.failed    → UPDATE row with status='error'
- *
- * Design doc: §4.3 tool_calls
+ * 处理的事件：
+ *  - tool.execute.pending：插入行，记录开始时间（pending/running）
+ *  - tool.execute.completed：更新行，设置状态为 completed
+ *  - tool.execute.failed：更新行，设置状态为 error
  */
 
 import type {
@@ -19,7 +17,7 @@ import type {
 import type { ProjectionHandler, TransactionContext } from "@defs/projections";
 
 // ---------------------------------------------------------------------------
-// Event Handlers
+// 事件处理器
 // ---------------------------------------------------------------------------
 
 interface ToolCallBase {
@@ -111,7 +109,7 @@ function handleToolExecuteFailed(
 }
 
 // ---------------------------------------------------------------------------
-// Handler Export
+// 处理器导出
 // ---------------------------------------------------------------------------
 
 const HANDLED_EVENTS: StatsEventType[] = [

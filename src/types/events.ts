@@ -1,11 +1,10 @@
 /**
- * Event type definitions for the Event-Sourced Stats Engine.
+ * 事件溯源统计引擎的事件类型定义
  *
- * Each event maps 1:1 to an upstream opencode SDK event. We deliberately
- * do NOT synthesize derived events; every StatsEvent must trace back to a
- * concrete SDK Event delivered via a plugin hook.
+ * 每个事件 1:1 映射到上游 opencode SDK 事件。不会合成派生事件，
+ * 每个 StatsEvent 必须追溯到通过插件钩子传递的具体 SDK 事件。
  *
- * Covers 10 event types:
+ * 覆盖 10 种事件类型：
  *   session.created, session.updated, session.deleted, session.error,
  *   message.updated.user, message.updated.assistant,
  *   tool.execute.pending, tool.execute.running, tool.execute.completed,
@@ -13,10 +12,10 @@
  */
 
 // ============================================================================
-// Base Types
+// 基础类型
 // ============================================================================
 
-/** Token breakdown structure used across multiple event types */
+/** Token 分解结构，被多种事件类型使用 */
 export interface TokenBreakdown {
   input: number;
   output: number;
@@ -28,18 +27,18 @@ export interface TokenBreakdown {
 }
 
 // ============================================================================
-// Stats Event Types
+// 统计事件类型
 // ============================================================================
 
-/** Common fields shared by all stats events */
+/** 所有统计事件共享的公共字段 */
 export interface BaseStatsEvent {
-  /** Unique event identifier — idempotency key for deduplication */
+  /** 事件唯一标识 — 用于去重的幂等键 */
   event_id: string;
-  /** Event timestamp in milliseconds since epoch */
+  /** 事件时间戳（毫秒） */
   created_at_ms: number;
 }
 
-/** Session created */
+/** 会话创建事件 */
 export interface SessionCreatedEvent extends BaseStatsEvent {
   event_type: "session.created";
   /** ← event.properties.info.id */
@@ -50,7 +49,7 @@ export interface SessionCreatedEvent extends BaseStatsEvent {
   title: string;
 }
 
-/** Session updated (title change, etc.) */
+/** 会话更新事件（标题变更等） */
 export interface SessionUpdatedEvent extends BaseStatsEvent {
   event_type: "session.updated";
   /** ← event.properties.info.id */
@@ -61,7 +60,7 @@ export interface SessionUpdatedEvent extends BaseStatsEvent {
   title: string;
 }
 
-/** Session deleted */
+/** 会话删除事件 */
 export interface SessionDeletedEvent extends BaseStatsEvent {
   event_type: "session.deleted";
   /** ← event.properties.info.id */
@@ -70,7 +69,7 @@ export interface SessionDeletedEvent extends BaseStatsEvent {
   project_path: string;
 }
 
-/** Session error */
+/** 会话错误事件 */
 export interface SessionErrorEvent extends BaseStatsEvent {
   event_type: "session.error";
   /** ← event.properties.sessionID */
@@ -83,7 +82,7 @@ export interface SessionErrorEvent extends BaseStatsEvent {
   error_message: string;
 }
 
-/** Message updated — user role (diff/line stats) */
+/** 消息更新事件 — 用户角色（差异/行统计） */
 export interface MessageUpdatedUserEvent extends BaseStatsEvent {
   event_type: "message.updated.user";
   /** ← event.properties.info.id */
@@ -106,7 +105,7 @@ export interface MessageUpdatedUserEvent extends BaseStatsEvent {
   created_at_ms: number;
 }
 
-/** Message updated — assistant role (tokens/cost finalized) */
+/** 消息更新事件 — 助手角色（Token/费用最终确认） */
 export interface MessageUpdatedAssistantEvent extends BaseStatsEvent {
   event_type: "message.updated.assistant";
   /** ← event.properties.info.id */
@@ -137,7 +136,7 @@ export interface MessageUpdatedAssistantEvent extends BaseStatsEvent {
   error_type?: string;
 }
 
-/** Tool execution pending (from tool.execute.before hook) */
+/** 工具执行待处理事件（来自 tool.execute.before 钩子） */
 export interface ToolExecutePendingEvent extends BaseStatsEvent {
   event_type: "tool.execute.pending";
   /** ← input.sessionID */
@@ -150,7 +149,7 @@ export interface ToolExecutePendingEvent extends BaseStatsEvent {
   call_id: string;
 }
 
-/** Tool execution running (from tool.execute.running hook) */
+/** 工具执行运行中事件（来自 tool.execute.running 钩子） */
 export interface ToolExecuteRunningEvent extends BaseStatsEvent {
   event_type: "tool.execute.running";
   /** ← input.sessionID */
@@ -163,7 +162,7 @@ export interface ToolExecuteRunningEvent extends BaseStatsEvent {
   call_id: string;
 }
 
-/** Tool execution completed (from tool.execute.after hook) */
+/** 工具执行完成事件（来自 tool.execute.after 钩子） */
 export interface ToolExecuteCompletedEvent extends BaseStatsEvent {
   event_type: "tool.execute.completed";
   /** ← input.sessionID */
@@ -180,7 +179,7 @@ export interface ToolExecuteCompletedEvent extends BaseStatsEvent {
   title: string;
 }
 
-/** Tool execution failed */
+/** 工具执行失败事件 */
 export interface ToolExecuteFailedEvent extends BaseStatsEvent {
   event_type: "tool.execute.failed";
   /** ← input.sessionID */
@@ -197,7 +196,7 @@ export interface ToolExecuteFailedEvent extends BaseStatsEvent {
   error_message: string;
 }
 
-/** Union of all stats event types */
+/** 所有统计事件类型的联合类型 */
 export type StatsEvent =
   | SessionCreatedEvent
   | SessionUpdatedEvent
@@ -210,16 +209,16 @@ export type StatsEvent =
   | ToolExecuteCompletedEvent
   | ToolExecuteFailedEvent;
 
-/** Extracted union of all event_type literal values (auto-derived) */
+/** 所有事件类型字面量的联合类型（自动派生） */
 export type StatsEventType = StatsEvent["event_type"];
 
 // ============================================================================
-// Constants
+// 常量
 // ============================================================================
 
 /**
- * Privacy-sensitive fields that must NEVER appear in metadata.
- * Fixture validation enforces this constraint.
+ * 隐私敏感字段，绝不能出现在元数据中
+ * 测试验证会强制执行此约束
  */
 export const FORBIDDEN_METADATA_KEYS = [
   "tool_input",

@@ -1,39 +1,39 @@
 /**
- * Projection type definitions for the Event-Sourced Stats Engine.
+ * 投影类型定义
  *
- * Projections are materialized views derived from events.
- * Three main projections: sessions, messages, and tool_calls.
+ * 投影是从事件派生的物化视图。
+ * 三个主要投影：sessions、messages 和 tool_calls。
  */
 
 import type { StatsEvent, StatsEventType } from "@defs/events";
 
 // ============================================================================
-// Transaction Context
+// 事务上下文
 // ============================================================================
 
 /**
- * Thin wrapper around Database methods available inside a transaction.
+ * 数据库方法的轻量级包装，用于事务内操作
  *
- * All queries run through this context are part of the same transaction —
- * if the handler throws, everything rolls back automatically.
+ * 通过此上下文执行的所有查询都属于同一事务 —
+ * 如果处理器抛出异常，所有操作自动回滚
  */
 export interface TransactionContext {
-  /** Execute a SQL statement (INSERT, UPDATE, DELETE) */
+  /** 执行 SQL 语句（INSERT、UPDATE、DELETE） */
   run(sql: string, params?: unknown[]): void;
 
-  /** Execute a query and return all rows */
+  /** 执行查询并返回所有行 */
   query<T = Record<string, unknown>>(sql: string, params?: unknown[]): T[];
 
-  /** Execute a query and return the first row, or null */
+  /** 执行查询并返回第一行，或 null */
   get<T = Record<string, unknown>>(sql: string, params?: unknown[]): T | null;
 }
 
 // ============================================================================
-// Projection Handler
+// 投影处理器
 // ============================================================================
 
 /**
- * A projection handler processes specific event types.
+ * 投影处理器处理特定类型的事件
  *
  * @example
  * ```ts
@@ -46,15 +46,15 @@ export interface TransactionContext {
  * ```
  */
 export interface ProjectionHandler {
-  /** Event types this handler can process */
+  /** 此处理器可以处理的事件类型 */
   handles: StatsEventType[];
 
   /**
-   * Process a single event within a transaction.
+   * 在事务中处理单个事件
    *
-   * @param event - The event envelope to process
-   * @param txn - Transaction context for database operations
-   * @throws If the handler fails, the entire transaction rolls back
+   * @param event - 要处理的事件
+   * @param txn - 数据库操作的事务上下文
+   * @throws 如果处理器失败，整个事务回滚
    */
   handle(event: StatsEvent, txn: TransactionContext): void;
 }

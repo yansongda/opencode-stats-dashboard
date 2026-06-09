@@ -1,13 +1,13 @@
 /**
- * Session Projection Handler — processes events into session rows.
+ * 会话投影处理器 — 将事件处理为会话行
  *
- * Handles:
- *  - session.created:  create session record
- *  - session.updated:  update title + timestamp
- *  - session.deleted:  update status + timestamp
- *  - session.error:    update timestamp only
- *  - message.updated.user / message.updated.assistant: update timestamp only
- *  - tool.execute.* : update timestamp only
+ * 处理的事件：
+ *  - session.created：创建会话记录
+ *  - session.updated：更新标题和时间戳
+ *  - session.deleted：更新状态和时间戳
+ *  - session.error：仅更新时间戳
+ *  - message.updated.user / message.updated.assistant：仅更新时间戳
+ *  - tool.execute.*：仅更新时间戳
  */
 
 import type {
@@ -27,7 +27,7 @@ import type {
 import type { ProjectionHandler, TransactionContext } from "@defs/projections";
 
 // ---------------------------------------------------------------------------
-// Session Existence Guard
+// 会话存在性检查
 // ---------------------------------------------------------------------------
 
 function ensureSessionExists(
@@ -54,7 +54,7 @@ function ensureSessionExists(
 }
 
 // ---------------------------------------------------------------------------
-// Event Handlers
+// 事件处理器
 // ---------------------------------------------------------------------------
 
 function handleSessionCreated(
@@ -160,7 +160,7 @@ function handleToolExecute(
 }
 
 // ---------------------------------------------------------------------------
-// Handler Factory
+// 处理器工厂
 // ---------------------------------------------------------------------------
 
 const HANDLED_EVENTS: StatsEventType[] = [

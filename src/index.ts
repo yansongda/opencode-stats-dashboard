@@ -1,13 +1,13 @@
 /**
- * OpenCode Stats Plugin — entry point.
+ * OpenCode 统计插件 — 入口文件
  *
- * Collects events from opencode, persists them in SQLite, projects stats
- * through registered handlers, and serves them via HTTP + SSE.
+ * 从 opencode 收集事件，持久化到 SQLite，通过注册的处理器投影统计信息，
+ * 并通过 HTTP + SSE 提供服务。
  *
- * Configuration via environment variables:
- *  - STATS_PORT  (default: 11133)
- *  - STATS_DB_DIR  (default: ~/.local/share/opencode-stats-dashboard/)
- *  - STATS_DB_PATH (default: STATS_DB_DIR/stats.db)
+ * 环境变量配置：
+ *  - STATS_PORT（默认：11133）
+ *  - STATS_DB_DIR（默认：~/.local/share/opencode-stats-dashboard/）
+ *  - STATS_DB_PATH（默认：STATS_DB_DIR/stats.db）
  */
 
 import { Database } from "bun:sqlite";
@@ -29,7 +29,7 @@ import { EventStore } from "@store/event";
 import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
 
-/** Build the Hono application. Pure: takes deps, returns app. */
+/** 构建 Hono 应用。纯函数：接收依赖，返回应用 */
 function createApp({
   db,
   broadcaster,
@@ -49,7 +49,7 @@ function createApp({
   const streamHandler = createStreamHandler(broadcaster);
   app.get("/api/v1/events/stream", (c) => streamHandler(c.req.raw));
 
-  // Explicit JSON 404 for unhandled API routes — keep them out of SPA fallback.
+  // 未处理的 API 路由返回 JSON 404，避免落入 SPA 回退
   app.all("/api/*", (c) => c.json({ error: "not_found" }, 404));
 
   const indexPath = join(dashboardDist, "index.html");
@@ -69,9 +69,10 @@ function createApp({
 }
 
 /**
- * Owns all plugin state — DB, projection engine, SSE broadcaster, HTTP server,
- * and the logger. Constructed lazily on first plugin invocation; subsequent
- * invocations of the exported `StatsPlugin` factory reuse the same instance.
+ * 插件状态管理类
+ *
+ * 拥有所有插件状态：数据库、投影引擎、SSE 广播器、HTTP 服务器和日志器。
+ * 首次调用时懒加载构造，后续调用复用同一实例。
  */
 class StatsPluginInstance {
   private readonly db: Database;
@@ -117,7 +118,7 @@ class StatsPluginInstance {
       `Registered ${this.projectionEngine.getHandlerNames().length} projection handlers`,
     );
 
-    // import.meta.dir points to src/ when running src/index.ts
+    // import.meta.dir 在运行 src/index.ts 时指向 src/
     const projectRoot = resolve(import.meta.dir, "..");
     const dashboardDist = join(projectRoot, "dashboard", "dist");
     this.log(
@@ -155,7 +156,7 @@ class StatsPluginInstance {
     }
   }
 
-  /** Wrap a sync block with try/catch + structured error logging. */
+  /** 用 try/catch 包装同步代码块，带结构化错误日志 */
   private safely(desc: string, fn: () => void): void {
     try {
       fn();
@@ -165,11 +166,11 @@ class StatsPluginInstance {
   }
 
   /**
-   * Unified event processing entry point — convert, persist, project, broadcast.
+   * 统一的事件处理入口：转换 → 持久化 → 投影 → 广播
    *
-   * A failure in one stage MUST NOT prevent the others from running. In
-   * particular, a slow/dead SSE client should never block persistence, and a
-   * projection bug should never silence the live broadcast.
+   * 任何阶段的失败都不能阻止其他阶段运行。
+   * 特别是：慢速/死亡的 SSE 客户端不能阻塞持久化，
+   * 投影 bug 不能中断实时广播。
    */
   processEvent(sdkEvent: Event, directory: string): void {
     this.safely(`convertEvent failed for ${sdkEvent.type}`, () => {
@@ -197,7 +198,7 @@ class StatsPluginInstance {
     });
   }
 
-  /** Release all owned resources. Safe to call multiple times. */
+  /** 释放所有拥有的资源。可安全多次调用。 */
   dispose(): void {
     if (!this.server) return;
     try {

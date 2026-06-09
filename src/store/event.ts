@@ -1,27 +1,25 @@
 /**
- * Event Store — append-only event persistence layer.
+ * 事件存储层 — 追加式事件持久化
  *
- * Provides idempotent writes (INSERT OR IGNORE) and query functions
- * with prepared statements for performance.
+ * 提供幂等写入（INSERT OR IGNORE）和查询功能，使用预编译语句提升性能。
  *
- * Design principles (§3.2):
- *   - Immutability: events are never modified or deleted
- *   - Idempotency: duplicate event_id is silently ignored
- *   - Integrity: all original information preserved
- *   - Traceability: every event has timestamp + association
+ * 设计原则：
+ *  - 不可变性：事件不会被修改或删除
+ *  - 幂等性：重复的 event_id 会被静默忽略
+ *  - 完整性：保留所有原始信息
+ *  - 可追溯性：每个事件都有时间戳和关联信息
  */
 
 import type { Database, SQLQueryBindings, Statement } from "bun:sqlite";
 import type { StatsEvent } from "@defs/events";
 
 // ---------------------------------------------------------------------------
-// Types
+// 类型定义
 // ---------------------------------------------------------------------------
 
-/** SQLite-compatible parameter type — replaces `any` casts for bun:sqlite bindings */
+/** SQLite 兼容的参数类型 */
 type SQLiteParam = SQLQueryBindings;
 
-/** Row shape returned by queries against the events table */
 export interface EventRow {
   event_id: string;
   event_type: string;
@@ -31,7 +29,6 @@ export interface EventRow {
   event_contents: string;
 }
 
-/** Filter options for getEvents / countEvents */
 export interface EventQueryFilters {
   session_id?: string;
   event_type?: string;
@@ -42,12 +39,13 @@ export interface EventQueryFilters {
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
+// 辅助函数
 // ---------------------------------------------------------------------------
 
 /**
- * Build WHERE clause fragments + params from filters.
- * Returns [whereSql, params] — whereSql is empty string if no conditions.
+ * 根据过滤条件构建 WHERE 子句
+ *
+ * @returns [whereSql, params] — whereSql 为空字符串表示无条件
  */
 function buildWhere(filters?: EventQueryFilters): [string, unknown[]] {
   if (!filters) return ["", []];
@@ -78,7 +76,7 @@ function buildWhere(filters?: EventQueryFilters): [string, unknown[]] {
 }
 
 // ---------------------------------------------------------------------------
-// EventStore
+// 事件存储
 // ---------------------------------------------------------------------------
 
 export class EventStore {

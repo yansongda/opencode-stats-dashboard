@@ -1,9 +1,20 @@
+/**
+ * 事件转换器注册表
+ *
+ * 将上游 SDK 事件转换为内部 StatsEvent。支持一个事件类型对应多个转换器，
+ * 每个转换器可以生成多个 StatsEvent。
+ *
+ * 使用方式：
+ *  1. 通过 registerConverter() 注册转换器
+ *  2. 调用 convertEvent() 执行所有匹配的转换器
+ */
+
 import type { StatsEvent } from "@defs/events";
 import type { Event } from "@opencode-ai/sdk";
 
 type ConvertFn = (event: Event, directory: string) => StatsEvent[];
 
-// 一个事件类型对应多个 converter
+// 事件类型 → 转换器列表的映射
 const converters = new Map<string, ConvertFn[]>();
 
 export function registerConverter(eventType: string, fn: ConvertFn): void {
@@ -21,18 +32,19 @@ export function convertEvent(event: Event, directory: string): StatsEvent[] {
   return results;
 }
 
+// 注册所有转换器
 import * as messagePartUpdatedToolCompleted from "@event/converters/message-part-updated-tool-completed";
 import * as messagePartUpdatedToolFailed from "@event/converters/message-part-updated-tool-failed";
 import * as messagePartUpdatedToolPending from "@event/converters/message-part-updated-tool-pending";
 import * as messagePartUpdatedToolRunning from "@event/converters/message-part-updated-tool-running";
 import * as messageUpdatedAssistant from "@event/converters/message-updated-assistant";
 import * as messageUpdatedUser from "@event/converters/message-updated-user";
-// 注册所有 converter
 import * as sessionCreated from "@event/converters/session-created";
 import * as sessionDeleted from "@event/converters/session-deleted";
 import * as sessionError from "@event/converters/session-error";
 import * as sessionUpdated from "@event/converters/session-updated";
 
+// 所有已注册的转换器模块
 const REGISTERED = [
   sessionCreated,
   sessionUpdated,
