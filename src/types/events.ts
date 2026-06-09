@@ -5,9 +5,11 @@
  * do NOT synthesize derived events; every StatsEvent must trace back to a
  * concrete SDK Event delivered via a plugin hook.
  *
- * Covers 7 event types:
+ * Covers 10 event types:
  *   session.created, session.updated, session.deleted, session.error,
- *   message.updated, tool.execute.after, tool.failed
+ *   message.updated.user, message.updated.assistant,
+ *   tool.execute.pending, tool.execute.running, tool.execute.completed,
+ *   tool.execute.failed
  */
 
 // ============================================================================
@@ -30,19 +32,6 @@ export type ToolStatus = "started" | "completed" | "failed";
 
 /** Session status */
 export type SessionStatus = "active" | "deleted";
-
-// ============================================================================
-// Event Type Union (7 types, each maps 1:1 to an SDK event)
-// ============================================================================
-
-export type EventType =
-  | "session.created"
-  | "session.updated"
-  | "session.deleted"
-  | "session.error"
-  | "message.updated"
-  | "tool.execute.after"
-  | "tool.failed";
 
 // ============================================================================
 // Stats Event Types
@@ -100,25 +89,19 @@ export interface SessionErrorEvent extends BaseStatsEvent {
   error_message: string;
 }
 
-/** Message updated (tokens/cost finalized) */
-export interface MessageUpdatedEvent extends BaseStatsEvent {
-  event_type: "message.updated";
+/** Message updated — user role (diff/line stats) */
+export interface MessageUpdatedUserEvent extends BaseStatsEvent {
+  event_type: "message.updated.user";
   /** ← event.properties.info.id */
   message_id: string;
   /** ← event.properties.info.sessionID */
   session_id: string;
   /** ← input.directory */
   project_path: string;
-  /** ← `${info.providerID}/${info.modelID}` */
-  model: string;
   /** ← event.properties.info.role */
-  role: string;
-  /** ← event.properties.info.agent (user) || event.properties.info.mode (assistant) */
+  role: "user";
+  /** ← event.properties.info.agent (user) */
   agent?: string;
-  /** ← event.properties.info.tokens */
-  tokens: TokenBreakdown;
-  /** ← event.properties.info.cost ?? 0 */
-  cost_usd: number;
   /** ← event.properties.info.summary?.diffs.reduce(sum => sum.additions) */
   lines_added: number;
   /** ← event.properties.info.summary?.diffs.reduce(sum => sum.deletions) */
@@ -127,11 +110,32 @@ export interface MessageUpdatedEvent extends BaseStatsEvent {
   files_changed: number;
   /** ← event.properties.info.time.created */
   created_at_ms: number;
-  /** ← event.properties.info.time.completed (assistant messages) */
+}
+
+/** Message updated — assistant role (tokens/cost finalized) */
+export interface MessageUpdatedAssistantEvent extends BaseStatsEvent {
+  event_type: "message.updated.assistant";
+  /** ← event.properties.info.id */
+  message_id: string;
+  /** ← event.properties.info.sessionID */
+  session_id: string;
+  /** ← input.directory */
+  project_path: string;
+  /** ← `${info.providerID}/${info.modelID}` */
+  model: string;
+  /** ← event.properties.info.mode (assistant) */
+  agent?: string;
+  /** ← event.properties.info.tokens */
+  tokens: TokenBreakdown;
+  /** ← event.properties.info.cost ?? 0 */
+  cost_usd: number;
+  /** ← event.properties.info.time.created */
+  created_at_ms: number;
+  /** ← event.properties.info.time.completed */
   completed_at_ms?: number;
   /** ← completed_at_ms - created_at_ms */
   duration_ms?: number;
-  /** ← event.properties.info.finish (assistant messages) */
+  /** ← event.properties.info.finish */
   finish_reason?: string;
   /** ← event.properties.info.error ? 1 : 0 */
   has_error: number;
@@ -139,9 +143,22 @@ export interface MessageUpdatedEvent extends BaseStatsEvent {
   error_type?: string;
 }
 
-/** Tool execution started (from tool.execute.before hook) */
-export interface ToolExecuteBeforeEvent extends BaseStatsEvent {
-  event_type: "tool.execute.before";
+/** Tool execution pending (from tool.execute.before hook) */
+export interface ToolExecutePendingEvent extends BaseStatsEvent {
+  event_type: "tool.execute.pending";
+  /** ← input.sessionID */
+  session_id: string;
+  /** ← ctx.directory */
+  project_path: string;
+  /** ← input.tool */
+  tool_name: string;
+  /** ← input.callID */
+  call_id: string;
+}
+
+/** Tool execution running (from tool.execute.running hook) */
+export interface ToolExecuteRunningEvent extends BaseStatsEvent {
+  event_type: "tool.execute.running";
   /** ← input.sessionID */
   session_id: string;
   /** ← ctx.directory */
@@ -153,8 +170,8 @@ export interface ToolExecuteBeforeEvent extends BaseStatsEvent {
 }
 
 /** Tool execution completed (from tool.execute.after hook) */
-export interface ToolExecuteAfterEvent extends BaseStatsEvent {
-  event_type: "tool.execute.after";
+export interface ToolExecuteCompletedEvent extends BaseStatsEvent {
+  event_type: "tool.execute.completed";
   /** ← input.sessionID */
   session_id: string;
   /** ← ctx.directory */
@@ -170,8 +187,8 @@ export interface ToolExecuteAfterEvent extends BaseStatsEvent {
 }
 
 /** Tool execution failed */
-export interface ToolFailedEvent extends BaseStatsEvent {
-  event_type: "tool.failed";
+export interface ToolExecuteFailedEvent extends BaseStatsEvent {
+  event_type: "tool.execute.failed";
   /** ← input.sessionID */
   session_id: string;
   /** ← ctx.directory */
@@ -192,12 +209,14 @@ export type StatsEvent =
   | SessionUpdatedEvent
   | SessionDeletedEvent
   | SessionErrorEvent
-  | MessageUpdatedEvent
-  | ToolExecuteBeforeEvent
-  | ToolExecuteAfterEvent
-  | ToolFailedEvent;
+  | MessageUpdatedUserEvent
+  | MessageUpdatedAssistantEvent
+  | ToolExecutePendingEvent
+  | ToolExecuteRunningEvent
+  | ToolExecuteCompletedEvent
+  | ToolExecuteFailedEvent;
 
-/** Extracted union of all event_type literal values */
+/** Extracted union of all event_type literal values (auto-derived) */
 export type StatsEventType = StatsEvent["event_type"];
 
 // ============================================================================
