@@ -89,45 +89,13 @@ export interface ProjectionSession {
   status: "active" | "deleted";
   deleted_at_ms: number | null;
 
-  // Model info
-  primary_model: string | null;
-  model_usage: ModelUsage | null;
-
   // Time dimensions
   first_event_at_ms: number | null;
   last_event_at_ms: number | null;
   duration_ms: number | null;
 
-  // Message stats
-  user_message_count: number;
-  assistant_message_count: number;
-
-  // Token stats (session-level totals)
-  total_tokens: number;
-  input_tokens: number;
-  output_tokens: number;
-  reasoning_tokens: number;
-  cache_read: number;
-  cache_write: number;
-
-  // Cost stats
-  total_cost_usd: number;
-
-  // Tool stats
-  tool_call_count: number;
-  tool_error_count: number;
-
-  // File stats
-  files_changed: number;
-  lines_added: number;
-  lines_deleted: number;
-
-  // Error stats
-  error_count: number;
-
   // Projection metadata
   created_at: string;
-  event_count: number;
 }
 
 // ============================================================================
