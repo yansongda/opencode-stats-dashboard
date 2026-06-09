@@ -35,55 +35,23 @@ export function up(db: Database): void {
   db.run(`
     CREATE TABLE IF NOT EXISTS sessions (
       -- 主键
-      session_id                TEXT PRIMARY KEY,
-      
+      session_id        TEXT PRIMARY KEY,
+
       -- 基本信息
-      project_path              TEXT,
-      title                     TEXT,
-      
+      project_path      TEXT,
+      title             TEXT,
+
       -- 状态
-      status                    TEXT DEFAULT 'active',
-      deleted_at_ms             INTEGER,
-      
-      -- 模型信息
-      primary_model             TEXT,
-      model_usage               TEXT,
-      
+      status            TEXT DEFAULT 'active',
+      deleted_at_ms     INTEGER,
+
       -- 时间维度
-      first_event_at_ms         INTEGER,
-      last_event_at_ms          INTEGER,
-      duration_ms               INTEGER,
-      
-      -- 消息统计
-      user_message_count        INTEGER DEFAULT 0,
-      assistant_message_count   INTEGER DEFAULT 0,
-      
-      -- Token 统计
-      total_tokens              INTEGER DEFAULT 0,
-      input_tokens              INTEGER DEFAULT 0,
-      output_tokens             INTEGER DEFAULT 0,
-      reasoning_tokens          INTEGER DEFAULT 0,
-      cache_read                INTEGER DEFAULT 0,
-      cache_write               INTEGER DEFAULT 0,
-      
-      -- 费用统计
-      total_cost_usd            REAL DEFAULT 0,
-      
-      -- 工具统计
-      tool_call_count           INTEGER DEFAULT 0,
-      tool_error_count          INTEGER DEFAULT 0,
-      
-      -- 文件统计
-      files_changed             INTEGER DEFAULT 0,
-      lines_added               INTEGER DEFAULT 0,
-      lines_deleted             INTEGER DEFAULT 0,
-      
-      -- 错误统计
-      error_count               INTEGER DEFAULT 0,
-      
+      first_event_at_ms INTEGER,
+      last_event_at_ms  INTEGER,
+      duration_ms       INTEGER,
+
       -- 元数据
-      event_count               INTEGER DEFAULT 0,
-      created_at                DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at        DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
 
