@@ -1,20 +1,19 @@
 import type {
   StatsEvent,
-  ToolExecuteAfterEvent,
-  ToolExecuteBeforeEvent,
 } from "@defs/events";
 import * as messageUpdated from "@event/converters/message-updated";
+import * as messagePartUpdated from "@event/converters/message-part-updated";
 import * as sessionCreated from "@event/converters/session-created";
 import * as sessionDeleted from "@event/converters/session-deleted";
 import * as sessionError from "@event/converters/session-error";
 import * as sessionUpdated from "@event/converters/session-updated";
-import { createBaseEvent } from "@event/utils";
 import type { Event } from "@opencode-ai/sdk";
 
-type ConvertFn = (event: Event, directory: string) => StatsEvent | null;
+type ConvertFn = (event: Event, directory: string) => StatsEvent[];
 
 const REGISTERED = [
   messageUpdated,
+  messagePartUpdated,
   sessionCreated,
   sessionUpdated,
   sessionDeleted,
@@ -28,39 +27,7 @@ const converters = new Map<string, ConvertFn>(
 export function convertEvent(
   event: Event,
   directory: string,
-): StatsEvent | null {
+): StatsEvent[] {
   const fn = converters.get(event.type);
-  return fn ? fn(event, directory) : null;
-}
-
-export function convertToolExecuteBeforeEvent(
-  input: { tool: string; sessionID: string; callID: string },
-  directory: string,
-): ToolExecuteBeforeEvent {
-  return {
-    ...createBaseEvent(),
-    event_type: "tool.execute.before",
-    session_id: input.sessionID,
-    project_path: directory,
-    tool_name: input.tool,
-    call_id: input.callID,
-  };
-}
-
-export function convertToolExecuteAfterEvent(
-  input: { tool: string; sessionID: string; callID: string; args: unknown },
-  output: { title: string; output: string; metadata: Record<string, unknown> },
-  directory: string,
-): ToolExecuteAfterEvent {
-  const m = output.metadata ?? {};
-  return {
-    ...createBaseEvent(),
-    event_type: "tool.execute.after",
-    session_id: input.sessionID,
-    project_path: directory,
-    tool_name: input.tool,
-    call_id: input.callID,
-    duration_ms: typeof m.duration_ms === "number" ? m.duration_ms : 0,
-    title: output.title,
-  };
+  return fn ? fn(event, directory) : [];
 }
