@@ -18,12 +18,7 @@ import { createStatsHandler } from "@api/stats";
 import { buildStatsUpdate, createStreamHandler } from "@api/stream";
 import { configurePragmas, runMigrations } from "@db/schema";
 import type { StatsEvent } from "@defs/events";
-import {
-  convertEvent,
-  convertToolExecuteAfterEvent,
-  convertToolExecuteBeforeEvent,
-} from "@event/converter";
-import { tryConvert as tryToolFailed } from "@event/converters/tool-failed";
+import { convertEvent } from "@event/converter";
 import type { Hooks, Plugin, PluginInput } from "@opencode-ai/plugin";
 import { ProjectionEngine } from "@projection/engine";
 import { messagesHandler } from "@projection/messages";
@@ -170,26 +165,36 @@ class StatsPluginInstance {
   }
 
   /**
-   * Process an event through the full pipeline with per-stage error isolation:
-   *  1. Insert into EventStore (idempotent)
-   *  2. Process through ProjectionEngine
-   *  3. Broadcast SSE update
+   * Process events through the full pipeline with per-stage error isolation:
+   *  1. Batch insert into EventStore (idempotent)
+   *  2. Batch process through ProjectionEngine
+   *  3. Broadcast SSE update per event (TODO: batch later)
    *
    * A failure in one stage MUST NOT prevent the others from running. In
    * particular, a slow/dead SSE client should never block persistence, and a
    * projection bug should never silence the live broadcast.
    */
-  processEvent(event: StatsEvent): void {
-    const tag = event.event_type;
-    this.safely(`eventStore.insertEvent failed for ${tag}`, () =>
-      this.eventStore.insertEvent(event),
+  processEvents(events: StatsEvent[]): void {
+    if (events.length === 0) return;
+
+    const tag = events[0]?.event_type ?? "unknown";
+
+    // 1. 批量持久化
+    this.safely(`eventStore.insertEvents failed for ${tag}`, () =>
+      this.eventStore.insertEvents(events),
     );
-    this.safely(`projectionEngine.processEvent failed for ${tag}`, () =>
-      this.projectionEngine.processEvent(event),
+
+    // 2. 批量投影
+    this.safely(`projectionEngine.processEvents failed for ${tag}`, () =>
+      this.projectionEngine.processEvents(events),
     );
-    this.safely(`broadcaster.broadcast failed for ${tag}`, () =>
-      this.broadcaster.broadcast(buildStatsUpdate(event)),
-    );
+
+    // 3. 逐个广播（后续优化）
+    for (const event of events) {
+      this.safely(`broadcaster.broadcast failed for ${tag}`, () =>
+        this.broadcaster.broadcast(buildStatsUpdate(event)),
+      );
+    }
   }
 
   handleEvent(
@@ -197,46 +202,10 @@ class StatsPluginInstance {
     directory: string,
   ): void {
     this.safely(`convertEvent failed for ${event.type}`, () => {
-      const statsEvent = convertEvent(event, directory);
-      if (statsEvent) this.processEvent(statsEvent);
-    });
-    this.safely(`tryToolFailed failed for ${event.type}`, () => {
-      const failedEvent = tryToolFailed(event, directory);
-      if (failedEvent) this.processEvent(failedEvent);
-    });
-  }
-
-  handleToolExecuteBefore(
-    toolInput: { tool: string; sessionID: string; callID: string },
-    directory: string,
-  ): void {
-    this.safely("convertToolExecuteBeforeEvent failed", () => {
-      const event = convertToolExecuteBeforeEvent(toolInput, directory);
-      this.processEvent(event);
-    });
-  }
-
-  handleToolExecuteAfter(
-    toolInput: {
-      tool: string;
-      sessionID: string;
-      callID: string;
-      args: unknown;
-    },
-    toolOutput: {
-      title: string;
-      output: string;
-      metadata: Record<string, unknown>;
-    },
-    directory: string,
-  ): void {
-    this.safely("convertToolExecuteAfterEvent failed", () => {
-      const event = convertToolExecuteAfterEvent(
-        toolInput,
-        toolOutput,
-        directory,
-      );
-      this.processEvent(event);
+      const statsEvents = convertEvent(event, directory);
+      if (statsEvents.length > 0) {
+        this.processEvents(statsEvents);
+      }
     });
   }
 
@@ -272,10 +241,6 @@ const StatsPlugin: Plugin = async (input) => {
       instance = null;
     },
     event: async ({ event }) => self.handleEvent(event, input.directory),
-    "tool.execute.before": async (toolInput) =>
-      self.handleToolExecuteBefore(toolInput, input.directory),
-    "tool.execute.after": async (toolInput, toolOutput) =>
-      self.handleToolExecuteAfter(toolInput, toolOutput, input.directory),
   };
 
   return hooks;
