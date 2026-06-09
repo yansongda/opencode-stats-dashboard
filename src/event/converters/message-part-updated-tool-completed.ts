@@ -21,14 +21,16 @@ export const convert = (
   const end = part.state.time.end;
   const duration_ms = start > 0 && end > start ? end - start : 0;
 
-  return [{
-    ...createBaseEvent(),
-    event_type: "tool.execute.completed",
-    session_id: part.sessionID,
-    project_path: directory,
-    tool_name: part.tool,
-    call_id: part.callID,
-    duration_ms,
-    title: part.state.title ?? part.tool,
-  }];
+  return [
+    {
+      ...createBaseEvent(),
+      event_type: "tool.execute.completed",
+      session_id: part.sessionID,
+      project_path: directory,
+      tool_name: part.tool,
+      call_id: part.callID,
+      duration_ms,
+      title: part.state.title ?? part.tool,
+    },
+  ];
 };

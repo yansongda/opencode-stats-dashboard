@@ -17,12 +17,14 @@ export const convert = (
   // 只处理 running 状态
   if (part.state.status !== "running") return [];
 
-  return [{
-    ...createBaseEvent(),
-    event_type: "tool.execute.running",
-    session_id: part.sessionID,
-    project_path: directory,
-    tool_name: part.tool,
-    call_id: part.callID,
-  }];
+  return [
+    {
+      ...createBaseEvent(),
+      event_type: "tool.execute.running",
+      session_id: part.sessionID,
+      project_path: directory,
+      tool_name: part.tool,
+      call_id: part.callID,
+    },
+  ];
 };

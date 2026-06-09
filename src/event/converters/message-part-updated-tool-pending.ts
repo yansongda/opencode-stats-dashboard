@@ -17,12 +17,14 @@ export const convert = (
   // 只处理 pending 状态
   if (part.state.status !== "pending") return [];
 
-  return [{
-    ...createBaseEvent(),
-    event_type: "tool.execute.pending",
-    session_id: part.sessionID,
-    project_path: directory,
-    tool_name: part.tool,
-    call_id: part.callID,
-  }];
+  return [
+    {
+      ...createBaseEvent(),
+      event_type: "tool.execute.pending",
+      session_id: part.sessionID,
+      project_path: directory,
+      tool_name: part.tool,
+      call_id: part.callID,
+    },
+  ];
 };

@@ -21,17 +21,17 @@ export function convertEvent(event: Event, directory: string): StatsEvent[] {
   return results;
 }
 
-// 注册所有 converter
-import * as sessionCreated from "@event/converters/session-created";
-import * as sessionUpdated from "@event/converters/session-updated";
-import * as sessionDeleted from "@event/converters/session-deleted";
-import * as sessionError from "@event/converters/session-error";
-import * as messageUpdatedUser from "@event/converters/message-updated-user";
-import * as messageUpdatedAssistant from "@event/converters/message-updated-assistant";
-import * as messagePartUpdatedToolPending from "@event/converters/message-part-updated-tool-pending";
-import * as messagePartUpdatedToolRunning from "@event/converters/message-part-updated-tool-running";
 import * as messagePartUpdatedToolCompleted from "@event/converters/message-part-updated-tool-completed";
 import * as messagePartUpdatedToolFailed from "@event/converters/message-part-updated-tool-failed";
+import * as messagePartUpdatedToolPending from "@event/converters/message-part-updated-tool-pending";
+import * as messagePartUpdatedToolRunning from "@event/converters/message-part-updated-tool-running";
+import * as messageUpdatedAssistant from "@event/converters/message-updated-assistant";
+import * as messageUpdatedUser from "@event/converters/message-updated-user";
+// 注册所有 converter
+import * as sessionCreated from "@event/converters/session-created";
+import * as sessionDeleted from "@event/converters/session-deleted";
+import * as sessionError from "@event/converters/session-error";
+import * as sessionUpdated from "@event/converters/session-updated";
 
 const REGISTERED = [
   sessionCreated,

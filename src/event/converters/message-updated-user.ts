@@ -26,17 +26,19 @@ export const convert = (
     files_changed = summary.diffs.length;
   }
 
-  return [{
-    ...createBaseEvent(),
-    event_type: "message.updated.user",
-    message_id: info.id,
-    session_id: info.sessionID,
-    project_path: directory,
-    role: "user",
-    agent: info.agent,
-    lines_added,
-    lines_deleted,
-    files_changed,
-    created_at_ms: info.time.created,
-  }];
+  return [
+    {
+      ...createBaseEvent(),
+      event_type: "message.updated.user",
+      message_id: info.id,
+      session_id: info.sessionID,
+      project_path: directory,
+      role: "user",
+      agent: info.agent,
+      lines_added,
+      lines_deleted,
+      files_changed,
+      created_at_ms: info.time.created,
+    },
+  ];
 };
