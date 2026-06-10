@@ -1,6 +1,4 @@
 .omo/*
-!.omo/drafts/
-!.omo/plans/
 .superpowers/
 dist/
 node_modules/
