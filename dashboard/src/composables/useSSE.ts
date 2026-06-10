@@ -5,8 +5,8 @@
  * - SSE connection lifecycle (connect/disconnect/reconnect)
  * - Exponential backoff reconnect with configurable base/max interval
  * - Max reconnect attempts with fallback to polling
- * - StatsUpdate message parsing with type guard validation
- * - Incremental update dispatch by SSE type (session/tool/message/error/file)
+ * - StatsNotification message parsing with type guard validation
+ * - Single onNotification callback for validated notifications
  * - Status indicator (green/yellow/red dot)
  * - Last sync time tracking
  *
@@ -15,11 +15,11 @@
 
 import { ref, computed, type Ref, type ComputedRef } from 'vue'
 import {
-  isStatsUpdate,
+  isStatsNotification,
   SSE_EVENT_NAME,
-  type StatsUpdate,
+  type StatsNotification,
   type SSEConnectionState,
-} from '../../../src/types/sse'
+} from '../../../src/types/stream'
 import { connectSSE } from '../api/client'
 
 // ============================================================================
@@ -49,12 +49,11 @@ export interface UseSSEOptions {
   /** Polling interval in ms when in fallback mode (default: 10000) */
   pollingInterval?: number
 
-  onMessage?: (update: StatsUpdate) => void
-  onSession?: (update: StatsUpdate) => void
-  onTool?: (update: StatsUpdate) => void
-  onMessageUpdate?: (update: StatsUpdate) => void
-  onErrorEvent?: (update: StatsUpdate) => void
-  onFile?: (update: StatsUpdate) => void
+  /** Called for each validated StatsNotification received via SSE */
+  onNotification?: (notification: StatsNotification) => void
+
+  /** Called when SSE reconnects after a disconnect (not on initial open) */
+  onOpen?: () => void
 }
 
 export interface UseSSEReturn {
@@ -84,12 +83,8 @@ export function useSSE(options: UseSSEOptions = {}): UseSSEReturn {
     maxReconnectAttempts = 10,
     fallbackToPolling,
     pollingInterval = 10_000,
-    onMessage,
-    onSession,
-    onTool,
-    onMessageUpdate,
-    onErrorEvent,
-    onFile,
+    onNotification,
+    onOpen,
   } = options
 
   const baseInterval = options.reconnectBaseInterval !== undefined
@@ -111,6 +106,7 @@ export function useSSE(options: UseSSEOptions = {}): UseSSEReturn {
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
   let pollingTimer: ReturnType<typeof setInterval> | null = null
   let intentionalClose = false
+  let pendingReconnect = false
 
   // ── Derived State ──────────────────────────────────────────────────
 
@@ -147,34 +143,14 @@ export function useSSE(options: UseSSEOptions = {}): UseSSEReturn {
       return
     }
 
-    if (!isStatsUpdate(parsed)) {
+    if (!isStatsNotification(parsed)) {
       return
     }
-
-    const update = parsed as StatsUpdate
 
     hasNewData.value = true
     lastSyncTime.value = new Date()
 
-    onMessage?.(update)
-
-    switch (update.type) {
-      case 'session':
-        onSession?.(update)
-        break
-      case 'tool':
-        onTool?.(update)
-        break
-      case 'message':
-        onMessageUpdate?.(update)
-        break
-      case 'error':
-        onErrorEvent?.(update)
-        break
-      case 'file':
-        onFile?.(update)
-        break
-    }
+    onNotification?.(parsed)
   }
 
   // ── Reconnect Logic ────────────────────────────────────────────────
@@ -192,6 +168,7 @@ export function useSSE(options: UseSSEOptions = {}): UseSSEReturn {
       return
     }
 
+    pendingReconnect = true
     connectionState.value = 'reconnecting'
     clearReconnectTimer()
 
@@ -251,11 +228,16 @@ export function useSSE(options: UseSSEOptions = {}): UseSSEReturn {
       eventSource.addEventListener(SSE_EVENT_NAME, handleMessage as EventListener)
 
       eventSource.addEventListener('open', () => {
+        const isReconnect = pendingReconnect
+        pendingReconnect = false
         connectionState.value = 'connected'
         reconnectAttempts.value = 0
         reconnectInterval.value = baseInterval
         clearPollingTimer()
         isFallbackPolling.value = false
+        if (isReconnect) {
+          onOpen?.()
+        }
       })
 
       eventSource.onerror = () => {
@@ -279,6 +261,7 @@ export function useSSE(options: UseSSEOptions = {}): UseSSEReturn {
 
   function connect(): void {
     intentionalClose = false
+    pendingReconnect = false
     reconnectAttempts.value = 0
     reconnectInterval.value = baseInterval
     doConnect()
@@ -295,11 +278,14 @@ export function useSSE(options: UseSSEOptions = {}): UseSSEReturn {
 
   function reconnect(): void {
     intentionalClose = false
+    pendingReconnect = true
     clearReconnectTimer()
     clearPollingTimer()
+    closeEventSource()
     isFallbackPolling.value = false
     reconnectAttempts.value = 0
     reconnectInterval.value = baseInterval
+    connectionState.value = 'disconnected'
     doConnect()
   }
 

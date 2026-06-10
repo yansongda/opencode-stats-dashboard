@@ -567,7 +567,7 @@ export function fetchDashboardSessionDetail(
 // ── SSE ────────────────────────────────────────────────────────────────
 
 export function connectSSE(): EventSource {
-  const url = buildUrl('/api/v1/events/stream')
+  const url = buildUrl('/api/v1/dashboard/stream')
   return new EventSource(url)
 }
 
