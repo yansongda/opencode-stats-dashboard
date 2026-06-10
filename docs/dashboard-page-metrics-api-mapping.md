@@ -654,4 +654,4 @@ Sessions 列表字段的详细版，增加 token 分解（input/output/reasoning
 
 ## SSE 端点（不在本映射范围）
 
-`GET /api/v1/events/stream` 是 Server-Sent Events 端点，用于实时推送事件更新到仪表盘。它不属于上述 Dashboard 查询 API 的范畴，但仪表盘前端可订阅此端点获取实时刷新信号。
+`GET /api/v1/dashboard/stream` 是 Server-Sent Events 端点，用于实时推送轻量级失效通知（事件类型 `notification`）到仪表盘。它不属于上述 Dashboard 查询 API 的范畴，但仪表盘前端可订阅此端点获取实时刷新信号。

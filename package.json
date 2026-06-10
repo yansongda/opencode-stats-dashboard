@@ -6,8 +6,8 @@
   "type": "module",
   "main": "src/index.ts",
   "scripts": {
-    "test": "bun test",
-    "test:watch": "bun test --watch",
+    "test": "bun test --pass-with-no-tests",
+    "test:watch": "bun test --watch --pass-with-no-tests",
     "biome:check": "biome check",
     "biome:fix": "biome check --fix",
     "biome:fix-unsafe": "biome check --fix --unsafe",
