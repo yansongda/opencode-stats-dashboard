@@ -14,7 +14,7 @@ import { Database } from "bun:sqlite";
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { createStatsHandler } from "@api/stats";
+import { createDashboardHandler } from "@api/dashboard";
 import { buildStatsUpdate, createStreamHandler } from "@api/stream";
 import { configurePragmas, runMigrations } from "@db/schema";
 import { convertEvent } from "@event/converter";
@@ -52,8 +52,8 @@ function createApp({
 
   app.use("/assets/*", serveStatic({ root: dashboardDist }));
 
-  const statsRegistrar = createStatsHandler(db);
-  statsRegistrar(app);
+  const dashboardRegistrar = createDashboardHandler(db);
+  dashboardRegistrar(app);
 
   const streamHandler = createStreamHandler(broadcaster);
   app.get("/api/v1/events/stream", (c) => streamHandler(c.req.raw));
