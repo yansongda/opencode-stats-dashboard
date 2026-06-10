@@ -15,7 +15,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { createDashboardHandler } from "@api/dashboard";
-import { buildStatsUpdate, createStreamHandler } from "@api/stream";
+import { buildStatsNotification, createStreamHandler } from "@api/stream";
 import { configurePragmas, runMigrations } from "@db/schema";
 import { convertEvent } from "@event/converter";
 import type { Hooks, Plugin, PluginInput } from "@opencode-ai/plugin";
@@ -56,7 +56,7 @@ function createApp({
   dashboardRegistrar(app);
 
   const streamHandler = createStreamHandler(broadcaster);
-  app.get("/api/v1/events/stream", (c) => streamHandler(c.req.raw));
+  app.get("/api/v1/dashboard/stream", (c) => streamHandler(c.req.raw));
 
   // 未处理的 API 路由返回 JSON 404，避免落入 SPA 回退
   app.all("/api/*", (c) => c.json({ error: "not_found" }, 404));
@@ -212,7 +212,7 @@ class StatsPluginInstance {
       // 3. 逐个广播（各客户端错误隔离）
       for (const event of statsEvents) {
         this.safely(`broadcaster.broadcast failed for ${tag}`, () =>
-          this.broadcaster.broadcast(buildStatsUpdate(event)),
+          this.broadcaster.broadcast(buildStatsNotification(event)),
         );
       }
     });
@@ -221,6 +221,11 @@ class StatsPluginInstance {
   /** 释放所有拥有的资源。可安全多次调用。 */
   dispose(): void {
     if (!this.server) return;
+    try {
+      this.broadcaster.dispose();
+    } catch (err) {
+      this.log("error", "broadcaster.dispose failed", err);
+    }
     try {
       this.server.stop();
     } catch (err) {
