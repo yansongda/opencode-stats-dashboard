@@ -1,13 +1,17 @@
-import type { StatsUpdate } from "@defs/sse";
+import {
+  SSE_EVENT_NAME,
+  SSE_KEEPALIVE,
+  type StatsNotification,
+} from "@defs/stream";
 
 /**
- * SSE (Server-Sent Events) broadcaster for real-time stats updates.
+ * SSE (Server-Sent Events) broadcaster for real-time stats notifications.
  *
  * Provides explicit addClient/removeClient API for managing connections,
  * automatic keepalive, connection timeout handling, and error logging.
  *
  * SSE frame format:
- *   event: stats-update
+ *   event: notification
  *   id: {event_id}
  *   data: {JSON}\n\n
  */
@@ -34,7 +38,7 @@ interface ClientEntry {
 export class SSEBroadcaster {
   private static readonly encoder = new TextEncoder();
   private static readonly keepaliveFrame =
-    SSEBroadcaster.encoder.encode(": keepalive\n\n");
+    SSEBroadcaster.encoder.encode(SSE_KEEPALIVE);
 
   private clients = new Map<number, ClientEntry>();
   private streamToId = new WeakMap<ReadableStream<Uint8Array>, number>();
@@ -111,7 +115,7 @@ export class SSEBroadcaster {
     }
   }
 
-  broadcast(data: StatsUpdate): void {
+  broadcast(data: StatsNotification): void {
     const frame = SSEBroadcaster.encodeSSEFrame(data);
     const dead: number[] = [];
 
@@ -135,6 +139,27 @@ export class SSEBroadcaster {
 
   get subscriberCount(): number {
     return this.clients.size;
+  }
+
+  /** Idempotent cleanup — safe to call multiple times. */
+  dispose(): void {
+    for (const [, entry] of this.clients) {
+      if (entry.keepaliveTimer) {
+        clearInterval(entry.keepaliveTimer);
+        entry.keepaliveTimer = null;
+      }
+      if (entry.connectionTimer) {
+        clearTimeout(entry.connectionTimer);
+        entry.connectionTimer = null;
+      }
+      try {
+        entry.controller.close();
+      } catch {
+        // Already closed — safe to ignore
+      }
+    }
+    this.clients.clear();
+    this.streamToId = new WeakMap();
   }
 
   private startConnectionTimer(
@@ -172,10 +197,10 @@ export class SSEBroadcaster {
     this.clients.delete(id);
   }
 
-  private static encodeSSEFrame(data: StatsUpdate): Uint8Array {
-    const eventId = data.event_id ?? "unknown";
+  private static encodeSSEFrame(data: StatsNotification): Uint8Array {
+    const eventId = data.event_id;
     const json = JSON.stringify(data);
-    const frame = `event: stats-update\nid: ${eventId}\ndata: ${json}\n\n`;
+    const frame = `event: ${SSE_EVENT_NAME}\nid: ${eventId}\ndata: ${json}\n\n`;
     return SSEBroadcaster.encoder.encode(frame);
   }
 }
