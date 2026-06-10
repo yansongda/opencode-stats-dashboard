@@ -16,12 +16,12 @@
       </div>
     </div>
 
-    <!-- Loading State -->
-    <LoadingState v-if="store.loading.value" message="加载项目数据中..." test-id="projects-loading" />
+    <!-- Loading State (initial no-data only) -->
+    <LoadingState v-if="store.loading.value && store.projects.value.length === 0" message="加载项目数据中..." test-id="projects-loading" />
 
-    <!-- Error State -->
+    <!-- Error State (no-data only; preserves content when data exists) -->
     <EmptyState
-      v-else-if="store.error.value"
+      v-else-if="store.error.value && store.projects.value.length === 0"
       variant="error"
       title="数据加载失败"
       :description="store.error.value"
@@ -149,7 +149,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed } from 'vue'
 import { useStatsStore, type Period } from '../stores/stats'
 import EmptyState from '../components/EmptyState.vue'
 import LoadingState from '../components/LoadingState.vue'
@@ -172,10 +172,6 @@ const periods: Array<{ value: Period; label: string }> = [
 function selectPeriod(period: Period): void {
   void store.setPeriod(period)
 }
-
-onMounted(() => {
-  store.start()
-})
 
 // ── Sorting ────────────────────────────────────────────────────────
 

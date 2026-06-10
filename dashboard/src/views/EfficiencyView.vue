@@ -16,22 +16,22 @@
       </div>
     </div>
 
-    <!-- Loading State -->
-    <LoadingState v-if="loading" message="加载效率数据中..." test-id="efficiency-loading" />
+    <!-- Loading State (initial no-data load only) -->
+    <LoadingState v-if="loading && !efficiencyData" message="加载效率数据中..." test-id="efficiency-loading" />
 
-    <!-- Error State -->
+    <!-- Error State (no data to display) -->
     <EmptyState
-      v-else-if="error"
+      v-else-if="error && !efficiencyData"
       variant="error"
       title="数据加载失败"
       :description="error"
       action-label="重试"
       test-id="efficiency-error"
-      @action="fetchData"
+      @action="() => fetchData()"
     />
 
-    <!-- Content -->
-    <template v-else>
+    <!-- Content (preserved during background refresh) -->
+    <template v-else-if="efficiencyData">
     <!-- Efficiency Metric Cards -->
     <div class="metrics-grid resp-metrics-4">
       <MetricCard
@@ -148,6 +148,7 @@ import {
   type DashboardEfficiencyData,
   type DashboardEfficiencyHeatmapPoint,
 } from '../api/client'
+import { useStatsStore } from '../stores/stats'
 
 // ── State ──────────────────────────────────────────────────────────
 
@@ -162,9 +163,13 @@ const periods = [
 const selectedPeriod = ref<Period>('7d')
 const efficiencyData = ref<DashboardEfficiencyData | null>(null)
 const loading = ref(false)
+const refreshing = ref(false)
 const error = ref<string | null>(null)
+const store = useStatsStore()
 
 // ── Data Fetching ──────────────────────────────────────────────────
+
+let fetchInFlight = false
 
 function getDateRangeMs(period: Period): { start?: number; end?: number } {
   if (period === 'all') return {}
@@ -174,22 +179,59 @@ function getDateRangeMs(period: Period): { start?: number; end?: number } {
   return { start: now - days * msPerDay, end: now }
 }
 
-async function fetchData(): Promise<void> {
-  loading.value = true
+/**
+ * Fetch efficiency data.
+ * - silent=true + existing data → background refresh (preserves content)
+ * - otherwise → initial/period-change loading
+ */
+async function fetchData(silent = false): Promise<void> {
+  if (fetchInFlight) return
+  fetchInFlight = true
+
+  const hasExistingData = efficiencyData.value !== null
+
+  if (silent && hasExistingData) {
+    refreshing.value = true
+  } else {
+    loading.value = true
+  }
+
   error.value = null
   try {
     const { start, end } = getDateRangeMs(selectedPeriod.value)
     efficiencyData.value = await fetchDashboardEfficiency(start, end)
+    // Update global timestamp so header "数据更新时间" reflects this refresh
+    store.markDataUpdated()
   } catch (err) {
     error.value = err instanceof Error ? err.message : '加载效率数据时发生未知错误'
     console.error('[Efficiency] Failed to fetch data:', err)
   } finally {
-    loading.value = false
+    fetchInFlight = false
+    if (silent && hasExistingData) {
+      refreshing.value = false
+    } else {
+      loading.value = false
+    }
   }
 }
 
-watch(selectedPeriod, () => { void fetchData() })
+// Initial load
 onMounted(() => { void fetchData() })
+
+// User-initiated period change → full loading
+watch(selectedPeriod, () => { void fetchData() })
+
+// Global store completed a REST refresh → silent efficiency refresh
+// Watches lastStoreRefreshedAt (not lastDataUpdatedAt) to avoid recursive loop:
+// Efficiency's markDataUpdated() updates lastDataUpdatedAt but NOT lastStoreRefreshedAt
+watch(
+  () => store.lastStoreRefreshedAt.value,
+  (newVal, oldVal) => {
+    if (newVal && oldVal && newVal !== oldVal) {
+      void fetchData(true)
+    }
+  },
+)
 
 // ── Formatting Helpers ─────────────────────────────────────────────
 

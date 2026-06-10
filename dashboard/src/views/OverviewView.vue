@@ -1,11 +1,11 @@
 <template>
   <div class="overview-container">
-    <!-- Loading State -->
-    <LoadingState v-if="loading" message="加载统计数据中..." test-id="overview-loading" />
+    <!-- Loading State (initial no-data only) -->
+    <LoadingState v-if="loading && !overview" message="加载统计数据中..." test-id="overview-loading" />
 
-    <!-- Error State -->
+    <!-- Error State (no-data only; preserves content when data exists) -->
     <EmptyState
-      v-else-if="error"
+      v-else-if="error && !overview"
       variant="error"
       title="数据加载失败"
       :description="error"

@@ -17,12 +17,12 @@
       </div>
     </div>
 
-    <!-- Loading State -->
-    <LoadingState v-if="loading" message="加载工具统计数据中..." test-id="tools-loading" />
+    <!-- Loading State (initial no-data only) -->
+    <LoadingState v-if="loading && !hasExistingData" message="加载工具统计数据中..." test-id="tools-loading" />
 
-    <!-- Error State -->
+    <!-- Error State (no-data only; preserves content when data exists) -->
     <EmptyState
-      v-else-if="error"
+      v-else-if="error && !hasExistingData"
       variant="error"
       title="数据加载失败"
       :description="error"
@@ -212,6 +212,7 @@ function selectPeriod(period: Period): void {
 
 const loading = computed(() => store.loading.value)
 const error = computed(() => store.error.value)
+const hasExistingData = computed(() => store.toolCalls.value.length > 0)
 const toolsData = computed(() => {
   const summary = store.toolSummary.value
   return {

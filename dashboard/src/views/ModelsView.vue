@@ -17,12 +17,12 @@
       </div>
     </div>
 
-    <!-- Loading State -->
-    <LoadingState v-if="store.loading.value" message="加载模型数据中..." test-id="models-loading" />
+    <!-- Loading State (initial no-data only) -->
+    <LoadingState v-if="store.loading.value && store.models.value.length === 0" message="加载模型数据中..." test-id="models-loading" />
 
-    <!-- Error State -->
+    <!-- Error State (no-data only; preserves content when data exists) -->
     <EmptyState
-      v-else-if="store.error.value"
+      v-else-if="store.error.value && store.models.value.length === 0"
       variant="error"
       title="数据加载失败"
       :description="store.error.value"

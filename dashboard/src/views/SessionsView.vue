@@ -2,12 +2,12 @@
   <div class="view-container" data-testid="sessions-view">
     <h1 class="view-title">会话列表</h1>
 
-    <!-- Loading State -->
-    <LoadingState v-if="loading" message="加载会话数据中..." test-id="sessions-loading" />
+    <!-- Loading State (initial no-data only) -->
+    <LoadingState v-if="loading && !hasExistingData" message="加载会话数据中..." test-id="sessions-loading" />
 
-    <!-- Error State -->
+    <!-- Error State (no-data only; preserves content when data exists) -->
     <EmptyState
-      v-else-if="error"
+      v-else-if="error && !hasExistingData"
       variant="error"
       title="数据加载失败"
       :description="error"
@@ -459,6 +459,7 @@ const store = useStatsStore()
 const allSessions = computed<DashboardSessionListItem[]>(() => store.sessions.value)
 const loading = computed(() => store.loading.value)
 const error = computed(() => store.error.value)
+const hasExistingData = computed(() => allSessions.value.length > 0)
 
 // ── Filters ──────────────────────────────────────────────────────────
 
