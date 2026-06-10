@@ -46,13 +46,13 @@
       />
       <MetricCard
         label="工具调用"
-        :value="overview?.tool_call_count ?? 0"
-        :subtitle="`错误 ${overview?.tool_error_count ?? 0} · 成功率 ${toolSuccessRate}%`"
+        :value="overview?.total_tool_calls ?? 0"
+        :subtitle="`错误 ${overview?.total_tool_errors ?? 0} · 成功率 ${toolSuccessRate}%`"
         test-id="metric-tools"
       />
       <MetricCard
         label="变更代码 / 变更文件"
-        :value="`${((overview?.lines_added ?? 0) - (overview?.lines_deleted ?? 0)).toLocaleString()} / ${overview?.files_edited ?? 0}`"
+        :value="`${((overview?.lines_added ?? 0) - (overview?.lines_deleted ?? 0)).toLocaleString()} / ${overview?.files_changed ?? 0}`"
         :subtitle="`+${overview?.lines_added ?? 0} 行 · -${overview?.lines_deleted ?? 0} 行`"
         test-id="metric-code"
       />
@@ -135,7 +135,7 @@
               <span class="session-project" :title="session.project_path || session.session_id">
                 {{ formatProjectPath(session.project_path) }}
               </span>
-              <span class="session-model">{{ session.primary_model || '—' }}</span>
+              <span class="session-model">{{ '—' }}</span>
             </div>
             <div class="session-meta">
               <span class="session-tokens">{{ formatTokens(session.total_tokens) }}</span>
@@ -203,17 +203,17 @@ const overview = computed(() => store.overview.value)
 const loading = computed(() => store.loading.value)
 const error = computed(() => store.error.value)
 const trendData = computed(() => store.trend.value)
-const tools = computed(() => store.toolCalls.value)
-const models = computed(() => store.models.value)
+const topTools = computed(() => store.topTools.value)
+const topModels = computed(() => store.topModels.value)
 const projects = computed(() => store.projects.value)
 const recentSessions = computed(() => store.recentSessions.value)
 const selectedPeriod = computed(() => store.selectedPeriod.value)
 
 const toolSuccessRate = computed(() => {
   if (!overview.value) return '100'
-  const total = overview.value.tool_call_count
+  const total = overview.value.total_tool_calls
   if (total === 0) return '100'
-  return ((1 - overview.value.tool_error_count / total) * 100).toFixed(1)
+  return ((1 - overview.value.total_tool_errors / total) * 100).toFixed(1)
 })
 
 const avgTokensPerSession = computed(() => {
@@ -234,9 +234,9 @@ const trendSeries = computed(() => [
 ])
 
 const modelPieData = computed(() =>
-  models.value.map((m) => ({
+  topModels.value.map((m) => ({
     name: m.model,
-    value: Math.round(m.total_cost_usd * 10000) / 10000,
+    value: Math.round(m.cost_usd * 10000) / 10000,
   })),
 )
 
@@ -255,12 +255,12 @@ const projectSeries = computed(() => [
   },
 ])
 
-const toolNames = computed(() => tools.value.slice(0, 5).map((t) => t.tool_name))
+const toolNames = computed(() => topTools.value.slice(0, 5).map((t) => t.tool_name))
 
 const toolSeries = computed(() => [
   {
     name: '调用次数',
-    data: tools.value.slice(0, 5).map((t) => t.call_count),
+    data: topTools.value.slice(0, 5).map((t) => t.call_count),
     color: '#8b5cf6',
   },
 ])

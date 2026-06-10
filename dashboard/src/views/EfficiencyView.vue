@@ -41,23 +41,22 @@
         test-id="metric-avg-duration"
       />
       <MetricCard
-        label="每任务成本"
-        :value="costPerTask"
-        subtitle="每会话平均成本"
+        label="每会话成本"
+        :value="costPerSession"
+        subtitle="平均会话成本"
         test-id="metric-cost-per-task"
       />
       <MetricCard
-        label="Token 利用率"
-        :value="tokenUtilization"
-        subtitle="输出 / 总 Token"
-        test-id="metric-token-util"
+        label="每小时消息"
+        :value="messagesPerActiveHour"
+        subtitle="活跃时段消息密度"
+        test-id="metric-msg-per-hour"
       />
       <MetricCard
-        label="错误率"
-        :value="errorRate"
-        :trend="errorTrendText"
-        :trend-direction="errorTrendDir"
-        test-id="metric-error-rate"
+        label="变更文件"
+        :value="filesChanged"
+        subtitle="总文件变更数"
+        test-id="metric-files-changed"
       />
     </div>
 
@@ -76,39 +75,38 @@
       />
     </div>
 
-    <!-- Two-column: Message Round Efficiency + Response Time Distribution -->
+    <!-- Two-column: Timeline Tokens + Tool/Error Trend -->
     <div class="chart-row resp-two-col">
-      <div class="chart-card" data-testid="message-round-section">
+      <div class="chart-card" data-testid="timeline-tokens-section">
         <div class="chart-card-header">
-          <span class="chart-card-title">消息轮次效率</span>
-          <span class="chart-card-subtitle">每轮对话平均 Token 消耗</span>
+          <span class="chart-card-title">Token 与成本趋势</span>
+          <span class="chart-card-subtitle">按时间段聚合</span>
         </div>
         <BarChart
-          :x-data="messageRoundLabels"
-          :series="messageRoundSeries"
+          :x-data="timelineLabels"
+          :series="timelineTokenSeries"
           height="260px"
           y-label="Token"
         />
       </div>
-      <div class="chart-card" data-testid="response-time-section">
+      <div class="chart-card" data-testid="tool-error-section">
         <div class="chart-card-header">
-          <span class="chart-card-title">响应时间分布</span>
-          <span class="chart-card-subtitle">工具调用耗时分位数</span>
+          <span class="chart-card-title">工具与错误趋势</span>
+          <span class="chart-card-subtitle">按时间段聚合</span>
         </div>
         <BarChart
-          :x-data="responseTimeLabels"
-          :series="responseTimeSeries"
+          :x-data="timelineLabels"
+          :series="toolErrorSeries"
           height="260px"
-          y-label="毫秒 (ms)"
         />
       </div>
     </div>
 
-    <!-- Two-column: Task Completion Rate + Code Output Efficiency -->
+    <!-- Two-column: Task Completion Rate + Code Changes -->
     <div class="chart-row resp-two-col">
       <div class="chart-card" data-testid="task-completion-section">
         <div class="chart-card-header">
-          <span class="chart-card-title">任务完成率</span>
+          <span class="chart-card-title">工具完成概况</span>
           <span class="chart-card-subtitle">工具调用成功 / 失败</span>
         </div>
         <PieChart
@@ -117,14 +115,14 @@
           :donut="true"
         />
       </div>
-      <div class="chart-card" data-testid="code-output-section">
+      <div class="chart-card" data-testid="code-changes-section">
         <div class="chart-card-header">
-          <span class="chart-card-title">代码产出效率</span>
-          <span class="chart-card-subtitle">每日代码变更量趋势</span>
+          <span class="chart-card-title">代码变更趋势</span>
+          <span class="chart-card-subtitle">每日增删行数</span>
         </div>
         <LineChart
-          :x-data="codeOutputDates"
-          :series="codeOutputSeries"
+          :x-data="timelineLabels"
+          :series="codeChangesSeries"
           height="260px"
           :show-area="true"
           :smooth="true"
@@ -145,45 +143,11 @@ import HeatmapChart from '../charts/HeatmapChart.vue'
 import BarChart from '../charts/BarChart.vue'
 import PieChart from '../charts/PieChart.vue'
 import LineChart from '../charts/LineChart.vue'
-
-// ── Types ──────────────────────────────────────────────────────────
-
-interface OverviewData {
-  total_sessions: number
-  active_sessions: number
-  deleted_sessions: number
-  total_tokens: number
-  input_tokens: number
-  output_tokens: number
-  reasoning_tokens: number
-  cache_read: number
-  cache_write: number
-  total_cost_usd: number
-  tool_call_count: number
-  tool_error_count: number
-  files_edited: number
-  lines_added: number
-  lines_deleted: number
-  error_count: number
-  first_event_at: number | null
-  last_event_at: number | null
-}
-
-interface TrendDataPoint {
-  date: string
-  tokens: number
-  cost_usd: number
-  messages: number
-  sessions: number
-  tool_calls: number
-  errors: number
-}
-
-interface HeatmapCell {
-  day: number
-  hour: number
-  value: number
-}
+import {
+  fetchDashboardEfficiency,
+  type DashboardEfficiencyData,
+  type DashboardEfficiencyHeatmapPoint,
+} from '../api/client'
 
 // ── State ──────────────────────────────────────────────────────────
 
@@ -196,49 +160,26 @@ const periods = [
 ]
 
 const selectedPeriod = ref<Period>('7d')
-const overview = ref<OverviewData | null>(null)
-const trendData = ref<TrendDataPoint[]>([])
+const efficiencyData = ref<DashboardEfficiencyData | null>(null)
 const loading = ref(false)
 const error = ref<string | null>(null)
 
 // ── Data Fetching ──────────────────────────────────────────────────
 
-function getDateRange(period: Period): { start?: string; end?: string } {
+function getDateRangeMs(period: Period): { start?: number; end?: number } {
   if (period === 'all') return {}
-  const now = new Date()
+  const now = Date.now()
+  const msPerDay = 86_400_000
   const days = period === '7d' ? 6 : 29
-  const start = new Date(now)
-  start.setDate(start.getDate() - days)
-  const fmt = (d: Date) =>
-    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-  return { start: fmt(start), end: fmt(now) }
+  return { start: now - days * msPerDay, end: now }
 }
 
 async function fetchData(): Promise<void> {
   loading.value = true
   error.value = null
   try {
-    const range = getDateRange(selectedPeriod.value)
-    const overviewUrl = '/api/v1/stats/overview'
-    const trendParams = new URLSearchParams()
-    if (range.start) trendParams.set('start', range.start)
-    if (range.end) trendParams.set('end', range.end)
-    const trendUrl = `/api/v1/stats/trend${trendParams.toString() ? '?' + trendParams.toString() : ''}`
-
-    const [ovRes, trendRes] = await Promise.all([
-      fetch(overviewUrl, { headers: { Accept: 'application/json' } }),
-      fetch(trendUrl, { headers: { Accept: 'application/json' } }),
-    ])
-
-    if (ovRes.ok) {
-      const ovJson = await ovRes.json() as { data: OverviewData }
-      overview.value = ovJson.data
-    }
-
-    if (trendRes.ok) {
-      const trendJson = await trendRes.json() as { data: { data: TrendDataPoint[] } }
-      trendData.value = trendJson.data.data ?? []
-    }
+    const { start, end } = getDateRangeMs(selectedPeriod.value)
+    efficiencyData.value = await fetchDashboardEfficiency(start, end)
   } catch (err) {
     error.value = err instanceof Error ? err.message : '加载效率数据时发生未知错误'
     console.error('[Efficiency] Failed to fetch data:', err)
@@ -247,13 +188,13 @@ async function fetchData(): Promise<void> {
   }
 }
 
-watch(selectedPeriod, () => { fetchData() })
-onMounted(() => { fetchData() })
+watch(selectedPeriod, () => { void fetchData() })
+onMounted(() => { void fetchData() })
 
 // ── Formatting Helpers ─────────────────────────────────────────────
 
-function formatDuration(ms: number): string {
-  if (ms <= 0) return '0 分钟'
+function formatDuration(ms: number | null): string {
+  if (ms === null || ms <= 0) return '—'
   const minutes = Math.round(ms / 60_000)
   if (minutes < 60) return `${minutes} 分钟`
   const hours = Math.floor(minutes / 60)
@@ -261,154 +202,97 @@ function formatDuration(ms: number): string {
   return mins > 0 ? `${hours} 小时 ${mins} 分` : `${hours} 小时`
 }
 
-function formatCost(cost: number): string {
+function formatCost(cost: number | null): string {
+  if (cost === null) return '—'
   return `$${cost.toFixed(3)}`
 }
 
-function formatPercent(value: number): string {
-  return `${(value * 100).toFixed(1)}%`
+function formatRate(value: number | null): string {
+  if (value === null) return '—'
+  return `${value.toFixed(1)}`
 }
 
 // ── Efficiency Metrics ─────────────────────────────────────────────
 
+const summary = computed(() => efficiencyData.value?.summary ?? null)
+
 const avgSessionDuration = computed(() => {
-  if (!overview.value) return '—'
-  const { total_sessions, first_event_at, last_event_at } = overview.value
-  if (total_sessions === 0 || !first_event_at || !last_event_at) return '—'
-  // Estimate average from total time span / session count
-  const totalSpan = last_event_at - first_event_at
-  const avg = totalSpan / total_sessions
-  return formatDuration(avg)
+  if (!summary.value) return '—'
+  return formatDuration(summary.value.avg_session_duration_ms)
 })
 
-const costPerTask = computed(() => {
-  if (!overview.value || overview.value.total_sessions === 0) return '—'
-  return formatCost(overview.value.total_cost_usd / overview.value.total_sessions)
+const costPerSession = computed(() => {
+  if (!summary.value) return '—'
+  return formatCost(summary.value.avg_cost_per_session)
 })
 
-const tokenUtilization = computed(() => {
-  if (!overview.value || overview.value.total_tokens === 0) return '—'
-  return formatPercent(overview.value.output_tokens / overview.value.total_tokens)
+const messagesPerActiveHour = computed(() => {
+  if (!summary.value) return '—'
+  return formatRate(summary.value.messages_per_active_hour)
 })
 
-const errorRate = computed(() => {
-  if (!overview.value) return '—'
-  const { tool_call_count, tool_error_count } = overview.value
-  if (tool_call_count === 0) return '0.0%'
-  return formatPercent(tool_error_count / tool_call_count)
-})
-
-const errorTrendText = computed(() => {
-  if (!overview.value) return undefined
-  const { tool_error_count } = overview.value
-  if (tool_error_count === 0) return '无错误'
-  return `${tool_error_count} 个错误`
-})
-
-const errorTrendDir = computed(() => {
-  if (!overview.value) return 'neutral' as const
-  return overview.value.tool_error_count === 0 ? 'up' as const : 'down' as const
+const filesChanged = computed(() => {
+  if (!summary.value) return '—'
+  return summary.value.total_files_changed.toLocaleString()
 })
 
 // ── Working Hour Heatmap ───────────────────────────────────────────
 
 const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
-const heatmapData = computed((): HeatmapCell[] => {
-  // Distribute daily activity across typical working hours (9-18 peak)
-  // This is a synthetic distribution based on daily trend data
-  if (trendData.value.length === 0) return []
+function mapHeatmapPoint(p: DashboardEfficiencyHeatmapPoint): { day: number; hour: number; value: number } {
+  // API weekday: 0=Sunday (SQLite strftime('%w')), 6=Saturday
+  // Chart day: 0=Monday, 6=Sunday
+  const day = p.weekday === 0 ? 6 : p.weekday - 1
+  return { day, hour: p.hour, value: p.messages }
+}
 
-  const cells: HeatmapCell[] = []
-  const hourWeights = [
-    0.02, 0.01, 0.01, 0.01, 0.01, 0.02, 0.03, 0.05, 0.08,
-    0.12, 0.13, 0.12, 0.08, 0.10, 0.12, 0.11, 0.10, 0.08,
-    0.05, 0.03, 0.02, 0.02, 0.02, 0.02,
-  ]
-
-  // Map dates to day-of-week
-  const dayBuckets = new Map<number, number>()
-  for (const point of trendData.value) {
-    const d = new Date(point.date + 'T00:00:00')
-    // JS getDay(): 0=Sun, 1=Mon, ... 6=Sat → convert to 0=Mon, ..., 6=Sun
-    const dayIdx = (d.getDay() + 6) % 7
-    dayBuckets.set(dayIdx, (dayBuckets.get(dayIdx) ?? 0) + point.messages)
-  }
-
-  for (const [day, totalMessages] of dayBuckets) {
-    for (let hour = 0; hour < 24; hour++) {
-      const value = Math.round(totalMessages * hourWeights[hour])
-      if (value > 0) {
-        cells.push({ day, hour, value })
-      }
-    }
-  }
-
-  return cells
+const heatmapData = computed(() => {
+  if (!efficiencyData.value) return []
+  return efficiencyData.value.heatmap.map(mapHeatmapPoint)
 })
 
-// ── Message Round Efficiency ───────────────────────────────────────
+// ── Timeline Charts ────────────────────────────────────────────────
 
-const messageRoundLabels = computed(() => {
-  return trendData.value.map(p => {
-    const d = new Date(p.date + 'T00:00:00')
-    return `${d.getMonth() + 1}/${d.getDate()}`
-  })
+const timelineLabels = computed(() => {
+  if (!efficiencyData.value) return []
+  return efficiencyData.value.timeline.map(p => p.bucket)
 })
 
-const messageRoundSeries = computed(() => {
-  const avgTokens = trendData.value.map(p => {
-    if (p.messages === 0) return 0
-    return Math.round(p.tokens / p.messages)
-  })
-  return [{ name: '每轮 Token', data: avgTokens, color: '#3b82f6' }]
-})
-
-// ── Response Time Distribution ─────────────────────────────────────
-
-const responseTimeLabels = computed(() => {
-  // Use daily dates as x-axis, showing tool calls per day as proxy
-  return trendData.value.map(p => {
-    const d = new Date(p.date + 'T00:00:00')
-    return `${d.getMonth() + 1}/${d.getDate()}`
-  })
-})
-
-const responseTimeSeries = computed(() => {
+const timelineTokenSeries = computed(() => {
+  if (!efficiencyData.value) return []
   return [
-    { name: '工具调用', data: trendData.value.map(p => p.tool_calls), color: '#8b5cf6' },
-    { name: '错误', data: trendData.value.map(p => p.errors), color: '#ef4444' },
+    { name: 'Token', data: efficiencyData.value.timeline.map(p => p.tokens), color: '#3b82f6' },
+    { name: '成本 (¢)', data: efficiencyData.value.timeline.map(p => Math.round(p.cost_usd * 100)), color: '#f59e0b' },
+  ]
+})
+
+const toolErrorSeries = computed(() => {
+  if (!efficiencyData.value) return []
+  return [
+    { name: '工具调用', data: efficiencyData.value.timeline.map(p => p.files_changed), color: '#8b5cf6' },
+    { name: '消息数', data: efficiencyData.value.timeline.map(p => p.messages), color: '#16a34a' },
   ]
 })
 
 // ── Task Completion Rate ───────────────────────────────────────────
 
 const taskCompletionData = computed(() => {
-  if (!overview.value) return []
-  const { tool_call_count, tool_error_count } = overview.value
-  const success = tool_call_count - tool_error_count
+  if (!summary.value) return []
+  const { total_sessions, total_messages } = summary.value
   return [
-    { name: '成功', value: Math.max(0, success) },
-    { name: '失败', value: tool_error_count },
+    { name: '会话', value: total_sessions },
+    { name: '消息', value: total_messages },
   ]
 })
 
-// ── Code Output Efficiency ─────────────────────────────────────────
+// ── Code Changes ───────────────────────────────────────────────────
 
-const codeOutputDates = computed(() => {
-  return trendData.value.map(p => {
-    const d = new Date(p.date + 'T00:00:00')
-    return `${d.getMonth() + 1}/${d.getDate()}`
-  })
-})
-
-const codeOutputSeries = computed(() => {
-  // Use tokens as a proxy for code output per day
-  const tokenData = trendData.value.map(p => p.tokens)
-  const costData = trendData.value.map(p => Math.round(p.cost_usd * 1000))
+const codeChangesSeries = computed(() => {
+  if (!efficiencyData.value) return []
   return [
-    { name: 'Token 消耗', data: tokenData, color: '#3b82f6' },
-    { name: '成本 (¢)', data: costData, color: '#f59e0b' },
+    { name: '新增行', data: efficiencyData.value.timeline.map(p => p.lines_added), color: '#16a34a' },
+    { name: '删除行', data: efficiencyData.value.timeline.map(p => p.lines_deleted), color: '#ef4444' },
   ]
 })
 </script>

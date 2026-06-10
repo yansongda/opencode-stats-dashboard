@@ -36,19 +36,19 @@
     <!-- Summary Metrics -->
     <div class="metrics-grid resp-metrics-4" data-testid="tools-metrics">
       <div class="metric-tile">
-        <div class="metric-value">{{ formatNumber(toolsData?.total_calls ?? 0) }}</div>
+        <div class="metric-value">{{ formatNumber(toolsData?.total_tool_calls ?? 0) }}</div>
         <div class="metric-label">总调用次数</div>
       </div>
       <div class="metric-tile">
-        <div class="metric-value">{{ formatPercent(toolsData?.success_rate ?? 0) }}</div>
-        <div class="metric-label">成功率</div>
+        <div class="metric-value">{{ formatPercent(toolsData?.error_rate ?? 0) }}</div>
+        <div class="metric-label">错误率</div>
       </div>
       <div class="metric-tile">
         <div class="metric-value">{{ toolsData?.tools.length ?? 0 }}</div>
         <div class="metric-label">工具种类</div>
       </div>
       <div class="metric-tile">
-        <div class="metric-value">{{ formatNumber(toolsData?.total_errors ?? 0) }}</div>
+        <div class="metric-value">{{ formatNumber(toolsData?.failed_tool_calls ?? 0) }}</div>
         <div class="metric-label">总错误数</div>
       </div>
     </div>
@@ -66,17 +66,20 @@
               <th class="sortable col-right" :class="{ sorted: sortKey === 'call_count' }" @click="toggleSort('call_count')">
                 调用次数 <span class="sort-indicator">{{ sortIndicator('call_count') }}</span>
               </th>
-              <th class="sortable col-right" :class="{ sorted: sortKey === 'success_rate' }" @click="toggleSort('success_rate')">
-                成功率 <span class="sort-indicator">{{ sortIndicator('success_rate') }}</span>
+              <th class="sortable col-right" :class="{ sorted: sortKey === 'error_rate' }" @click="toggleSort('error_rate')">
+                错误率 <span class="sort-indicator">{{ sortIndicator('error_rate') }}</span>
               </th>
               <th class="sortable col-right" :class="{ sorted: sortKey === 'avg_duration_ms' }" @click="toggleSort('avg_duration_ms')">
                 平均耗时 <span class="sort-indicator">{{ sortIndicator('avg_duration_ms') }}</span>
+              </th>
+              <th class="col-right">
+                耗时范围
               </th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="sortedTools.length === 0">
-              <td colspan="4">
+              <td colspan="5">
                 <EmptyState
                   title="暂无工具调用数据"
                   description="开始使用 OpenCode 后，工具调用记录将显示在这里"
@@ -88,9 +91,10 @@
               <td class="col-monospace">{{ tool.tool_name }}</td>
               <td class="col-right">{{ formatNumber(tool.call_count) }}</td>
               <td class="col-right">
-                <span :class="rateClass(tool.success_rate)">{{ formatPercent(tool.success_rate) }}</span>
+                <span :class="rateClass(tool.error_rate ?? 0)">{{ formatPercent(tool.error_rate ?? 0) }}</span>
               </td>
-              <td class="col-right">{{ formatDuration(tool.avg_duration_ms) }}</td>
+              <td class="col-right">{{ formatDuration(tool.avg_duration_ms ?? 0) }}</td>
+              <td class="col-right col-muted">{{ formatDuration(tool.min_duration_ms ?? 0) }} – {{ formatDuration(tool.max_duration_ms ?? 0) }}</td>
             </tr>
           </tbody>
         </table>
@@ -100,7 +104,7 @@
     <!-- Tool Usage Trend -->
     <section class="section" data-testid="tools-trend">
       <h2 class="section-title">工具使用趋势</h2>
-      <div v-if="trendData.length === 0" class="chart-empty">
+      <div v-if="trendLabels.length === 0" class="chart-empty">
         暂无趋势数据
       </div>
       <LineChart
@@ -114,7 +118,7 @@
       />
     </section>
 
-    <!-- Bottom Row: Error Distribution + Duration Distribution -->
+    <!-- Bottom Row: Error Distribution + Average Duration Overview -->
     <div class="bottom-row resp-two-col" data-testid="tools-charts">
       <!-- Error Distribution Pie -->
       <section class="section bottom-section">
@@ -131,9 +135,9 @@
         />
       </section>
 
-      <!-- Duration Distribution Histogram -->
+      <!-- Average Duration Overview -->
       <section class="section bottom-section">
-        <h2 class="section-title">耗时分布</h2>
+        <h2 class="section-title">平均耗时概览</h2>
         <div v-if="durationHistData.length === 0" class="chart-empty">
           暂无耗时数据
         </div>
@@ -146,6 +150,36 @@
         />
       </section>
     </div>
+
+    <!-- Recent Errors -->
+    <section class="section" data-testid="tools-recent-errors">
+      <h2 class="section-title">最近错误</h2>
+      <div v-if="recentErrors.length === 0" class="chart-empty">
+        暂无最近错误
+      </div>
+      <div v-else class="table-wrapper resp-table-wrapper">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>工具</th>
+              <th>会话</th>
+              <th>错误信息</th>
+              <th>耗时</th>
+              <th>时间</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="err in recentErrors" :key="err.call_id">
+              <td class="col-monospace">{{ err.tool_name }}</td>
+              <td class="col-monospace">{{ truncateId(err.session_id) }}</td>
+              <td class="col-error-msg">{{ err.error_message }}</td>
+              <td class="col-right">{{ formatDuration(err.duration_ms ?? 0) }}</td>
+              <td class="col-right">{{ formatTimestamp(err.completed_at_ms ?? err.started_at_ms) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
     </template>
   </div>
 </template>
@@ -158,7 +192,7 @@ import LineChart from '../charts/LineChart.vue'
 import PieChart from '../charts/PieChart.vue'
 import BarChart from '../charts/BarChart.vue'
 import { useStatsStore, type Period } from '../stores/stats'
-import type { ToolStatsItem } from '../api/client'
+import type { DashboardToolItem, DashboardToolTimelinePoint } from '../api/client'
 
 // ── Store ──────────────────────────────────────────────────────────
 
@@ -178,16 +212,22 @@ function selectPeriod(period: Period): void {
 
 const loading = computed(() => store.loading.value)
 const error = computed(() => store.error.value)
-const toolsData = computed(() => ({
-  tools: store.toolCalls.value,
-  ...store.toolSummary.value,
-}))
-const trendData = computed(() => store.trend.value)
+const toolsData = computed(() => {
+  const summary = store.toolSummary.value
+  return {
+    tools: store.toolCalls.value,
+    total_tool_calls: summary?.total_tool_calls ?? 0,
+    failed_tool_calls: summary?.failed_tool_calls ?? 0,
+    error_rate: summary?.tool_error_rate ?? 0,
+    total_tools: summary?.total_tools ?? 0,
+  }
+})
+const recentErrors = computed(() => store.toolRecentErrors.value)
 const selectedPeriod = computed(() => store.selectedPeriod.value)
 
 // ── Sorting ──────────────────────────────────────────────────────────
 
-type SortKey = keyof ToolStatsItem
+type SortKey = keyof DashboardToolItem
 const sortKey = ref<SortKey>('call_count')
 const sortDir = ref<'asc' | 'desc'>('desc')
 
@@ -205,7 +245,7 @@ function sortIndicator(key: SortKey): string {
   return sortDir.value === 'asc' ? '↑' : '↓'
 }
 
-const sortedTools = computed<ToolStatsItem[]>(() => {
+const sortedTools = computed<DashboardToolItem[]>(() => {
   const tools = toolsData.value?.tools ?? []
   const sorted = [...tools].sort((a, b) => {
     const aVal = a[sortKey.value]
@@ -221,26 +261,44 @@ const sortedTools = computed<ToolStatsItem[]>(() => {
   return sorted
 })
 
-// ── Trend Chart Data ─────────────────────────────────────────────────
+// ── Trend Chart Data (from tools timeline, aggregated by date) ──────
 
-const trendLabels = computed(() => trendData.value.map((d) => d.date))
-const trendSeries = computed(() => [
-  {
-    name: '工具调用',
-    data: trendData.value.map((d) => d.tool_calls),
-    color: '#3b82f6',
-  },
-])
+const trendLabels = computed(() => {
+  const dates = new Set(store.toolTimeline.value.map((p: DashboardToolTimelinePoint) => p.date))
+  return [...dates].sort()
+})
+
+const trendSeries = computed(() => {
+  const labels = trendLabels.value
+  const callMap = new Map<string, number>()
+  const failMap = new Map<string, number>()
+  for (const p of store.toolTimeline.value) {
+    callMap.set(p.date, (callMap.get(p.date) ?? 0) + p.call_count)
+    failMap.set(p.date, (failMap.get(p.date) ?? 0) + p.failed_count)
+  }
+  return [
+    {
+      name: '工具调用',
+      data: labels.map((d) => callMap.get(d) ?? 0),
+      color: '#3b82f6',
+    },
+    {
+      name: '失败调用',
+      data: labels.map((d) => failMap.get(d) ?? 0),
+      color: '#ef4444',
+    },
+  ]
+})
 
 // ── Error Pie Data ───────────────────────────────────────────────────
 
 const errorPieData = computed(() => {
   const tools = toolsData.value?.tools ?? []
   return tools
-    .filter((t) => t.error_count > 0)
+    .filter((t) => t.failed_count > 0)
     .map((t) => ({
       name: t.tool_name,
-      value: t.error_count,
+      value: t.failed_count,
     }))
     .sort((a, b) => b.value - a.value)
 })
@@ -268,6 +326,7 @@ const durationHistData = computed<DurationBucket[]>(() => {
 
   for (const tool of tools) {
     const ms = tool.avg_duration_ms
+    if (ms == null) continue
     if (ms < 100) buckets[0].count++
     else if (ms < 500) buckets[1].count++
     else if (ms < 1000) buckets[2].count++
@@ -303,10 +362,26 @@ function formatDuration(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`
 }
 
-function rateClass(rate: number): string {
-  if (rate >= 0.95) return 'rate-good'
-  if (rate >= 0.80) return 'rate-warn'
+function rateClass(errorRate: number): string {
+  if (errorRate <= 0.05) return 'rate-good'
+  if (errorRate <= 0.20) return 'rate-warn'
   return 'rate-bad'
+}
+
+function formatTimestamp(ms: number | null): string {
+  if (ms == null) return '—'
+  return new Intl.DateTimeFormat('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(new Date(ms))
+}
+
+function truncateId(id: string): string {
+  if (id.length <= 12) return id
+  return id.slice(0, 8) + '…'
 }
 </script>
 
@@ -480,6 +555,20 @@ function rateClass(rate: number): string {
 .col-monospace {
   font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
   font-size: var(--text-sm);
+}
+
+.col-muted {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.col-error-msg {
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-sm);
+  color: var(--danger);
 }
 
 .empty-state {

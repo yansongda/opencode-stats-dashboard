@@ -114,11 +114,11 @@
             <th class="col-status">状态</th>
             <th
               class="col-date sortable"
-              :class="{ sorted: sortKey === 'last_event_at' }"
-              @click="toggleSort('last_event_at')"
+              :class="{ sorted: sortKey === 'last_event_at_ms' }"
+              @click="toggleSort('last_event_at_ms')"
             >
               最后活跃
-              <span class="sort-indicator">{{ sortIndicator('last_event_at') }}</span>
+              <span class="sort-indicator">{{ sortIndicator('last_event_at_ms') }}</span>
             </th>
           </tr>
         </thead>
@@ -151,7 +151,7 @@
             <td class="col-status">
               <StatusBadge :status="session.status" />
             </td>
-            <td class="col-date">{{ formatTimestamp(session.last_event_at) }}</td>
+            <td class="col-date">{{ formatTimestamp(session.last_event_at_ms) }}</td>
           </tr>
           <tr v-if="paginatedSessions.length === 0">
             <td colspan="8" class="empty-state">没有匹配当前过滤条件的会话</td>
@@ -202,7 +202,7 @@
       <div class="detail-header">
         <h2 class="detail-title">
           会话详情
-          <code class="detail-session-id">{{ selectedDetail.session_id }}</code>
+          <code class="detail-session-id">{{ selectedDetail.session.session_id }}</code>
         </h2>
         <button class="btn btn-ghost btn-sm" @click="selectedSessionId = null">关闭</button>
       </div>
@@ -213,35 +213,35 @@
         <div class="detail-grid">
           <div class="detail-item">
             <span class="detail-label">标题</span>
-            <span class="detail-value">{{ selectedDetail.title ?? '—' }}</span>
+            <span class="detail-value">{{ selectedDetail.session.title ?? '—' }}</span>
           </div>
           <div class="detail-item">
             <span class="detail-label">项目</span>
-            <span class="detail-value" :title="selectedDetail.project_path ?? ''">{{ truncateProject(selectedDetail.project_path ?? '—') }}</span>
+            <span class="detail-value" :title="selectedDetail.session.project_path ?? ''">{{ truncateProject(selectedDetail.session.project_path ?? '—') }}</span>
           </div>
           <div class="detail-item">
             <span class="detail-label">模型</span>
-            <span class="detail-value">{{ selectedDetail.primary_model ?? '—' }}</span>
+            <span class="detail-value">{{ selectedDetail.session.primary_model ?? '—' }}</span>
           </div>
           <div class="detail-item">
             <span class="detail-label">状态</span>
-            <span class="detail-value"><StatusBadge :status="selectedDetail.status" /></span>
+            <span class="detail-value"><StatusBadge :status="selectedDetail.session.status" /></span>
           </div>
           <div class="detail-item">
             <span class="detail-label">时长</span>
-            <span class="detail-value">{{ formatDuration(selectedDetail.duration_ms) }}</span>
+            <span class="detail-value">{{ formatDuration(selectedDetail.session.duration_ms) }}</span>
           </div>
           <div class="detail-item">
-            <span class="detail-label">事件数</span>
-            <span class="detail-value">{{ formatNumber(selectedDetail.event_count) }}</span>
+            <span class="detail-label">消息数</span>
+            <span class="detail-value">{{ formatNumber(selectedDetail.session.message_count) }}</span>
           </div>
           <div class="detail-item">
             <span class="detail-label">首次事件</span>
-            <span class="detail-value">{{ formatTimestamp(selectedDetail.first_event_at) }}</span>
+            <span class="detail-value">{{ formatTimestamp(selectedDetail.session.first_event_at_ms) }}</span>
           </div>
           <div class="detail-item">
             <span class="detail-label">末次事件</span>
-            <span class="detail-value">{{ formatTimestamp(selectedDetail.last_event_at) }}</span>
+            <span class="detail-value">{{ formatTimestamp(selectedDetail.session.last_event_at_ms) }}</span>
           </div>
         </div>
       </div>
@@ -252,31 +252,31 @@
         <div class="detail-grid">
           <div class="detail-item">
             <span class="detail-label">总计</span>
-            <span class="detail-value detail-value-highlight">{{ formatNumber(selectedDetail.total_tokens) }}</span>
+            <span class="detail-value detail-value-highlight">{{ formatNumber(selectedDetail.session.total_tokens) }}</span>
           </div>
           <div class="detail-item">
             <span class="detail-label">输入</span>
-            <span class="detail-value">{{ formatNumber(selectedDetail.input_tokens) }}</span>
+            <span class="detail-value">{{ formatNumber(selectedDetail.session.input_tokens) }}</span>
           </div>
           <div class="detail-item">
             <span class="detail-label">输出</span>
-            <span class="detail-value">{{ formatNumber(selectedDetail.output_tokens) }}</span>
+            <span class="detail-value">{{ formatNumber(selectedDetail.session.output_tokens) }}</span>
           </div>
           <div class="detail-item">
             <span class="detail-label">推理</span>
-            <span class="detail-value">{{ formatNumber(selectedDetail.reasoning_tokens) }}</span>
+            <span class="detail-value">{{ formatNumber(selectedDetail.session.reasoning_tokens) }}</span>
           </div>
           <div class="detail-item">
             <span class="detail-label">缓存读</span>
-            <span class="detail-value">{{ formatNumber(selectedDetail.cache_read) }}</span>
+            <span class="detail-value">{{ formatNumber(selectedDetail.session.cache_read) }}</span>
           </div>
           <div class="detail-item">
             <span class="detail-label">缓存写</span>
-            <span class="detail-value">{{ formatNumber(selectedDetail.cache_write) }}</span>
+            <span class="detail-value">{{ formatNumber(selectedDetail.session.cache_write) }}</span>
           </div>
           <div class="detail-item">
             <span class="detail-label">成本</span>
-            <span class="detail-value detail-value-highlight">{{ formatCost(selectedDetail.total_cost_usd) }}</span>
+            <span class="detail-value detail-value-highlight">{{ formatCost(selectedDetail.session.total_cost_usd) }}</span>
           </div>
         </div>
       </div>
@@ -287,32 +287,151 @@
         <div class="detail-grid">
           <div class="detail-item">
             <span class="detail-label">用户消息</span>
-            <span class="detail-value">{{ formatNumber(selectedDetail.user_message_count) }}</span>
+            <span class="detail-value">{{ formatNumber(selectedDetail.session.user_message_count) }}</span>
           </div>
           <div class="detail-item">
             <span class="detail-label">助手消息</span>
-            <span class="detail-value">{{ formatNumber(selectedDetail.assistant_message_count) }}</span>
+            <span class="detail-value">{{ formatNumber(selectedDetail.session.assistant_message_count) }}</span>
           </div>
           <div class="detail-item">
             <span class="detail-label">工具调用</span>
-            <span class="detail-value">{{ formatNumber(selectedDetail.tool_call_count) }}</span>
+            <span class="detail-value">{{ formatNumber(selectedDetail.session.tool_call_count) }}</span>
           </div>
           <div class="detail-item">
             <span class="detail-label">工具错误</span>
-            <span class="detail-value">{{ formatNumber(selectedDetail.tool_error_count) }}</span>
+            <span class="detail-value">{{ formatNumber(selectedDetail.session.tool_error_count) }}</span>
           </div>
           <div class="detail-item">
-            <span class="detail-label">文件编辑</span>
-            <span class="detail-value">{{ formatNumber(selectedDetail.files_edited) }}</span>
+            <span class="detail-label">文件变更</span>
+            <span class="detail-value">{{ formatNumber(selectedDetail.session.files_changed) }}</span>
           </div>
           <div class="detail-item">
             <span class="detail-label">代码变更</span>
-            <span class="detail-value">+{{ formatNumber(selectedDetail.lines_added) }} / -{{ formatNumber(selectedDetail.lines_deleted) }}</span>
+            <span class="detail-value">+{{ formatNumber(selectedDetail.session.lines_added) }} / -{{ formatNumber(selectedDetail.session.lines_deleted) }}</span>
           </div>
           <div class="detail-item">
             <span class="detail-label">错误数</span>
-            <span class="detail-value">{{ formatNumber(selectedDetail.error_count) }}</span>
+            <span class="detail-value">{{ formatNumber(selectedDetail.session.error_count) }}</span>
           </div>
+        </div>
+      </div>
+
+      <!-- Model Usage -->
+      <div v-if="selectedDetail.model_usage.length > 0" class="detail-section">
+        <h3 class="detail-section-title">模型使用</h3>
+        <div class="table-wrapper">
+          <table class="data-table detail-table">
+            <thead>
+              <tr>
+                <th>模型</th>
+                <th class="col-right">消息</th>
+                <th class="col-right">输入 Token</th>
+                <th class="col-right">输出 Token</th>
+                <th class="col-right">推理 Token</th>
+                <th class="col-right">总 Token</th>
+                <th class="col-right">成本</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="mu in selectedDetail.model_usage" :key="mu.model">
+                <td class="col-monospace">{{ mu.model }}</td>
+                <td class="col-right">{{ formatNumber(mu.message_count) }}</td>
+                <td class="col-right">{{ formatNumber(mu.input_tokens) }}</td>
+                <td class="col-right">{{ formatNumber(mu.output_tokens) }}</td>
+                <td class="col-right">{{ formatNumber(mu.reasoning_tokens) }}</td>
+                <td class="col-right">{{ formatNumber(mu.total_tokens) }}</td>
+                <td class="col-right">{{ formatCost(mu.cost_usd) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Tool Calls -->
+      <div v-if="selectedDetail.tool_calls.length > 0" class="detail-section">
+        <h3 class="detail-section-title">工具调用</h3>
+        <div class="table-wrapper">
+          <table class="data-table detail-table">
+            <thead>
+              <tr>
+                <th>工具</th>
+                <th>标题</th>
+                <th>状态</th>
+                <th class="col-right">耗时</th>
+                <th>错误</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="tc in selectedDetail.tool_calls" :key="tc.call_id">
+                <td class="col-monospace">{{ tc.tool_name }}</td>
+                <td>{{ tc.title ?? '—' }}</td>
+                <td>
+                  <span :class="tc.status === 'completed' ? 'badge-active' : tc.status === 'failed' ? 'badge-deleted' : ''">
+                    {{ tc.status ?? '—' }}
+                  </span>
+                </td>
+                <td class="col-right">{{ formatDuration(tc.duration_ms) }}</td>
+                <td class="col-error-msg">{{ tc.error_message ?? '—' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Messages Metadata -->
+      <div v-if="selectedDetail.messages.length > 0" class="detail-section">
+        <h3 class="detail-section-title">消息元数据</h3>
+        <div class="table-wrapper">
+          <table class="data-table detail-table">
+            <thead>
+              <tr>
+                <th>角色</th>
+                <th>模型</th>
+                <th class="col-right">Token</th>
+                <th class="col-right">成本</th>
+                <th class="col-right">文件变更</th>
+                <th class="col-right">耗时</th>
+                <th>状态</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="msg in selectedDetail.messages" :key="msg.message_id">
+                <td>{{ msg.role === 'user' ? '用户' : '助手' }}</td>
+                <td class="col-monospace">{{ msg.model ?? '—' }}</td>
+                <td class="col-right">{{ formatNumber(msg.total_tokens) }}</td>
+                <td class="col-right">{{ formatCost(msg.cost_usd) }}</td>
+                <td class="col-right">{{ msg.files_changed > 0 ? msg.files_changed : '—' }}</td>
+                <td class="col-right">{{ formatDuration(msg.duration_ms) }}</td>
+                <td>
+                  <span v-if="msg.has_error" class="badge-deleted">{{ msg.error_type ?? '错误' }}</span>
+                  <span v-else class="badge-active">正常</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Errors -->
+      <div v-if="selectedDetail.errors.length > 0" class="detail-section">
+        <h3 class="detail-section-title">错误</h3>
+        <div class="table-wrapper">
+          <table class="data-table detail-table">
+            <thead>
+              <tr>
+                <th>事件类型</th>
+                <th>错误信息</th>
+                <th class="col-right">时间</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="err in selectedDetail.errors" :key="err.event_id">
+                <td class="col-monospace">{{ err.event_type }}</td>
+                <td class="col-error-msg">{{ err.message }}</td>
+                <td class="col-right">{{ formatTimestamp(err.created_at_ms) }}</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -326,9 +445,9 @@ import EmptyState from '../components/EmptyState.vue'
 import LoadingState from '../components/LoadingState.vue'
 import { useStatsStore } from '../stores/stats'
 import {
-  fetchStatsSessionDetail,
-  type StatsSessionListItem,
-  type SessionDetail,
+  fetchDashboardSessionDetail,
+  type DashboardSessionListItem,
+  type DashboardSessionDetailData,
 } from '../api/client'
 
 // ── Store ──────────────────────────────────────────────────────────────
@@ -337,7 +456,7 @@ const store = useStatsStore()
 
 // ── Data (from global store, auto-updates via SSE) ─────────────────────
 
-const allSessions = computed<StatsSessionListItem[]>(() => store.sessions.value)
+const allSessions = computed<DashboardSessionListItem[]>(() => store.sessions.value)
 const loading = computed(() => store.loading.value)
 const error = computed(() => store.error.value)
 
@@ -352,8 +471,8 @@ const dateTo = ref('')
 
 // ── Sorting ──────────────────────────────────────────────────────────
 
-type SortKey = 'session_id' | 'project_path' | 'primary_model' | 'total_tokens' | 'total_cost_usd' | 'last_event_at'
-const sortKey = ref<SortKey>('last_event_at')
+type SortKey = 'session_id' | 'project_path' | 'primary_model' | 'total_tokens' | 'total_cost_usd' | 'last_event_at_ms'
+const sortKey = ref<SortKey>('last_event_at_ms')
 const sortDir = ref<'asc' | 'desc'>('desc')
 
 function toggleSort(key: SortKey): void {
@@ -388,7 +507,7 @@ const uniqueProjects = computed(() => {
   return [...projects].sort()
 })
 
-const filteredSessions = computed<StatsSessionListItem[]>(() => {
+const filteredSessions = computed<DashboardSessionListItem[]>(() => {
   let list = [...allSessions.value]
 
   // Status filter
@@ -417,19 +536,19 @@ const filteredSessions = computed<StatsSessionListItem[]>(() => {
     )
   }
 
-  // Date range filter (based on last_event_at, which is ms timestamp)
+  // Date range filter (based on last_event_at_ms, which is ms timestamp)
   if (dateFrom.value) {
     const from = new Date(dateFrom.value).getTime()
     list = list.filter((s) => {
-      if (s.last_event_at == null) return false
-      return s.last_event_at >= from
+      if (s.last_event_at_ms == null) return false
+      return s.last_event_at_ms >= from
     })
   }
   if (dateTo.value) {
     const to = new Date(dateTo.value).getTime() + 86400000 // end of day
     list = list.filter((s) => {
-      if (s.last_event_at == null) return false
-      return s.last_event_at <= to
+      if (s.last_event_at_ms == null) return false
+      return s.last_event_at_ms <= to
     })
   }
 
@@ -491,7 +610,7 @@ const visiblePages = computed(() => {
 // ── Session Detail ───────────────────────────────────────────────────
 
 const selectedSessionId = ref<string | null>(null)
-const selectedDetail = ref<SessionDetail | null>(null)
+const selectedDetail = ref<DashboardSessionDetailData | null>(null)
 const detailLoading = ref(false)
 
 async function selectSession(sessionId: string): Promise<void> {
@@ -503,7 +622,8 @@ async function selectSession(sessionId: string): Promise<void> {
   selectedSessionId.value = sessionId
   detailLoading.value = true
   try {
-    selectedDetail.value = await fetchStatsSessionDetail(sessionId)
+    const detail = await fetchDashboardSessionDetail(sessionId)
+    selectedDetail.value = detail
   } catch {
     selectedDetail.value = null
   } finally {
@@ -951,6 +1071,30 @@ const StatusBadge = {
 .detail-value-highlight {
   font-weight: 600;
   color: var(--primary);
+}
+
+/* ── Detail Tables ───────────────────────────────────────────────────── */
+
+.detail-table {
+  font-size: var(--text-sm);
+}
+
+.detail-table th {
+  font-size: var(--text-xs);
+}
+
+.col-monospace {
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: var(--text-sm);
+}
+
+.col-error-msg {
+  max-width: 250px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-sm);
+  color: var(--danger);
 }
 
 /* ── Shared Button Styles ───────────────────────────────────────────── */

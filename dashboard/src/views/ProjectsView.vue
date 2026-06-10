@@ -2,31 +2,32 @@
   <div class="view-container" data-testid="projects-view">
     <div class="view-header resp-header">
       <h1 class="view-title">项目对比</h1>
-      <div class="time-range-selector">
+      <div class="period-tabs">
         <button
-          v-for="range in timeRanges"
-          :key="range.value"
-          class="range-btn"
-          :class="{ active: selectedRange === range.value }"
-          @click="selectRange(range.value)"
+          v-for="p in periods"
+          :key="p.value"
+          class="period-btn"
+          :class="{ active: store.selectedPeriod.value === p.value }"
+          data-testid="period-btn"
+          @click="selectPeriod(p.value)"
         >
-          {{ range.label }}
+          {{ p.label }}
         </button>
       </div>
     </div>
 
     <!-- Loading State -->
-    <LoadingState v-if="loading" message="加载项目数据中..." test-id="projects-loading" />
+    <LoadingState v-if="store.loading.value" message="加载项目数据中..." test-id="projects-loading" />
 
     <!-- Error State -->
     <EmptyState
-      v-else-if="error"
+      v-else-if="store.error.value"
       variant="error"
       title="数据加载失败"
-      :description="error"
+      :description="store.error.value"
       action-label="重试"
       test-id="projects-error"
-      @action="loadAllData"
+      @action="store.refreshData"
     />
 
     <!-- Content -->
@@ -62,11 +63,11 @@
             </th>
             <th
               class="col-number sortable"
-              :class="{ sorted: sortKey === 'total_cost_usd' }"
-              @click="toggleSort('total_cost_usd')"
+              :class="{ sorted: sortKey === 'cost_usd' }"
+              @click="toggleSort('cost_usd')"
             >
               成本
-              <span class="sort-indicator">{{ sortIndicator('total_cost_usd') }}</span>
+              <span class="sort-indicator">{{ sortIndicator('cost_usd') }}</span>
             </th>
             <th class="col-model">主模型</th>
             <th class="col-date">最后活跃</th>
@@ -79,14 +80,14 @@
             </td>
             <td class="col-number">{{ formatNumber(project.session_count) }}</td>
             <td class="col-number">{{ formatTokens(project.total_tokens) }}</td>
-            <td class="col-number">{{ formatCost(project.total_cost_usd) }}</td>
+            <td class="col-number">{{ formatCost(project.cost_usd) }}</td>
             <td class="col-model">
               <span v-if="project.primary_model" class="model-tag">{{ project.primary_model }}</span>
               <span v-else class="text-muted">—</span>
             </td>
-            <td class="col-date">{{ formatLastActive(project.last_event_at) }}</td>
+            <td class="col-date">{{ formatLastActive(project.last_event_at_ms) }}</td>
           </tr>
-          <tr v-if="projects.length === 0 && !loading">
+          <tr v-if="store.projects.value.length === 0 && !store.loading.value">
             <td colspan="6" class="empty-state">暂无项目数据</td>
           </tr>
         </tbody>
@@ -103,7 +104,7 @@
         <LineChart
           :x-data="trendDates"
           :series="trendSeries"
-          :loading="loading"
+          :loading="store.loading.value"
           height="280px"
           y-label="会话数"
           :smooth="true"
@@ -121,7 +122,7 @@
         <BarChart
           :x-data="modelProjectNames"
           :series="modelSeries"
-          :loading="loading"
+          :loading="store.loading.value"
           height="280px"
           :stacked="true"
           y-label="会话数"
@@ -136,7 +137,7 @@
         <BarChart
           :x-data="toolNames"
           :series="toolSeries"
-          :loading="loading"
+          :loading="store.loading.value"
           height="280px"
           y-label="调用次数"
           :horizontal="true"
@@ -149,88 +150,37 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useStatsStore, type Period } from '../stores/stats'
 import EmptyState from '../components/EmptyState.vue'
 import LoadingState from '../components/LoadingState.vue'
-import {
-  fetchStatsProjects,
-  fetchStatsTrend,
-  fetchStatsModels,
-  fetchStatsTools,
-  type ProjectStatsItem,
-  type TrendDataPoint,
-  type StatsModelItem,
-  type ToolStatsItem,
-} from '../api/client'
 import { formatRelativeTimeFromDate } from '../utils/timezone'
 import LineChart from '../charts/LineChart.vue'
 import BarChart from '../charts/BarChart.vue'
 
-// ── Time Range ─────────────────────────────────────────────────────
+// ── Store ──────────────────────────────────────────────────────────
 
-type TimeRange = '7d' | '30d' | '90d' | 'all'
+const store = useStatsStore()
 
-const timeRanges: Array<{ value: TimeRange; label: string }> = [
-  { value: '7d', label: '7 天' },
-  { value: '30d', label: '30 天' },
-  { value: '90d', label: '90 天' },
+// ── Period ─────────────────────────────────────────────────────────
+
+const periods: Array<{ value: Period; label: string }> = [
+  { value: '7d', label: '7天' },
+  { value: '30d', label: '30天' },
   { value: 'all', label: '全部' },
 ]
 
-const selectedRange = ref<TimeRange>('30d')
-
-function getDateRange(): { start?: string; end?: string } {
-  if (selectedRange.value === 'all') return {}
-  const now = new Date()
-  const days = selectedRange.value === '7d' ? 7 : selectedRange.value === '30d' ? 30 : 90
-  const start = new Date(now)
-  start.setDate(start.getDate() - days)
-  const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-  return { start: fmt(start), end: fmt(now) }
+function selectPeriod(period: Period): void {
+  void store.setPeriod(period)
 }
 
-function selectRange(range: TimeRange): void {
-  selectedRange.value = range
-  loadAllData()
-}
-
-// ── Data State ─────────────────────────────────────────────────────
-
-const loading = ref(false)
-const error = ref<string | null>(null)
-const projects = ref<ProjectStatsItem[]>([])
-const trendData = ref<TrendDataPoint[]>([])
-const modelData = ref<StatsModelItem[]>([])
-const toolData = ref<ToolStatsItem[]>([])
-
-async function loadAllData(): Promise<void> {
-  loading.value = true
-  error.value = null
-  try {
-    const params = getDateRange()
-    const [projResult, trendResult, modelResult, toolResult] = await Promise.all([
-      fetchStatsProjects(params),
-      fetchStatsTrend(params),
-      fetchStatsModels(params),
-      fetchStatsTools(params),
-    ])
-    projects.value = projResult.projects
-    trendData.value = trendResult.data
-    modelData.value = modelResult.models
-    toolData.value = toolResult.tools
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : '加载项目数据时发生未知错误'
-    console.error('[Projects] Failed to load data:', err)
-  } finally {
-    loading.value = false
-  }
-}
-
-onMounted(loadAllData)
+onMounted(() => {
+  store.start()
+})
 
 // ── Sorting ────────────────────────────────────────────────────────
 
-type SortKey = 'project_path' | 'session_count' | 'total_tokens' | 'total_cost_usd'
-const sortKey = ref<SortKey>('total_cost_usd')
+type SortKey = 'project_path' | 'session_count' | 'total_tokens' | 'cost_usd'
+const sortKey = ref<SortKey>('cost_usd')
 const sortDir = ref<'asc' | 'desc'>('desc')
 
 function toggleSort(key: SortKey): void {
@@ -248,7 +198,7 @@ function sortIndicator(key: SortKey): string {
 }
 
 const sortedProjects = computed(() => {
-  const list = [...projects.value]
+  const list = [...store.projects.value]
   list.sort((a, b) => {
     const aVal = a[sortKey.value] ?? ''
     const bVal = b[sortKey.value] ?? ''
@@ -263,23 +213,36 @@ const sortedProjects = computed(() => {
   return list
 })
 
-// ── Trend Chart Data ───────────────────────────────────────────────
+// ── Trend Chart Data (per-project activity trend) ──────────────────
 
-const trendDates = computed(() => trendData.value.map((d) => d.date))
+const trendDates = computed(() => {
+  const dates = new Set<string>()
+  for (const point of store.activityTrend.value) {
+    dates.add(point.date)
+  }
+  return [...dates].sort()
+})
 
 const trendSeries = computed(() => {
-  if (projects.value.length === 0) return []
-  const top5 = [...projects.value]
-    .sort((a, b) => b.session_count - a.session_count)
+  const usage = store.activityTrend.value
+  if (usage.length === 0) return []
+
+  // Get top 5 projects by total sessions in the trend data
+  const projectSessions = new Map<string, number>()
+  for (const point of usage) {
+    projectSessions.set(point.project_path, (projectSessions.get(point.project_path) ?? 0) + point.sessions)
+  }
+  const top5 = [...projectSessions.entries()]
+    .sort((a, b) => b[1] - a[1])
     .slice(0, 5)
-    .map((p) => p.project_path)
+    .map(([path]) => path)
 
   const projectColors = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6']
 
   return top5.map((projectPath, idx) => {
-    const data = trendData.value.map((d) => {
-      const match = d
-      return match.sessions
+    const data = trendDates.value.map((date) => {
+      const point = usage.find((p) => p.project_path === projectPath && p.date === date)
+      return point?.sessions ?? 0
     })
     return {
       name: truncatePath(projectPath),
@@ -289,26 +252,50 @@ const trendSeries = computed(() => {
   })
 })
 
-// ── Model Distribution Chart Data ──────────────────────────────────
+// ── Model Distribution Chart Data (from project_model_usage) ──────
 
 const CHART_COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#ec4899']
 
 const modelProjectNames = computed(() => {
-  return projects.value.slice(0, 8).map((p) => truncatePath(p.project_path))
+  const usage = store.projectModelUsage.value
+  const projectMessages = new Map<string, number>()
+  for (const item of usage) {
+    projectMessages.set(item.project_path, (projectMessages.get(item.project_path) ?? 0) + item.messages)
+  }
+  return [...projectMessages.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([path]) => truncatePath(path))
 })
 
 const modelSeries = computed(() => {
-  if (modelData.value.length === 0) return []
+  const usage = store.projectModelUsage.value
+  if (usage.length === 0) return []
 
-  const topModels = [...modelData.value]
-    .sort((a, b) => b.session_count - a.session_count)
+  // Get top 8 projects by total messages
+  const projectMessages = new Map<string, number>()
+  for (const item of usage) {
+    projectMessages.set(item.project_path, (projectMessages.get(item.project_path) ?? 0) + item.messages)
+  }
+  const topProjects = [...projectMessages.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([path]) => path)
+
+  // Get top 5 models across all projects
+  const modelMessages = new Map<string, number>()
+  for (const item of usage) {
+    modelMessages.set(item.model, (modelMessages.get(item.model) ?? 0) + item.messages)
+  }
+  const topModels = [...modelMessages.entries()]
+    .sort((a, b) => b[1] - a[1])
     .slice(0, 5)
-    .map((m) => m.model)
+    .map(([model]) => model)
 
   return topModels.map((model, idx) => {
-    const data = projects.value.slice(0, 8).map(() => {
-      const modelItem = modelData.value.find((m) => m.model === model)
-      return modelItem ? Math.round(modelItem.session_count / Math.max(projects.value.length, 1)) : 0
+    const data = topProjects.map((projectPath) => {
+      const item = usage.find((u) => u.project_path === projectPath && u.model === model)
+      return item?.messages ?? 0
     })
     return {
       name: model,
@@ -318,16 +305,16 @@ const modelSeries = computed(() => {
   })
 })
 
-// ── Tool Distribution Chart Data ───────────────────────────────────
+// ── Tool Distribution Chart Data ──────────────────────────────────
 
-const toolNames = computed(() => toolData.value.slice(0, 10).map((t) => t.tool_name))
+const toolNames = computed(() => store.toolCalls.value.slice(0, 10).map((t) => t.tool_name))
 
 const toolSeries = computed(() => {
-  if (toolData.value.length === 0) return []
+  if (store.toolCalls.value.length === 0) return []
   return [
     {
       name: '调用次数',
-      data: toolData.value.slice(0, 10).map((t) => t.call_count),
+      data: store.toolCalls.value.slice(0, 10).map((t) => t.call_count),
       color: '#3b82f6',
     },
   ]
@@ -384,36 +371,32 @@ function formatLastActive(ts: number | null): string {
   margin: 0;
 }
 
-.time-range-selector {
+.period-tabs {
   display: flex;
   gap: var(--spacing-1);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 2px;
 }
 
-.range-btn {
+.period-btn {
   font-size: var(--text-xs);
   padding: var(--spacing-1) var(--spacing-2);
-  border: none;
-  border-radius: 3px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  background: transparent;
+  background-color: transparent;
   color: var(--text-muted);
   transition: all 0.15s ease;
   line-height: 1.4;
-  white-space: nowrap;
 }
 
-.range-btn:hover {
+.period-btn:hover {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--text-muted);
 }
 
-.range-btn.active {
-  background: var(--primary);
-  color: #fff;
+.period-btn.active {
+  background-color: var(--primary);
+  border-color: var(--primary);
+  color: white;
 }
 
 /* ── Data Table ─────────────────────────────────────────────────────── */

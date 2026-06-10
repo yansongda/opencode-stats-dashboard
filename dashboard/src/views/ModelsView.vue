@@ -47,11 +47,11 @@
             <th class="col-sortable col-right" @click="toggleSort('total_tokens')">
               Token <span class="sort-arrow">{{ sortIndicator('total_tokens') }}</span>
             </th>
-            <th class="col-sortable col-right" @click="toggleSort('total_cost_usd')">
-              成本 <span class="sort-arrow">{{ sortIndicator('total_cost_usd') }}</span>
+            <th class="col-sortable col-right" @click="toggleSort('cost_usd')">
+              成本 <span class="sort-arrow">{{ sortIndicator('cost_usd') }}</span>
             </th>
-            <th class="col-sortable col-right" @click="toggleSort('avg_cost_per_session')">
-              平均成本/会话 <span class="sort-arrow">{{ sortIndicator('avg_cost_per_session') }}</span>
+            <th class="col-sortable col-right" @click="toggleSort('avg_cost_per_message')">
+              平均成本/消息 <span class="sort-arrow">{{ sortIndicator('avg_cost_per_message') }}</span>
             </th>
             <th class="col-sortable col-right" @click="toggleSort('error_count')">
               错误率 <span class="sort-arrow">{{ sortIndicator('error_count') }}</span>
@@ -66,8 +66,8 @@
             <td class="col-monospace">{{ m.model }}</td>
             <td class="col-right">{{ formatNumber(m.session_count) }}</td>
             <td class="col-right">{{ formatTokens(m.total_tokens) }}</td>
-            <td class="col-right">{{ formatCost(m.total_cost_usd) }}</td>
-            <td class="col-right">{{ formatCost(m.avg_cost_per_session) }}</td>
+            <td class="col-right">{{ formatCost(m.cost_usd) }}</td>
+            <td class="col-right">{{ formatCost(m.avg_cost_per_message ?? 0) }}</td>
             <td class="col-right">
               <span class="error-rate" :class="errorRateClass(m)">
                 {{ formatErrorRate(m) }}
@@ -125,7 +125,7 @@ import EmptyState from '../components/EmptyState.vue'
 import LoadingState from '../components/LoadingState.vue'
 import BarChart from '../charts/BarChart.vue'
 import ScatterChart from '../charts/ScatterChart.vue'
-import type { StatsModelItem } from '../api/client'
+import type { DashboardModelItem } from '../api/client'
 
 // ── Store ──────────────────────────────────────────────────────────────
 const store = useStatsStore()
@@ -146,7 +146,7 @@ function selectPeriod(p: Period): void {
 }
 
 // ── Sort State ─────────────────────────────────────────────────────────
-type SortKey = keyof StatsModelItem
+type SortKey = keyof DashboardModelItem
 const sortKey = ref<SortKey | null>(null)
 const sortAsc = ref(true)
 
@@ -213,7 +213,7 @@ const costChartLabels = computed(() =>
 const costChartSeries = computed(() => [
   {
     name: '总成本',
-    data: store.models.value.map((m) => m.total_cost_usd),
+    data: store.models.value.map((m) => m.cost_usd),
     color: CHART_COLORS[0],
   },
 ])
@@ -222,7 +222,7 @@ const costChartSeries = computed(() => [
 const scatterData = computed(() =>
   store.models.value.map((m) => ({
     name: truncateModel(m.model),
-    x: m.total_cost_usd,
+    x: m.cost_usd,
     y: m.output_tokens,
     size: Math.max(8, Math.min(30, m.session_count / 2)),
   })),
@@ -249,17 +249,16 @@ function formatCost(cost: number): string {
   return `$${cost.toFixed(2)}`
 }
 
-function formatErrorRate(m: StatsModelItem): string {
-  if (m.message_count === 0) return '—'
-  const rate = (m.error_count / m.message_count) * 100
-  return `${rate.toFixed(1)}%`
+function formatErrorRate(m: DashboardModelItem): string {
+  if (m.error_rate === null || m.error_rate === undefined) return '—'
+  return `${(m.error_rate * 100).toFixed(1)}%`
 }
 
-function errorRateClass(m: StatsModelItem): string {
-  if (m.message_count === 0) return ''
-  const rate = (m.error_count / m.message_count) * 100
-  if (rate >= 5) return 'rate-high'
-  if (rate >= 2) return 'rate-medium'
+function errorRateClass(m: DashboardModelItem): string {
+  if (m.error_rate === null || m.error_rate === undefined) return ''
+  const pct = m.error_rate * 100
+  if (pct >= 5) return 'rate-high'
+  if (pct >= 2) return 'rate-medium'
   return 'rate-low'
 }
 </script>
