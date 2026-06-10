@@ -1,4 +1,5 @@
-.omo/*
+.omo/
+.playwright-mcp/
 .superpowers/
 dist/
 node_modules/
