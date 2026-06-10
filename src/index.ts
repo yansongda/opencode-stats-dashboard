@@ -14,8 +14,11 @@ import { Database } from "bun:sqlite";
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { createDashboardHandler } from "@api/dashboard";
-import { buildStatsNotification, createStreamHandler } from "@api/stream";
+import {
+  buildStatsNotification,
+  createDashboardHandler,
+  createDashboardStreamHandler,
+} from "@api/dashboard";
 import { configurePragmas, runMigrations } from "@db/schema";
 import { convertEvent } from "@event/converter";
 import type { Hooks, Plugin, PluginInput } from "@opencode-ai/plugin";
@@ -52,11 +55,8 @@ function createApp({
 
   app.use("/assets/*", serveStatic({ root: dashboardDist }));
 
-  const dashboardRegistrar = createDashboardHandler(db);
-  dashboardRegistrar(app);
-
-  const streamHandler = createStreamHandler(broadcaster);
-  app.get("/api/v1/dashboard/stream", (c) => streamHandler(c.req.raw));
+  createDashboardHandler(db)(app);
+  createDashboardStreamHandler(broadcaster)(app);
 
   // 未处理的 API 路由返回 JSON 404，避免落入 SPA 回退
   app.all("/api/*", (c) => c.json({ error: "not_found" }, 404));

@@ -59,7 +59,8 @@ cd dashboard && bun run dev               # 开发服务器（代理 /api → :1
 ```
 src/
 ├── index.ts          # 插件入口 — StatsPlugin（默认导出）
-├── api/              # Hono 路由（stats.ts = 8 个 REST 端点，stream.ts = SSE）
+├── api/
+│   └── dashboard/    # Hono 路由（7 个 REST 端点 + SSE stream）
 ├── db/               # SQLite schema + 迁移（schema.ts, migrations/001_initial.ts）
 ├── event/            # 事件转换器（SDK Event → StatsEvent）
 │   ├── converter.ts  # 注册表：映射 event.type → 转换函数
