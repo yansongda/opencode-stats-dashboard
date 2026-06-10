@@ -41,6 +41,8 @@ const props = withDefaults(
     yLabel?: string
     /** Tooltip formatter */
     tooltipFormatter?: (params: unknown) => string
+    /** Value-axis formatter (e.g. formatTokens for K/M/B) */
+    valueFormatter?: (value: number) => string
   }>(),
   {
     height: '300px',
@@ -51,6 +53,7 @@ const props = withDefaults(
     stacked: false,
     yLabel: '',
     tooltipFormatter: undefined,
+    valueFormatter: undefined,
   },
 )
 
@@ -73,18 +76,38 @@ const chartOption = computed<EChartsOption | null>(() => {
     name: props.yLabel || undefined,
     axisLabel: {
       fontSize: 11,
+      ...(props.valueFormatter ? { formatter: props.valueFormatter } : {}),
     },
   }
 
   const xAxis = props.horizontal ? valueAxis : categoryAxis
   const yAxis = props.horizontal ? categoryAxis : valueAxis
 
+  const defaultTooltipFormatter = props.valueFormatter
+    ? (params: unknown): string => {
+        const list = params as Array<{
+          axisValueLabel: string
+          seriesName: string
+          value: number
+          color: string
+        }>
+        if (!Array.isArray(list) || list.length === 0) return ''
+        const header = list[0].axisValueLabel ?? ''
+        const lines = list.map(
+          (p) => `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${p.color};margin-right:6px"></span>${p.seriesName}: <b>${props.valueFormatter?.(p.value) ?? p.value}</b>`,
+        )
+        return `<div style="font-size:12px">${header ? `<div style="margin-bottom:4px">${header}</div>` : ''}${lines.join('<br>')}</div>`
+      }
+    : undefined
+
   return {
     tooltip: {
       trigger: 'axis',
       ...(props.tooltipFormatter
         ? { formatter: props.tooltipFormatter }
-        : {}),
+        : defaultTooltipFormatter
+          ? { formatter: defaultTooltipFormatter }
+          : {}),
     },
     legend: {
       show: props.series.length > 1,

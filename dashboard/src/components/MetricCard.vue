@@ -1,7 +1,18 @@
 <template>
   <div class="metric-card" :data-testid="testId">
-    <div class="metric-label">{{ label }}</div>
-    <div class="metric-value">{{ displayValue }}</div>
+    <div v-if="!hasDual" class="metric-label">{{ label }}</div>
+    <div v-if="hasDual" class="metric-value-dual">
+      <div class="metric-value-primary">
+        <span v-if="secondaryLabel" class="metric-value-label">{{ label }}</span>
+        <span :data-testid="testId ? `${testId}-primary` : undefined">{{ displayValue }}</span>
+      </div>
+      <span class="metric-value-separator">/</span>
+      <div class="metric-value-secondary">
+        <span v-if="secondaryLabel" class="metric-value-label">{{ secondaryLabel }}</span>
+        <span :data-testid="testId ? `${testId}-secondary` : undefined">{{ displaySecondaryValue }}</span>
+      </div>
+    </div>
+    <div v-else class="metric-value">{{ displayValue }}</div>
     <div v-if="trend" class="metric-trend" :class="trendClass">
       <span class="trend-arrow">{{ trendArrow }}</span>
       <span class="trend-text">{{ trend }}</span>
@@ -16,17 +27,29 @@ import { computed } from 'vue'
 const props = defineProps<{
   label: string
   value: string | number
+  secondaryValue?: string | number
+  secondaryLabel?: string
   trend?: string
   trendDirection?: 'up' | 'down' | 'neutral'
   subtitle?: string
   testId?: string
 }>()
 
+const hasDual = computed(() => props.secondaryValue != null && props.secondaryValue !== '')
+
 const displayValue = computed(() => {
   if (typeof props.value === 'number') {
     return props.value.toLocaleString()
   }
   return props.value
+})
+
+const displaySecondaryValue = computed(() => {
+  if (props.secondaryValue == null) return ''
+  if (typeof props.secondaryValue === 'number') {
+    return props.secondaryValue.toLocaleString()
+  }
+  return props.secondaryValue
 })
 
 const trendClass = computed(() => {
@@ -71,6 +94,42 @@ const trendArrow = computed(() => {
   line-height: 1.2;
 }
 
+.metric-value-dual {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-2);
+  line-height: 1.2;
+}
+
+.metric-value-primary,
+.metric-value-secondary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.metric-value-primary span:last-child,
+.metric-value-secondary span:last-child {
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  color: var(--text);
+}
+
+.metric-value-label {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.metric-value-separator {
+  font-size: var(--text-xl);
+  font-weight: 300;
+  color: var(--text-muted);
+  opacity: 0.5;
+  user-select: none;
+}
+
 .metric-trend {
   display: inline-flex;
   align-items: center;
@@ -108,6 +167,18 @@ const trendArrow = computed(() => {
 .metric-subtitle {
   font-size: var(--text-xs);
   color: var(--text-muted);
-  margin-top: var(--spacing-1);
+  margin-top: auto;
+}
+
+@media (max-width: 375px) {
+  .metric-value-dual {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-1);
+  }
+
+  .metric-value-separator {
+    display: none;
+  }
 }
 </style>

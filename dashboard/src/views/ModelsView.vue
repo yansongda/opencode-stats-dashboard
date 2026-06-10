@@ -28,7 +28,7 @@
       :description="store.error.value"
       action-label="重试"
       test-id="models-error"
-      @action="store.refreshData"
+      @action="retry"
     />
 
     <!-- Content -->
@@ -89,6 +89,7 @@
           :stacked="true"
           height="280px"
           y-label="Token"
+          :value-formatter="formatTokens"
         />
       </div>
 
@@ -100,6 +101,7 @@
           :series="costChartSeries"
           height="280px"
           y-label="USD"
+          :value-formatter="formatCost"
         />
       </div>
     </div>
@@ -112,6 +114,8 @@
         x-label="总成本 (USD)"
         y-label="输出 Token"
         height="300px"
+        :x-value-formatter="formatCost"
+        :y-value-formatter="formatTokens"
       />
     </div>
     </template>
@@ -119,16 +123,19 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { useStatsStore } from '../stores/stats'
+import { computed, ref, onMounted, onActivated } from 'vue'
+import { useModelsStore } from '../stores/models'
 import EmptyState from '../components/EmptyState.vue'
 import LoadingState from '../components/LoadingState.vue'
 import BarChart from '../charts/BarChart.vue'
 import ScatterChart from '../charts/ScatterChart.vue'
 import type { DashboardModelItem } from '../api/client'
+import { formatNumber, formatTokens, formatCost } from '../utils/format'
 
 // ── Store ──────────────────────────────────────────────────────────────
-const store = useStatsStore()
+const store = useModelsStore()
+
+const STALE_MS = 60_000
 
 // ── Time Range ─────────────────────────────────────────────────────────
 type Period = '7d' | '30d' | 'all'
@@ -141,9 +148,35 @@ const periods = [
 
 const selectedPeriod = ref<Period>('all')
 
+function getDateRange(p: Period): { start?: number; end?: number } {
+  if (p === 'all') return {}
+  const now = Date.now()
+  const days = p === '7d' ? 6 : 29
+  return { start: now - days * 86_400_000, end: now }
+}
+
+function fetchCurrentPeriod(): void {
+  const { start, end } = getDateRange(selectedPeriod.value)
+  store.fetchModels(start, end)
+}
+
 function selectPeriod(p: Period): void {
   selectedPeriod.value = p
+  fetchCurrentPeriod()
 }
+
+function retry(): void {
+  fetchCurrentPeriod()
+}
+
+onMounted(() => {
+  if (store.models.value.length === 0) fetchCurrentPeriod()
+})
+
+onActivated(() => {
+  const age = store.lastFetchedAt.value
+  if (age === null || Date.now() - age > STALE_MS) fetchCurrentPeriod()
+})
 
 // ── Sort State ─────────────────────────────────────────────────────────
 type SortKey = keyof DashboardModelItem
@@ -233,20 +266,6 @@ function truncateModel(model: string): string {
   if (model.length <= 20) return model
   // Show last 18 chars with ellipsis prefix
   return '…' + model.slice(-18)
-}
-
-function formatNumber(value: number): string {
-  return value.toLocaleString()
-}
-
-function formatTokens(tokens: number): string {
-  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`
-  if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(1)}K`
-  return tokens.toLocaleString()
-}
-
-function formatCost(cost: number): string {
-  return `$${cost.toFixed(2)}`
 }
 
 function formatErrorRate(m: DashboardModelItem): string {

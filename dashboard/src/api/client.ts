@@ -45,6 +45,9 @@ export interface DashboardOverviewSummary {
   avg_messages_per_session: number | null
   first_event_at_ms: number | null
   last_event_at_ms: number | null
+  avg_project_tokens: number | null
+  avg_project_cost: number | null
+  avg_project_messages: number | null
 }
 
 export interface DashboardOverviewTrendPoint {
@@ -87,6 +90,7 @@ export interface DashboardOverviewData {
   recent_sessions: DashboardOverviewRecentSession[]
   top_models: DashboardOverviewTopModel[]
   top_tools: DashboardOverviewTopTool[]
+  model_message_distribution: Array<{ model: string; message_count: number; percentage: number }>
 }
 
 // -- 2. GET /api/v1/dashboard/efficiency ---------------------------------
@@ -423,6 +427,7 @@ export interface DashboardSessionError {
   event_type: string
   created_at_ms: number
   message: string
+  error_type?: string
 }
 
 export interface DashboardSessionDetailData {

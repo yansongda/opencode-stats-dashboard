@@ -1,436 +1,721 @@
 <template>
-  <div class="overview-container">
-    <!-- Loading State (initial no-data only) -->
-    <LoadingState v-if="loading && !overview" message="加载统计数据中..." test-id="overview-loading" />
-
-    <!-- Error State (no-data only; preserves content when data exists) -->
-    <EmptyState
-      v-else-if="error && !overview"
-      variant="error"
-      title="数据加载失败"
-      :description="error"
-      action-label="重试"
-      test-id="overview-error"
-      @action="store.refreshData"
-    />
-
-    <!-- Empty State -->
-    <EmptyState
-      v-else-if="!overview"
-      title="暂无统计数据"
-      description="开始使用 OpenCode 后，统计数据将自动显示在这里"
-      test-id="overview-empty"
-    />
-
-    <!-- Content -->
-    <template v-else>
-    <!-- Metric Cards -->
-    <div class="metrics-row resp-metrics-5" data-testid="metrics-row">
-      <MetricCard
-        label="总会话"
-        :value="overview?.total_sessions ?? 0"
-        :subtitle="`${overview?.active_sessions ?? 0} 活跃 · ${overview?.deleted_sessions ?? 0} 已删除`"
-        test-id="metric-sessions"
-      />
-      <MetricCard
-        label="总 Token / 成本"
-        :value="`${formatTokens(overview?.total_tokens ?? 0)} / ${formatCost(overview?.total_cost_usd ?? 0)}`"
-        :subtitle="`入 ${formatTokens(overview?.input_tokens ?? 0)} · 出 ${formatTokens(overview?.output_tokens ?? 0)}`"
-        test-id="metric-tokens"
-      />
-      <MetricCard
-        label="平均 Token / 成本"
-        :value="`${formatTokens(avgTokensPerSession)} / ${formatCost(avgCostPerSession)}`"
-        subtitle="平均会话 Token / 平均会话成本"
-        test-id="metric-avg-cost"
-      />
-      <MetricCard
-        label="工具调用"
-        :value="overview?.total_tool_calls ?? 0"
-        :subtitle="`错误 ${overview?.total_tool_errors ?? 0} · 成功率 ${toolSuccessRate}%`"
-        test-id="metric-tools"
-      />
-      <MetricCard
-        label="变更代码 / 变更文件"
-        :value="`${((overview?.lines_added ?? 0) - (overview?.lines_deleted ?? 0)).toLocaleString()} / ${overview?.files_changed ?? 0}`"
-        :subtitle="`+${overview?.lines_added ?? 0} 行 · -${overview?.lines_deleted ?? 0} 行`"
-        test-id="metric-code"
-      />
-    </div>
-
-    <!-- Usage Trend Chart -->
-    <div class="trend-section" data-testid="trend-section">
-      <div class="section-header">
-        <h3 class="section-title">使用趋势</h3>
-        <div class="period-tabs">
-          <button
-            v-for="p in periods"
-            :key="p.value"
-            class="period-btn"
-            :class="{ active: selectedPeriod === p.value }"
-            data-testid="period-btn"
-            @click="selectPeriod(p.value)"
-          >
-            {{ p.label }}
-          </button>
-        </div>
-      </div>
-      <LineChart
-        :x-data="trendDates"
-        :series="trendSeries"
-        height="280px"
-        :smooth="true"
-        :show-area="true"
-        y-label="Token"
-      />
-    </div>
-
-    <!-- Middle Row: Model Distribution + Project Ranking -->
-    <div class="mid-row resp-two-col">
-      <div class="chart-card" data-testid="model-distribution">
-        <h3 class="section-title">模型成本分布</h3>
-        <PieChart
-          :data="modelPieData"
-          height="260px"
-          :donut="true"
-          legend-position="top"
+    <div class="overview-container">
+        <!-- Loading State (initial no-data only) -->
+        <LoadingState
+            v-if="loading && !overview"
+            message="加载统计数据中..."
+            test-id="overview-loading"
         />
-      </div>
-      <div class="chart-card" data-testid="project-ranking">
-        <h3 class="section-title">项目使用排行 Top 5</h3>
-        <BarChart
-          :x-data="projectNames"
-          :series="projectSeries"
-          height="260px"
-        />
-      </div>
-    </div>
 
-    <!-- Bottom Row: Tool Top 5 + Recent Sessions -->
-    <div class="bottom-row resp-two-col">
-      <div class="chart-card" data-testid="tool-top5">
-        <h3 class="section-title">工具调用 Top 5</h3>
-        <BarChart
-          :x-data="toolNames"
-          :series="toolSeries"
-          height="260px"
-          :horizontal="true"
-        />
-      </div>
-      <div class="chart-card" data-testid="recent-sessions">
-        <h3 class="section-title">近期会话</h3>
+        <!-- Error State (no-data only; preserves content when data exists) -->
         <EmptyState
-          v-if="recentSessions.length === 0"
-          title="暂无会话数据"
-          description="开始使用 OpenCode 后，会话记录将显示在这里"
-          test-id="recent-sessions-empty"
+            v-else-if="error && !overview"
+            variant="error"
+            title="数据加载失败"
+            :description="error"
+            action-label="重试"
+            test-id="overview-error"
+            @action="retryFetch"
         />
-        <div v-else class="session-list">
-          <div
-            v-for="session in recentSessions"
-            :key="session.session_id"
-            class="session-row"
-          >
-            <div class="session-info">
-              <span class="session-project" :title="session.project_path || session.session_id">
-                {{ formatProjectPath(session.project_path) }}
-              </span>
-              <span class="session-model">{{ '—' }}</span>
+
+        <!-- Empty State -->
+        <EmptyState
+            v-else-if="!overview"
+            title="暂无统计数据"
+            description="开始使用 OpenCode 后，统计数据将自动显示在这里"
+            test-id="overview-empty"
+        />
+
+        <!-- Content -->
+        <template v-else>
+            <!-- Metric Cards -->
+            <div class="metrics-row resp-metrics-5" data-testid="metrics-row">
+                <MetricCard
+                    label="总会话"
+                    :value="overview?.total_sessions ?? 0"
+                    secondary-label="总消息数"
+                    :secondary-value="overview?.total_messages ?? 0"
+                    :subtitle="`${overview?.active_sessions ?? 0} 活跃 · ${overview?.deleted_sessions ?? 0} 已删除`"
+                    test-id="metric-sessions"
+                />
+                <MetricCard
+                    label="总 Token"
+                    :value="formatTokens(overview?.total_tokens ?? 0)"
+                    secondary-label="成本"
+                    :secondary-value="formatCost(overview?.total_cost_usd ?? 0)"
+                    :subtitle="`入 ${formatTokens(overview?.input_tokens ?? 0)} · 出 ${formatTokens(overview?.output_tokens ?? 0)}`"
+                    test-id="metric-tokens"
+                />
+                <MetricCard
+                    label="平均项目 Token"
+                    :value="formatTokens(avgProjectTokens)"
+                    secondary-label="成本"
+                    :secondary-value="formatCost(avgProjectCost)"
+                    :subtitle="`平均 ${formatNumber(avgProjectMessages)} 消息 / 项目`"
+                    test-id="metric-avg-cost"
+                />
+                <MetricCard
+                    label="工具调用"
+                    :value="overview?.total_tool_calls ?? 0"
+                    :subtitle="`错误 ${overview?.total_tool_errors ?? 0} · 成功率 ${toolSuccessRate}%`"
+                    test-id="metric-tools"
+                />
+                <MetricCard
+                    label="变更代码"
+                    :value="
+                        (
+                            (overview?.lines_added ?? 0) -
+                            (overview?.lines_deleted ?? 0)
+                        ).toLocaleString()
+                    "
+                    secondary-label="变更文件"
+                    :secondary-value="overview?.files_changed ?? 0"
+                    :subtitle="`+${overview?.lines_added ?? 0} 行 · -${overview?.lines_deleted ?? 0} 行`"
+                    test-id="metric-code"
+                />
             </div>
-            <div class="session-meta">
-              <span class="session-tokens">{{ formatTokens(session.total_tokens) }}</span>
-              <span
-                class="session-status"
-                :class="session.status === 'active' ? 'status-active' : 'status-deleted'"
-              >
-                {{ session.status === 'active' ? '活跃' : '已删除' }}
-              </span>
+
+            <!-- Usage Trend (dual y-axis: Token left, Messages right) -->
+            <div class="trend-section" data-testid="trend-section">
+                <div class="section-header">
+                    <h3 class="section-title">使用趋势</h3>
+                    <div class="period-tabs">
+                        <button
+                            v-for="p in periods"
+                            :key="p.value"
+                            class="period-btn"
+                            :class="{ active: selectedPeriod === p.value }"
+                            data-testid="period-btn"
+                            @click="selectPeriod(p.value)"
+                        >
+                            {{ p.label }}
+                        </button>
+                    </div>
+                </div>
+                <LineChart
+                    :x-data="trendDates"
+                    :series="trendSeries"
+                    height="260px"
+                    :smooth="true"
+                    :show-area="true"
+                    y-label="Token"
+                    :value-formatter="formatTokens"
+                    right-y-label="消息"
+                    :right-value-formatter="formatNumber"
+                />
             </div>
-          </div>
-        </div>
-      </div>
+
+            <!-- Model Distribution: cost + messages in one card -->
+            <div class="chart-card" data-testid="model-distribution">
+                <h3 class="section-title">模型分布</h3>
+                <EmptyState
+                    v-if="modelCostPieRawData.length === 0 && modelMessagePieRawData.length === 0"
+                    title="暂无模型数据"
+                    data-testid="model-distribution-empty"
+                />
+                <template v-else>
+                    <div
+                        v-if="modelLegendItems.length > 0"
+                        class="shared-legend"
+                    >
+                        <button
+                            v-for="item in modelLegendItems"
+                            :key="item.name"
+                            type="button"
+                            class="legend-item"
+                            :class="{ 'legend-item--hidden': hiddenModels.has(item.name) }"
+                            :aria-pressed="!hiddenModels.has(item.name)"
+                            :title="`切换 ${item.name}`"
+                            @click="toggleModel(item.name)"
+                        >
+                            <span
+                                class="legend-dot"
+                                :style="{ backgroundColor: item.color }"
+                            />
+                            {{ item.name }}
+                        </button>
+                    </div>
+                    <div class="distribution-pies">
+                        <div class="pie-pane">
+                            <h4 class="pie-pane-title">成本分布</h4>
+                            <PieChart
+                                v-if="modelCostPieData.length > 0"
+                                :data="modelCostPieData"
+                                height="240px"
+                                :donut="true"
+                                :show-legend="false"
+                                :tooltip-formatter="modelCostTooltip"
+                            />
+                            <EmptyState
+                                v-else
+                                title="当前成本为 $0.00，暂无成本占比"
+                                data-testid="model-cost-empty"
+                            />
+                        </div>
+                        <div class="pie-pane">
+                            <h4 class="pie-pane-title">消息分布</h4>
+                            <PieChart
+                                v-if="modelMessagePieData.length > 0"
+                                :data="modelMessagePieData"
+                                height="240px"
+                                :donut="true"
+                                :show-legend="false"
+                                :tooltip-formatter="modelMessageTooltip"
+                            />
+                            <EmptyState
+                                v-else
+                                title="暂无消息数据"
+                                data-testid="model-message-empty"
+                            />
+                        </div>
+                    </div>
+                </template>
+            </div>
+
+            <!-- Project Distribution: cost + sessions in one card -->
+            <div class="chart-card" data-testid="project-distribution">
+                <h3 class="section-title">项目分布</h3>
+                <EmptyState
+                    v-if="projectCostPieRawData.length === 0 && projectSessionPieRawData.length === 0"
+                    title="暂无项目数据"
+                    data-testid="project-distribution-empty"
+                />
+                <template v-else>
+                    <div
+                        v-if="projectLegendItems.length > 0"
+                        class="shared-legend"
+                    >
+                        <button
+                            v-for="item in projectLegendItems"
+                            :key="item.name"
+                            type="button"
+                            class="legend-item"
+                            :class="{ 'legend-item--hidden': hiddenProjects.has(item.name) }"
+                            :aria-pressed="!hiddenProjects.has(item.name)"
+                            :title="`切换 ${item.name}`"
+                            @click="toggleProject(item.name)"
+                        >
+                            <span
+                                class="legend-dot"
+                                :style="{ backgroundColor: item.color }"
+                            />
+                            {{ item.name }}
+                        </button>
+                    </div>
+                    <div class="distribution-pies">
+                        <div class="pie-pane">
+                            <h4 class="pie-pane-title">成本分布</h4>
+                            <PieChart
+                                v-if="projectCostPieData.length > 0"
+                                :data="projectCostPieData"
+                                height="240px"
+                                :donut="true"
+                                :show-legend="false"
+                                :tooltip-formatter="projectCostTooltip"
+                            />
+                            <EmptyState
+                                v-else
+                                title="当前成本为 $0.00，暂无成本占比"
+                                data-testid="project-cost-empty"
+                            />
+                        </div>
+                        <div class="pie-pane">
+                            <h4 class="pie-pane-title">会话分布</h4>
+                            <PieChart
+                                v-if="projectSessionPieData.length > 0"
+                                :data="projectSessionPieData"
+                                height="240px"
+                                :donut="true"
+                                :show-legend="false"
+                                :tooltip-formatter="projectSessionTooltip"
+                            />
+                            <EmptyState
+                                v-else
+                                title="暂无会话数据"
+                                data-testid="project-session-empty"
+                            />
+                        </div>
+                    </div>
+                </template>
+            </div>
+
+            <!-- Tool Top 5 -->
+            <div class="chart-card" data-testid="tool-top5">
+                <h3 class="section-title">工具调用 Top 5</h3>
+                <BarChart
+                    :x-data="toolNames"
+                    :series="toolSeries"
+                    height="260px"
+                    :horizontal="true"
+                />
+            </div>
+        </template>
     </div>
-    </template>
-  </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import MetricCard from '../components/MetricCard.vue'
-import EmptyState from '../components/EmptyState.vue'
-import LoadingState from '../components/LoadingState.vue'
-import LineChart from '../charts/LineChart.vue'
-import PieChart from '../charts/PieChart.vue'
-import BarChart from '../charts/BarChart.vue'
-import { useStatsStore, type Period } from '../stores/stats'
+import { computed, ref, onMounted, onActivated } from "vue";
+import MetricCard from "../components/MetricCard.vue";
+import EmptyState from "../components/EmptyState.vue";
+import LoadingState from "../components/LoadingState.vue";
+import LineChart from "../charts/LineChart.vue";
+import PieChart from "../charts/PieChart.vue";
+import BarChart from "../charts/BarChart.vue";
+import { useOverviewStore } from "../stores/overview";
+import type { DashboardProjectItem } from "../api/client";
+import { formatTokens, formatCost, formatNumber } from "../utils/format";
+
+// ── Types ──────────────────────────────────────────────────────────
+
+type Period = "7d" | "30d" | "all";
+
+// ── ECharts default palette (matches PieChart.vue) ─────────────────
+
+const ECHARTS_COLORS = [
+    "#5470c6",
+    "#91cc75",
+    "#fac858",
+    "#ee6666",
+    "#73c0de",
+    "#3ba272",
+    "#fc8452",
+    "#9a60b4",
+    "#ea7ccc",
+    "#8884d8",
+];
 
 // ── Store ──────────────────────────────────────────────────────────
 
-const store = useStatsStore()
+const store = useOverviewStore();
+
+// ── Helpers ─────────────────────────────────────────────────────────
+
+function divideOrNull(
+    numerator: number | null | undefined,
+    denominator: number | null | undefined,
+): number | null {
+    if (denominator == null || denominator === 0) return null;
+    if (numerator == null) return null;
+    return numerator / denominator;
+}
+
+const selectedPeriod = ref<Period>("7d");
+const STALE_MS = 60_000;
 
 const periods: Array<{ value: Period; label: string }> = [
-  { value: '7d', label: '7 天' },
-  { value: '30d', label: '30 天' },
-  { value: 'all', label: '全部' },
-]
+    { value: "7d", label: "7 天" },
+    { value: "30d", label: "30 天" },
+    { value: "all", label: "全部" },
+];
+
+function getDateRangeMs(period: Period): { start?: number; end?: number } {
+    if (period === "all") return {};
+    const now = Date.now();
+    const msPerDay = 86_400_000;
+    const days = period === "7d" ? 6 : 29;
+    return { start: now - days * msPerDay, end: now };
+}
 
 function selectPeriod(period: Period): void {
-  void store.setPeriod(period)
+    selectedPeriod.value = period;
+    const { start, end } = getDateRangeMs(period);
+    void store.fetchOverview(start, end);
 }
 
-// ── Formatting Helpers ─────────────────────────────────────────────
-
-function formatTokens(tokens: number): string {
-  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`
-  if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(1)}K`
-  return tokens.toLocaleString()
+function retryFetch(): void {
+    const { start, end } = getDateRangeMs(selectedPeriod.value);
+    void store.fetchOverview(start, end);
 }
 
-function formatCost(cost: number): string {
-  return `$${cost.toFixed(2)}`
+function fetchIfStale(): void {
+    if (
+        !store.lastFetchedAt.value ||
+        Date.now() - store.lastFetchedAt.value > STALE_MS
+    ) {
+        const { start, end } = getDateRangeMs(selectedPeriod.value);
+        void store.fetchOverview(start, end);
+    }
 }
 
-function formatProjectPath(path: string | null): string {
-  if (!path) return '未知项目'
-  const segments = path.split('/').filter(Boolean)
-  if (segments.length <= 2) return path
-  return '.../' + segments.slice(-2).join('/')
-}
+// ── Derived Data ───────────────────────────────────────────────────
 
-// ── Derived Chart Data ─────────────────────────────────────────────
-
-const overview = computed(() => store.overview.value)
-const loading = computed(() => store.loading.value)
-const error = computed(() => store.error.value)
-const trendData = computed(() => store.trend.value)
-const topTools = computed(() => store.topTools.value)
-const topModels = computed(() => store.topModels.value)
-const projects = computed(() => store.projects.value)
-const recentSessions = computed(() => store.recentSessions.value)
-const selectedPeriod = computed(() => store.selectedPeriod.value)
+const overview = computed(() => store.overview.value);
+const loading = computed(() => store.loading.value);
+const error = computed(() => store.error.value);
+const trendData = computed(() => store.trend.value);
+const topTools = computed(() => store.topTools.value);
+const topModels = computed(() => store.topModels.value);
+const projects = computed(() => store.projects.value);
 
 const toolSuccessRate = computed(() => {
-  if (!overview.value) return '100'
-  const total = overview.value.total_tool_calls
-  if (total === 0) return '100'
-  return ((1 - overview.value.total_tool_errors / total) * 100).toFixed(1)
-})
+    if (!overview.value) return "100";
+    const total = overview.value.total_tool_calls;
+    if (total === 0) return "100";
+    return ((1 - overview.value.total_tool_errors / total) * 100).toFixed(1);
+});
 
-const avgTokensPerSession = computed(() => {
-  if (!overview.value || overview.value.total_sessions === 0) return 0
-  return Math.round(overview.value.total_tokens / overview.value.total_sessions)
-})
+// ── Average project fallbacks (backend may omit avg_project_* fields) ─
 
-const avgCostPerSession = computed(() => {
-  if (!overview.value || overview.value.total_sessions === 0) return 0
-  return overview.value.total_cost_usd / overview.value.total_sessions
-})
+const avgProjectTokens = computed(() =>
+    overview.value?.avg_project_tokens ??
+    divideOrNull(overview.value?.total_tokens, overview.value?.total_projects),
+);
 
-const trendDates = computed(() => trendData.value.map((d) => d.date))
+const avgProjectCost = computed(() =>
+    overview.value?.avg_project_cost ??
+    divideOrNull(overview.value?.total_cost_usd, overview.value?.total_projects),
+);
+
+const avgProjectMessages = computed(() =>
+    overview.value?.avg_project_messages ??
+    divideOrNull(overview.value?.total_messages, overview.value?.total_projects),
+);
+
+const trendDates = computed(() => trendData.value.map((d) => d.date));
 
 const trendSeries = computed(() => [
-  { name: 'Token', data: trendData.value.map((d) => d.tokens), color: '#3b82f6' },
-  { name: '消息', data: trendData.value.map((d) => d.messages), color: '#16a34a' },
-])
+    {
+        name: "Token",
+        data: trendData.value.map((d) => d.tokens),
+        color: "#3b82f6",
+        yAxisIndex: 0,
+    },
+    {
+        name: "消息",
+        data: trendData.value.map((d) => d.messages),
+        color: "#16a34a",
+        yAxisIndex: 1,
+    },
+]);
 
-const modelPieData = computed(() =>
-  topModels.value.map((m) => ({
-    name: m.model,
-    value: Math.round(m.cost_usd * 10000) / 10000,
-  })),
-)
+// ── Legend toggle state ──────────────────────────────────────────────
 
-const projectNames = computed(() =>
-  projects.value.slice(0, 5).map((p) => {
-    const segments = p.project_path.split('/').filter(Boolean)
-    return segments.length > 2 ? '.../' + segments.slice(-2).join('/') : p.project_path
-  }),
-)
+const hiddenModels = ref<Set<string>>(new Set());
+const hiddenProjects = ref<Set<string>>(new Set());
 
-const projectSeries = computed(() => [
-  {
-    name: '会话数',
-    data: projects.value.slice(0, 5).map((p) => p.session_count),
-    color: '#3b82f6',
-  },
-])
+function toggleModel(name: string): void {
+    const next = new Set(hiddenModels.value);
+    if (next.has(name)) next.delete(name);
+    else next.add(name);
+    hiddenModels.value = next;
+}
 
-const toolNames = computed(() => topTools.value.slice(0, 5).map((t) => t.tool_name))
+function toggleProject(name: string): void {
+    const next = new Set(hiddenProjects.value);
+    if (next.has(name)) next.delete(name);
+    else next.add(name);
+    hiddenProjects.value = next;
+}
+
+// ── Model Distribution ─────────────────────────────────────────────
+
+const modelCostPieRawData = computed(() =>
+    topModels.value.map((m) => ({
+        name: m.model,
+        value: Math.round(m.cost_usd * 10000) / 10000,
+    })),
+);
+
+const modelMessagePieRawData = computed(() =>
+    store.modelMessageDistribution.value
+        .filter((m) => m.message_count > 0)
+        .map((m) => ({ name: m.model, value: m.message_count })),
+);
+
+const modelCostPieData = computed(() =>
+    modelCostPieRawData.value.filter((d) => !hiddenModels.value.has(d.name)),
+);
+
+const modelMessagePieData = computed(() =>
+    modelMessagePieRawData.value.filter((d) => !hiddenModels.value.has(d.name)),
+);
+
+const modelLegendItems = computed(() => {
+    const seen = new Set<string>();
+    const items: Array<{ name: string; color: string }> = [];
+    // Cost pie names first (primary ordering)
+    for (const d of modelCostPieRawData.value) {
+        if (!seen.has(d.name)) {
+            seen.add(d.name);
+            items.push({ name: d.name, color: ECHARTS_COLORS[items.length % ECHARTS_COLORS.length] });
+        }
+    }
+    // Message pie names (append unseen)
+    for (const d of modelMessagePieRawData.value) {
+        if (!seen.has(d.name)) {
+            seen.add(d.name);
+            items.push({ name: d.name, color: ECHARTS_COLORS[items.length % ECHARTS_COLORS.length] });
+        }
+    }
+    return items;
+});
+
+const modelCostTooltip = (params: unknown): string => {
+    const p = params as { name: string; value: number; percent: number };
+    return `${p.name}<br/>成本: ${formatCost(p.value)} (${p.percent.toFixed(1)}%)`;
+};
+
+const modelMessageTooltip = (params: unknown): string => {
+    const p = params as { name: string; value: number; percent: number };
+    const entry = store.modelMessageDistribution.value.find(
+        (m) => m.model === p.name,
+    );
+    const pct = entry?.percentage ?? p.percent;
+    return `${p.name}<br/>消息: ${formatNumber(p.value)} (${pct.toFixed(1)}%)`;
+};
+
+// ── Project Distribution ───────────────────────────────────────────
+
+const MAX_PIE_SLICES = 8;
+
+function formatProjectPath(path: string): string {
+    if (!path) return "";
+    const segments = path.split("/").filter(Boolean);
+    if (segments.length <= 2) return segments.join("/");
+    return `.../${segments.slice(-2).join("/")}`;
+}
+
+function buildProjectPieData(
+    items: DashboardProjectItem[],
+    accessor: (p: DashboardProjectItem) => number,
+    precision: number,
+): Array<{ name: string; value: number }> {
+    const withData = items.filter((p) => accessor(p) > 0);
+    if (withData.length === 0) return [];
+    const sorted = [...withData].sort((a, b) => accessor(b) - accessor(a));
+    const top = sorted.slice(0, MAX_PIE_SLICES);
+    const rest = sorted.slice(MAX_PIE_SLICES);
+    const result: Array<{ name: string; value: number }> = top.map((p) => ({
+        name: formatProjectPath(p.project_path),
+        value: precision > 0 ? Number(accessor(p).toFixed(precision)) : accessor(p),
+    }));
+    if (rest.length > 0) {
+        const otherSum = rest.reduce((sum, p) => sum + accessor(p), 0);
+        result.push({
+            name: "其他",
+            value: precision > 0 ? Number(otherSum.toFixed(precision)) : otherSum,
+        });
+    }
+    return result;
+}
+
+const projectCostPieRawData = computed(() =>
+    buildProjectPieData(projects.value, (p) => p.cost_usd, 4),
+);
+
+const projectSessionPieRawData = computed(() =>
+    buildProjectPieData(projects.value, (p) => p.session_count, 0),
+);
+
+const projectCostPieData = computed(() =>
+    projectCostPieRawData.value.filter((d) => !hiddenProjects.value.has(d.name)),
+);
+
+const projectSessionPieData = computed(() =>
+    projectSessionPieRawData.value.filter((d) => !hiddenProjects.value.has(d.name)),
+);
+
+const projectLegendItems = computed(() => {
+    const seen = new Set<string>();
+    const items: Array<{ name: string; color: string }> = [];
+    for (const d of projectCostPieRawData.value) {
+        if (!seen.has(d.name)) {
+            seen.add(d.name);
+            items.push({ name: d.name, color: ECHARTS_COLORS[items.length % ECHARTS_COLORS.length] });
+        }
+    }
+    for (const d of projectSessionPieRawData.value) {
+        if (!seen.has(d.name)) {
+            seen.add(d.name);
+            items.push({ name: d.name, color: ECHARTS_COLORS[items.length % ECHARTS_COLORS.length] });
+        }
+    }
+    return items;
+});
+
+const projectCostTooltip = (params: unknown): string => {
+    const p = params as { name: string; value: number; percent: number };
+    return `${p.name}<br/>成本: ${formatCost(p.value)} (${p.percent.toFixed(1)}%)`;
+};
+
+const projectSessionTooltip = (params: unknown): string => {
+    const p = params as { name: string; value: number; percent: number };
+    return `${p.name}<br/>会话: ${p.value.toLocaleString("en-US")} (${p.percent.toFixed(1)}%)`;
+};
+
+// ── Tool Top 5 ─────────────────────────────────────────────────────
+
+const toolNames = computed(() =>
+    topTools.value.slice(0, 5).map((t) => t.tool_name),
+);
 
 const toolSeries = computed(() => [
-  {
-    name: '调用次数',
-    data: topTools.value.slice(0, 5).map((t) => t.call_count),
-    color: '#8b5cf6',
-  },
-])
+    {
+        name: "调用次数",
+        data: topTools.value.slice(0, 5).map((t) => t.call_count),
+        color: "#8b5cf6",
+    },
+]);
+
+// ── Lifecycle ──────────────────────────────────────────────────────
+
+onMounted(fetchIfStale);
+onActivated(fetchIfStale);
 </script>
 
 <style scoped>
 .overview-container {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-4);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-4);
 }
 
 /* ── Metrics Row ────────────────────────────────────────────────── */
 
 .metrics-row {
-  /* Grid handled by .resp-metrics-5 utility */
-  gap: var(--spacing-3);
+    /* Grid handled by .resp-metrics-5 utility */
+    gap: var(--spacing-3);
 }
 
 /* ── Section Header ─────────────────────────────────────────────── */
 
 .section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
 }
 
 .section-title {
-  font-size: var(--text-lg);
-  font-weight: 600;
-  color: var(--text);
+    font-size: var(--text-lg);
+    font-weight: 600;
+    color: var(--text);
 }
 
 .period-tabs {
-  display: flex;
-  gap: var(--spacing-1);
+    display: flex;
+    gap: var(--spacing-1);
 }
 
 .period-btn {
-  font-size: var(--text-xs);
-  padding: 3px var(--spacing-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  background-color: var(--surface);
-  color: var(--text-muted);
-  transition: all 0.15s ease;
-  line-height: 1.4;
+    font-size: var(--text-xs);
+    padding: 3px var(--spacing-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    background-color: var(--surface);
+    color: var(--text-muted);
+    transition: all 0.15s ease;
+    line-height: 1.4;
 }
 
 .period-btn:hover {
-  color: var(--text);
-  border-color: var(--primary);
+    color: var(--text);
+    border-color: var(--primary);
 }
 
 .period-btn.active {
-  background-color: var(--primary);
-  color: white;
-  border-color: var(--primary);
+    background-color: var(--primary);
+    color: white;
+    border-color: var(--primary);
+}
+
+/* ── Trend Section ──────────────────────────────────────────────── */
+
+.trend-section {
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-4);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-3);
 }
 
 /* ── Chart Card ─────────────────────────────────────────────────── */
 
 .chart-card {
-  background-color: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: var(--spacing-4);
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-3);
-  transition: border-color 0.2s ease;
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-4);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-3);
+    transition: border-color 0.2s ease;
 }
 
 .chart-card:hover {
-  border-color: var(--primary);
+    border-color: var(--primary);
 }
 
-.trend-section {
-  background-color: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: var(--spacing-4);
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-3);
+/* ── Shared Legend ───────────────────────────────────────────────── */
+
+.shared-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-2) var(--spacing-3);
+    justify-content: center;
 }
 
-/* ── Layout Rows ────────────────────────────────────────────────── */
-
-.mid-row {
-  /* Grid handled by .resp-two-col utility */
-  gap: var(--spacing-3);
+.legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    white-space: nowrap;
+    border: none;
+    background: none;
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: var(--radius-sm);
+    transition: opacity 0.15s ease;
 }
 
-.bottom-row {
-  /* Grid handled by .resp-two-col utility */
-  gap: var(--spacing-3);
+.legend-item:hover {
+    opacity: 0.8;
 }
 
-/* ── Recent Sessions List ───────────────────────────────────────── */
-
-.session-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-1);
+.legend-item--hidden {
+    opacity: 0.35;
+    text-decoration: line-through;
 }
 
-.session-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: var(--spacing-2) 0;
-  border-bottom: 1px solid var(--border);
-  gap: var(--spacing-2);
+.legend-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
 }
 
-.session-row:last-child {
-  border-bottom: none;
+/* ── Distribution Pies (side by side) ───────────────────────────── */
+
+.distribution-pies {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--spacing-4);
 }
 
-.session-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  flex: 1;
+.pie-pane {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+    min-width: 0;
 }
 
-.session-project {
-  font-size: var(--text-sm);
-  font-family: monospace;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.pie-pane-title {
+    font-size: var(--text-sm);
+    font-weight: 500;
+    color: var(--text-muted);
+    text-align: center;
 }
 
-.session-model {
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-}
+/* ── Responsive: pies stack on mobile ───────────────────────────── */
 
-.session-meta {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-2);
-  flex-shrink: 0;
-}
-
-.session-tokens {
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.session-status {
-  font-size: var(--text-xs);
-  font-weight: 600;
-  padding: 1px var(--spacing-2);
-  border-radius: var(--radius-sm);
-}
-
-.status-active {
-  color: var(--success);
-  background-color: rgba(34, 197, 94, 0.1);
-}
-
-.status-deleted {
-  color: var(--danger);
-  background-color: rgba(239, 68, 68, 0.1);
+@media (max-width: 767px) {
+    .distribution-pies {
+        grid-template-columns: 1fr;
+    }
 }
 </style>

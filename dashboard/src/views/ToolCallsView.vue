@@ -28,7 +28,7 @@
       :description="error"
       action-label="重试"
       test-id="tools-error"
-      @action="store.refreshData"
+      @action="retryFetch"
     />
 
     <!-- Content -->
@@ -185,18 +185,21 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onActivated } from 'vue'
 import EmptyState from '../components/EmptyState.vue'
 import LoadingState from '../components/LoadingState.vue'
 import LineChart from '../charts/LineChart.vue'
 import PieChart from '../charts/PieChart.vue'
 import BarChart from '../charts/BarChart.vue'
-import { useStatsStore, type Period } from '../stores/stats'
+import { useToolsStore } from '../stores/tools'
+import { formatNumber } from '../utils/format'
 import type { DashboardToolItem, DashboardToolTimelinePoint } from '../api/client'
 
 // ── Store ──────────────────────────────────────────────────────────
 
-const store = useStatsStore()
+const store = useToolsStore()
+
+type Period = '7d' | '30d' | 'all'
 
 const periods = [
   { value: '7d' as const, label: '7天' },
@@ -204,8 +207,19 @@ const periods = [
   { value: 'all' as const, label: '全部' },
 ]
 
+const selectedPeriod = ref<Period>('7d')
+
+function periodToRange(period: Period): { start?: number; end?: number } {
+  if (period === 'all') return {}
+  const now = Date.now()
+  const days = period === '7d' ? 7 : 30
+  return { start: now - days * 86_400_000, end: now }
+}
+
 function selectPeriod(period: Period): void {
-  void store.setPeriod(period)
+  selectedPeriod.value = period
+  const { start, end } = periodToRange(period)
+  void store.fetchTools(start, end)
 }
 
 // ── Data from Store ────────────────────────────────────────────────
@@ -224,7 +238,28 @@ const toolsData = computed(() => {
   }
 })
 const recentErrors = computed(() => store.toolRecentErrors.value)
-const selectedPeriod = computed(() => store.selectedPeriod.value)
+
+// ── Lifecycle ──────────────────────────────────────────────────────
+
+const STALE_MS = 60_000
+
+function retryFetch(): void {
+  const { start, end } = periodToRange(selectedPeriod.value)
+  void store.fetchTools(start, end)
+}
+
+onMounted(() => {
+  const { start, end } = periodToRange(selectedPeriod.value)
+  void store.fetchTools(start, end)
+})
+
+onActivated(() => {
+  if (store.lastFetchedAt.value != null && Date.now() - store.lastFetchedAt.value < STALE_MS) {
+    return
+  }
+  const { start, end } = periodToRange(selectedPeriod.value)
+  void store.fetchTools(start, end)
+})
 
 // ── Sorting ──────────────────────────────────────────────────────────
 
@@ -349,10 +384,6 @@ const durationSeries = computed(() => [
 ])
 
 // ── Formatters ───────────────────────────────────────────────────────
-
-function formatNumber(n: number): string {
-  return n.toLocaleString('en-US')
-}
 
 function formatPercent(rate: number): string {
   return `${(rate * 100).toFixed(1)}%`

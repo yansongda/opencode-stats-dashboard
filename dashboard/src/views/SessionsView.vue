@@ -13,7 +13,7 @@
       :description="error"
       action-label="重试"
       test-id="sessions-error"
-      @action="store.refreshData"
+      @action="retryFetch"
     />
 
     <!-- Content -->
@@ -146,7 +146,7 @@
               {{ truncateProject(session.project_path ?? '—') }}
             </td>
             <td class="col-model">{{ session.primary_model ?? '—' }}</td>
-            <td class="col-tokens">{{ formatNumber(session.total_tokens) }}</td>
+            <td class="col-tokens">{{ formatTokens(session.total_tokens) }}</td>
             <td class="col-cost">{{ formatCost(session.total_cost_usd) }}</td>
             <td class="col-status">
               <StatusBadge :status="session.status" />
@@ -252,27 +252,27 @@
         <div class="detail-grid">
           <div class="detail-item">
             <span class="detail-label">总计</span>
-            <span class="detail-value detail-value-highlight">{{ formatNumber(selectedDetail.session.total_tokens) }}</span>
+            <span class="detail-value detail-value-highlight">{{ formatTokens(selectedDetail.session.total_tokens) }}</span>
           </div>
           <div class="detail-item">
             <span class="detail-label">输入</span>
-            <span class="detail-value">{{ formatNumber(selectedDetail.session.input_tokens) }}</span>
+            <span class="detail-value">{{ formatTokens(selectedDetail.session.input_tokens) }}</span>
           </div>
           <div class="detail-item">
             <span class="detail-label">输出</span>
-            <span class="detail-value">{{ formatNumber(selectedDetail.session.output_tokens) }}</span>
+            <span class="detail-value">{{ formatTokens(selectedDetail.session.output_tokens) }}</span>
           </div>
           <div class="detail-item">
             <span class="detail-label">推理</span>
-            <span class="detail-value">{{ formatNumber(selectedDetail.session.reasoning_tokens) }}</span>
+            <span class="detail-value">{{ formatTokens(selectedDetail.session.reasoning_tokens) }}</span>
           </div>
           <div class="detail-item">
             <span class="detail-label">缓存读</span>
-            <span class="detail-value">{{ formatNumber(selectedDetail.session.cache_read) }}</span>
+            <span class="detail-value">{{ formatTokens(selectedDetail.session.cache_read) }}</span>
           </div>
           <div class="detail-item">
             <span class="detail-label">缓存写</span>
-            <span class="detail-value">{{ formatNumber(selectedDetail.session.cache_write) }}</span>
+            <span class="detail-value">{{ formatTokens(selectedDetail.session.cache_write) }}</span>
           </div>
           <div class="detail-item">
             <span class="detail-label">成本</span>
@@ -336,10 +336,10 @@
               <tr v-for="mu in selectedDetail.model_usage" :key="mu.model">
                 <td class="col-monospace">{{ mu.model }}</td>
                 <td class="col-right">{{ formatNumber(mu.message_count) }}</td>
-                <td class="col-right">{{ formatNumber(mu.input_tokens) }}</td>
-                <td class="col-right">{{ formatNumber(mu.output_tokens) }}</td>
-                <td class="col-right">{{ formatNumber(mu.reasoning_tokens) }}</td>
-                <td class="col-right">{{ formatNumber(mu.total_tokens) }}</td>
+                <td class="col-right">{{ formatTokens(mu.input_tokens) }}</td>
+                <td class="col-right">{{ formatTokens(mu.output_tokens) }}</td>
+                <td class="col-right">{{ formatTokens(mu.reasoning_tokens) }}</td>
+                <td class="col-right">{{ formatTokens(mu.total_tokens) }}</td>
                 <td class="col-right">{{ formatCost(mu.cost_usd) }}</td>
               </tr>
             </tbody>
@@ -398,7 +398,7 @@
               <tr v-for="msg in selectedDetail.messages" :key="msg.message_id">
                 <td>{{ msg.role === 'user' ? '用户' : '助手' }}</td>
                 <td class="col-monospace">{{ msg.model ?? '—' }}</td>
-                <td class="col-right">{{ formatNumber(msg.total_tokens) }}</td>
+                <td class="col-right">{{ formatTokens(msg.total_tokens) }}</td>
                 <td class="col-right">{{ formatCost(msg.cost_usd) }}</td>
                 <td class="col-right">{{ msg.files_changed > 0 ? msg.files_changed : '—' }}</td>
                 <td class="col-right">{{ formatDuration(msg.duration_ms) }}</td>
@@ -440,26 +440,43 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, h } from 'vue'
+import { ref, computed, watch, h, onMounted, onActivated } from 'vue'
 import EmptyState from '../components/EmptyState.vue'
 import LoadingState from '../components/LoadingState.vue'
-import { useStatsStore } from '../stores/stats'
+import { useSessionsStore } from '../stores/sessions'
 import {
   fetchDashboardSessionDetail,
   type DashboardSessionListItem,
   type DashboardSessionDetailData,
 } from '../api/client'
+import { formatNumber, formatCost, formatTokens } from '../utils/format'
 
 // ── Store ──────────────────────────────────────────────────────────────
 
-const store = useStatsStore()
+const store = useSessionsStore()
 
-// ── Data (from global store, auto-updates via SSE) ─────────────────────
+// ── Data (from per-page store) ────────────────────────────────────────
 
 const allSessions = computed<DashboardSessionListItem[]>(() => store.sessions.value)
 const loading = computed(() => store.loading.value)
 const error = computed(() => store.error.value)
 const hasExistingData = computed(() => allSessions.value.length > 0)
+
+// ── Lifecycle ────────────────────────────────────────────────────────
+
+async function refreshIfStale(force = false): Promise<void> {
+  if (!force && store.lastFetchedAt.value != null && Date.now() - store.lastFetchedAt.value <= 60_000) {
+    return
+  }
+  await store.fetchSessions(undefined, undefined, { limit: 100 })
+}
+
+function retryFetch(): void {
+  void refreshIfStale(true)
+}
+
+onMounted(() => { void refreshIfStale(true) })
+onActivated(() => { void refreshIfStale(false) })
 
 // ── Filters ──────────────────────────────────────────────────────────
 
@@ -644,14 +661,6 @@ function resetFilters(): void {
 }
 
 // ── Formatters ───────────────────────────────────────────────────────
-
-function formatNumber(n: number): string {
-  return n.toLocaleString('en-US')
-}
-
-function formatCost(usd: number): string {
-  return `$${usd.toFixed(2)}`
-}
 
 function truncateProject(path: string): string {
   if (path.length <= 30) return path

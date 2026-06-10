@@ -179,6 +179,24 @@ function queryErrorAgg(db: Database, start: number, end: number): ErrorAggRow {
   };
 }
 
+function queryActiveProjectCount(
+  db: Database,
+  start: number,
+  end: number,
+): number {
+  const rows = db
+    .query(
+      `SELECT project_path
+       FROM messages
+       WHERE created_at_ms >= ? AND created_at_ms <= ?
+       GROUP BY project_path
+       HAVING SUM(total_tokens) > 0 OR SUM(cost_usd) > 0`,
+    )
+    .all(start, end) as Array<Record<string, unknown>>;
+
+  return rows.length;
+}
+
 // ============================================================================
 // Trend query (private)
 // ============================================================================
@@ -392,6 +410,41 @@ function queryTopModels(
 }
 
 // ============================================================================
+// Model message distribution query (private)
+// ============================================================================
+
+function queryModelMessageDistribution(
+  db: Database,
+  start: number,
+  end: number,
+): Array<{ model: string; message_count: number; percentage: number }> {
+  const rows = db
+    .query(
+      `SELECT
+         model,
+         COUNT(*) as message_count
+       FROM messages
+       WHERE role = 'assistant'
+         AND model IS NOT NULL
+         AND created_at_ms >= ? AND created_at_ms <= ?
+       GROUP BY model
+       ORDER BY message_count DESC`,
+    )
+    .all(start, end) as Array<Record<string, unknown>>;
+
+  const total = rows.reduce((sum, row) => sum + toNum(row.message_count), 0);
+
+  return rows.map((row) => {
+    const count = toNum(row.message_count);
+    return {
+      model: String(row.model),
+      message_count: count,
+      percentage: total > 0 ? (count / total) * 100 : 0,
+    };
+  });
+}
+
+// ============================================================================
 // Top tools query (private)
 // ============================================================================
 
@@ -435,6 +488,7 @@ function buildSummary(
   msgAgg: MessageAggRow,
   toolAgg: ToolAggRow,
   errorAgg: ErrorAggRow,
+  activeProjectCount: number,
 ): DashboardOverviewSummary {
   return {
     total_sessions: sessionAgg.total_sessions,
@@ -471,6 +525,9 @@ function buildSummary(
       msgAgg.total_messages,
       sessionAgg.total_sessions,
     ),
+    avg_project_tokens: safeDivide(msgAgg.total_tokens, activeProjectCount),
+    avg_project_cost: safeDivide(msgAgg.total_cost_usd, activeProjectCount),
+    avg_project_messages: safeDivide(msgAgg.total_messages, activeProjectCount),
     first_event_at_ms: sessionAgg.first_event_at_ms,
     last_event_at_ms: sessionAgg.last_event_at_ms,
   };
@@ -514,9 +571,16 @@ export function createOverviewDashboardHandler(db: Database) {
     const msgAgg = queryMessageAgg(db, start, end);
     const toolAgg = queryToolAgg(db, start, end);
     const errorAgg = queryErrorAgg(db, start, end);
+    const activeProjectCount = queryActiveProjectCount(db, start, end);
 
     // 3. Build summary
-    const summary = buildSummary(sessionAgg, msgAgg, toolAgg, errorAgg);
+    const summary = buildSummary(
+      sessionAgg,
+      msgAgg,
+      toolAgg,
+      errorAgg,
+      activeProjectCount,
+    );
 
     // 4. Query daily trend
     const trend = queryTrend(db, start, end);
@@ -528,13 +592,21 @@ export function createOverviewDashboardHandler(db: Database) {
     const topModels = queryTopModels(db, start, end);
     const topTools = queryTopTools(db, start, end);
 
-    // 7. Assemble and return
+    // 7. Query model message distribution
+    const modelMessageDistribution = queryModelMessageDistribution(
+      db,
+      start,
+      end,
+    );
+
+    // 8. Assemble and return
     const data: DashboardOverviewData = {
       summary,
       trend,
       recent_sessions: recentSessions,
       top_models: topModels,
       top_tools: topTools,
+      model_message_distribution: modelMessageDistribution,
     };
 
     return c.json({ data });

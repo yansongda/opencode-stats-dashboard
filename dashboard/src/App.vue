@@ -13,24 +13,21 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted } from 'vue'
 import AppLayout from './components/AppLayout.vue'
-import { useStatsStore } from './stores/stats'
+import { useSSE } from './composables/useSSE'
 
-const store = useStatsStore()
-const realtimeMode = store.realtimeMode
-const lastUpdatedAt = store.lastUpdatedAt
-const lastDataUpdatedAt = store.lastDataUpdatedAt
-const refreshing = store.refreshing
+const sse = useSSE()
+const { realtimeMode, lastUpdatedAt, lastDataUpdatedAt, refreshing } = sse
 
 onMounted(() => {
-  store.start()
+  sse.connect()
 })
 
 onUnmounted(() => {
-  store.stop()
+  sse.disconnect()
 })
 
 async function handleRefresh() {
-  await store.refreshData()
+  await sse.refreshCurrentRoute()
 }
 </script>
 

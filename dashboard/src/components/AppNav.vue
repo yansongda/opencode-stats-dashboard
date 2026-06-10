@@ -24,6 +24,10 @@
         {{ link.label }}
       </router-link>
     </div>
+    <div class="nav-badges">
+      <span class="audit-badge" title="所有工具调用均被完整记录">审计完整</span>
+      <span class="privacy-badge" title="数据仅存储在本地，不会上传到云端">本地隐私</span>
+    </div>
     <div class="nav-status">
       <div class="realtime-status" :class="realtimeClass" :data-testid="`realtime-${realtimeMode}`">
         <span class="status-dot" :class="dotClass"></span>
@@ -33,15 +37,13 @@
         数据更新时间: {{ formattedUpdatedAt }}
         <span v-if="refreshing" class="refreshing-indicator">刷新中</span>
       </span>
-      <span class="audit-badge" title="所有工具调用均被完整记录">审计完整</span>
-      <span class="privacy-badge" title="数据仅存储在本地，不会上传到云端">本地隐私</span>
     </div>
   </nav>
 </template>
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import type { RealtimeMode } from '../stores/stats'
+import type { RealtimeMode } from '../composables/useSSE'
 
 const props = defineProps<{
   realtimeMode: RealtimeMode
@@ -119,6 +121,13 @@ const formattedUpdatedAt = computed<string | null>(() => {
   color: var(--text);
 }
 
+.nav-badges {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  margin-left: auto;
+}
+
 .nav-hamburger {
   display: none;
   background: none;
@@ -139,7 +148,6 @@ const formattedUpdatedAt = computed<string | null>(() => {
 .nav-links {
   display: flex;
   gap: var(--spacing-1);
-  flex: 1;
 }
 
 .nav-link {
@@ -165,7 +173,6 @@ const formattedUpdatedAt = computed<string | null>(() => {
   display: flex;
   align-items: center;
   gap: var(--spacing-2);
-  margin-left: auto;
 }
 
 .realtime-status {
@@ -282,6 +289,10 @@ const formattedUpdatedAt = computed<string | null>(() => {
 
   .nav-links.open {
     display: flex;
+  }
+
+  .nav-badges {
+    display: none;
   }
 
   .nav-status {

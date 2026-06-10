@@ -1,10 +1,4 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import OverviewView from '../views/OverviewView.vue'
-import EfficiencyView from '../views/EfficiencyView.vue'
-import ModelsView from '../views/ModelsView.vue'
-import ProjectsView from '../views/ProjectsView.vue'
-import ToolCallsView from '../views/ToolCallsView.vue'
-import SessionsView from '../views/SessionsView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -12,32 +6,32 @@ const router = createRouter({
     {
       path: '/',
       name: 'overview',
-      component: OverviewView,
+      component: () => import('../views/OverviewView.vue'),
     },
     {
       path: '/efficiency',
       name: 'efficiency',
-      component: EfficiencyView,
+      component: () => import('../views/EfficiencyView.vue'),
     },
     {
       path: '/models',
       name: 'models',
-      component: ModelsView,
+      component: () => import('../views/ModelsView.vue'),
     },
     {
       path: '/projects',
       name: 'projects',
-      component: ProjectsView,
+      component: () => import('../views/ProjectsView.vue'),
     },
     {
       path: '/tools',
       name: 'tools',
-      component: ToolCallsView,
+      component: () => import('../views/ToolCallsView.vue'),
     },
     {
       path: '/sessions',
       name: 'sessions',
-      component: SessionsView,
+      component: () => import('../views/SessionsView.vue'),
     },
   ],
 })

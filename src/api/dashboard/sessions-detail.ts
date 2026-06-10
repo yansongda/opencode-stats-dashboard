@@ -325,21 +325,39 @@ function queryToolCalls(
 function queryErrors(db: Database, sessionId: string): DashboardSessionError[] {
   const errors: DashboardSessionError[] = [];
 
-  // 1. Session errors from events table (session.error events)
+  // 1. Error events from events table (session.error events)
   const sessionErrors = db
     .query(
-      `SELECT event_id, event_type, created_at_ms
+      `SELECT event_id, event_type, created_at_ms, event_contents
        FROM events
        WHERE session_id = ? AND event_type = 'session.error'`,
     )
     .all(sessionId) as Array<Record<string, unknown>>;
 
+  const fallbackMessage = "Session error";
+
   for (const row of sessionErrors) {
+    let errorType: string | undefined;
+    let message = fallbackMessage;
+
+    try {
+      const parsed = JSON.parse(String(row.event_contents || "{}")) as {
+        error_type?: string;
+        error_message?: string;
+      };
+      errorType = parsed.error_type;
+      const trimmed = parsed.error_message?.trim();
+      message = trimmed || parsed.error_type || fallbackMessage;
+    } catch {
+      // event_contents is invalid JSON — keep fallback
+    }
+
     errors.push({
       event_id: String(row.event_id),
       event_type: String(row.event_type),
       created_at_ms: toNum(row.created_at_ms),
-      message: "Session error",
+      message,
+      ...(errorType != null ? { error_type: errorType } : {}),
     });
   }
 

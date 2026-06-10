@@ -87,6 +87,8 @@
           :series="timelineTokenSeries"
           height="260px"
           y-label="Token"
+          :value-formatter="formatTokens"
+          :tooltip-formatter="tokenCostTooltipFormatter"
         />
       </div>
       <div class="chart-card" data-testid="tool-error-section">
@@ -135,7 +137,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onActivated } from 'vue'
 import MetricCard from '../components/MetricCard.vue'
 import EmptyState from '../components/EmptyState.vue'
 import LoadingState from '../components/LoadingState.vue'
@@ -143,14 +145,16 @@ import HeatmapChart from '../charts/HeatmapChart.vue'
 import BarChart from '../charts/BarChart.vue'
 import PieChart from '../charts/PieChart.vue'
 import LineChart from '../charts/LineChart.vue'
-import {
-  fetchDashboardEfficiency,
-  type DashboardEfficiencyData,
-  type DashboardEfficiencyHeatmapPoint,
-} from '../api/client'
-import { useStatsStore } from '../stores/stats'
+import type { DashboardEfficiencyHeatmapPoint } from '../api/client'
+import { useEfficiencyStore } from '../stores/efficiency'
+import { formatCost, formatTokens } from '../utils/format'
+
+// ── Store ───────────────────────────────────────────────────────────
+const { efficiencyData, loading, error, lastFetchedAt, fetchEfficiency } = useEfficiencyStore()
 
 // ── State ──────────────────────────────────────────────────────────
+
+const STALE_THRESHOLD_MS = 60_000
 
 type Period = '7d' | '30d' | 'all'
 
@@ -161,15 +165,8 @@ const periods = [
 ]
 
 const selectedPeriod = ref<Period>('7d')
-const efficiencyData = ref<DashboardEfficiencyData | null>(null)
-const loading = ref(false)
-const refreshing = ref(false)
-const error = ref<string | null>(null)
-const store = useStatsStore()
 
 // ── Data Fetching ──────────────────────────────────────────────────
-
-let fetchInFlight = false
 
 function getDateRangeMs(period: Period): { start?: number; end?: number } {
   if (period === 'all') return {}
@@ -179,59 +176,23 @@ function getDateRangeMs(period: Period): { start?: number; end?: number } {
   return { start: now - days * msPerDay, end: now }
 }
 
-/**
- * Fetch efficiency data.
- * - silent=true + existing data → background refresh (preserves content)
- * - otherwise → initial/period-change loading
- */
-async function fetchData(silent = false): Promise<void> {
-  if (fetchInFlight) return
-  fetchInFlight = true
-
-  const hasExistingData = efficiencyData.value !== null
-
-  if (silent && hasExistingData) {
-    refreshing.value = true
-  } else {
-    loading.value = true
-  }
-
-  error.value = null
-  try {
-    const { start, end } = getDateRangeMs(selectedPeriod.value)
-    efficiencyData.value = await fetchDashboardEfficiency(start, end)
-    // Update global timestamp so header "数据更新时间" reflects this refresh
-    store.markDataUpdated()
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : '加载效率数据时发生未知错误'
-    console.error('[Efficiency] Failed to fetch data:', err)
-  } finally {
-    fetchInFlight = false
-    if (silent && hasExistingData) {
-      refreshing.value = false
-    } else {
-      loading.value = false
-    }
-  }
+function fetchData(): void {
+  const { start, end } = getDateRangeMs(selectedPeriod.value)
+  void fetchEfficiency(start, end)
 }
 
 // Initial load
-onMounted(() => { void fetchData() })
+onMounted(() => { fetchData() })
 
-// User-initiated period change → full loading
-watch(selectedPeriod, () => { void fetchData() })
+// Re-fetch on activation if stale (>60s)
+onActivated(() => {
+  if (!lastFetchedAt.value || Date.now() - lastFetchedAt.value > STALE_THRESHOLD_MS) {
+    fetchData()
+  }
+})
 
-// Global store completed a REST refresh → silent efficiency refresh
-// Watches lastStoreRefreshedAt (not lastDataUpdatedAt) to avoid recursive loop:
-// Efficiency's markDataUpdated() updates lastDataUpdatedAt but NOT lastStoreRefreshedAt
-watch(
-  () => store.lastStoreRefreshedAt.value,
-  (newVal, oldVal) => {
-    if (newVal && oldVal && newVal !== oldVal) {
-      void fetchData(true)
-    }
-  },
-)
+// User-initiated period change → refetch
+watch(selectedPeriod, () => { fetchData() })
 
 // ── Formatting Helpers ─────────────────────────────────────────────
 
@@ -242,11 +203,6 @@ function formatDuration(ms: number | null): string {
   const hours = Math.floor(minutes / 60)
   const mins = minutes % 60
   return mins > 0 ? `${hours} 小时 ${mins} 分` : `${hours} 小时`
-}
-
-function formatCost(cost: number | null): string {
-  if (cost === null) return '—'
-  return `$${cost.toFixed(3)}`
 }
 
 function formatRate(value: number | null): string {
@@ -265,7 +221,7 @@ const avgSessionDuration = computed(() => {
 
 const costPerSession = computed(() => {
   if (!summary.value) return '—'
-  return formatCost(summary.value.avg_cost_per_session)
+  return formatCost(summary.value.avg_cost_per_session, 3)
 })
 
 const messagesPerActiveHour = computed(() => {
@@ -305,9 +261,25 @@ const timelineTokenSeries = computed(() => {
   if (!efficiencyData.value) return []
   return [
     { name: 'Token', data: efficiencyData.value.timeline.map(p => p.tokens), color: '#3b82f6' },
-    { name: '成本 (¢)', data: efficiencyData.value.timeline.map(p => Math.round(p.cost_usd * 100)), color: '#f59e0b' },
+    { name: '成本 ($)', data: efficiencyData.value.timeline.map((p) => Number((p.cost_usd ?? 0).toFixed(4))), color: '#f59e0b' },
   ]
 })
+
+const tokenCostTooltipFormatter = (params: unknown): string => {
+  const list = params as Array<{
+    axisValueLabel: string
+    seriesName: string
+    value: number
+    color: string
+  }>
+  if (!Array.isArray(list) || list.length === 0) return ''
+  const header = list[0].axisValueLabel ?? ''
+  const lines = list.map((p) => {
+    const formatted = p.seriesName === 'Token' ? formatTokens(p.value) : formatCost(p.value)
+    return `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${p.color};margin-right:6px"></span>${p.seriesName}: <b>${formatted}</b>`
+  })
+  return `<div style="font-size:12px">${header ? `<div style="margin-bottom:4px">${header}</div>` : ''}${lines.join('<br>')}</div>`
+}
 
 const toolErrorSeries = computed(() => {
   if (!efficiencyData.value) return []

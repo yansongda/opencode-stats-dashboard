@@ -7,7 +7,7 @@
           v-for="p in periods"
           :key="p.value"
           class="period-btn"
-          :class="{ active: store.selectedPeriod.value === p.value }"
+          :class="{ active: selectedPeriod === p.value }"
           data-testid="period-btn"
           @click="selectPeriod(p.value)"
         >
@@ -27,7 +27,7 @@
       :description="store.error.value"
       action-label="重试"
       test-id="projects-error"
-      @action="store.refreshData"
+      @action="refreshData"
     />
 
     <!-- Content -->
@@ -113,7 +113,7 @@
       </div>
     </div>
 
-    <div class="charts-row charts-row-split resp-two-col">
+    <div class="charts-row">
       <!-- Model Usage Distribution -->
       <div class="chart-card" data-testid="model-distribution-chart">
         <div class="chart-header">
@@ -149,19 +149,24 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { useStatsStore, type Period } from '../stores/stats'
+import { ref, computed, onMounted, onActivated } from 'vue'
+import { useProjectsStore } from '../stores/projects'
+import { fetchDashboardTools, type DashboardToolItem } from '../api/client'
 import EmptyState from '../components/EmptyState.vue'
 import LoadingState from '../components/LoadingState.vue'
 import { formatRelativeTimeFromDate } from '../utils/timezone'
+import { formatNumber, formatTokens, formatCost } from '../utils/format'
 import LineChart from '../charts/LineChart.vue'
 import BarChart from '../charts/BarChart.vue'
 
 // ── Store ──────────────────────────────────────────────────────────
 
-const store = useStatsStore()
+const store = useProjectsStore()
+const toolCalls = ref<DashboardToolItem[]>([])
 
 // ── Period ─────────────────────────────────────────────────────────
+
+type Period = '7d' | '30d' | 'all'
 
 const periods: Array<{ value: Period; label: string }> = [
   { value: '7d', label: '7天' },
@@ -169,9 +174,56 @@ const periods: Array<{ value: Period; label: string }> = [
   { value: 'all', label: '全部' },
 ]
 
-function selectPeriod(period: Period): void {
-  void store.setPeriod(period)
+const selectedPeriod = ref<Period>('7d')
+
+function getDateRange(period: Period): { start?: number; end?: number } {
+  if (period === 'all') return {}
+  const now = Date.now()
+  const msPerDay = 86_400_000
+  const days = period === '7d' ? 6 : 29
+  return { start: now - days * msPerDay, end: now }
 }
+
+function selectPeriod(period: Period): void {
+  selectedPeriod.value = period
+  const { start, end } = getDateRange(period)
+  void store.fetchProjects(start, end)
+  void fetchTools(start, end)
+}
+
+function refreshData(): void {
+  const { start, end } = getDateRange(selectedPeriod.value)
+  void store.fetchProjects(start, end)
+  void fetchTools(start, end)
+}
+
+async function fetchTools(start?: number, end?: number): Promise<void> {
+  try {
+    const data = await fetchDashboardTools(start, end)
+    toolCalls.value = data.tools
+  } catch {
+    // Tool calls fetch failure is non-critical
+  }
+}
+
+// ── Lifecycle ──────────────────────────────────────────────────────
+
+const STALE_MS = 60_000
+
+onMounted(() => {
+  const { start, end } = getDateRange(selectedPeriod.value)
+  void store.fetchProjects(start, end)
+  void fetchTools(start, end)
+})
+
+onActivated(() => {
+  const last = store.lastFetchedAt.value
+  if (last === null || Date.now() - last > STALE_MS) {
+    const { start, end } = getDateRange(selectedPeriod.value)
+    void store.fetchProjects(start, end)
+    void fetchTools(start, end)
+  }
+})
 
 // ── Sorting ────────────────────────────────────────────────────────
 
@@ -303,14 +355,14 @@ const modelSeries = computed(() => {
 
 // ── Tool Distribution Chart Data ──────────────────────────────────
 
-const toolNames = computed(() => store.toolCalls.value.slice(0, 10).map((t) => t.tool_name))
+const toolNames = computed(() => toolCalls.value.slice(0, 10).map((t) => t.tool_name))
 
 const toolSeries = computed(() => {
-  if (store.toolCalls.value.length === 0) return []
+  if (toolCalls.value.length === 0) return []
   return [
     {
       name: '调用次数',
-      data: store.toolCalls.value.slice(0, 10).map((t) => t.call_count),
+      data: toolCalls.value.slice(0, 10).map((t) => t.call_count),
       color: '#3b82f6',
     },
   ]
@@ -323,20 +375,6 @@ function truncatePath(path: string): string {
   const parts = path.split('/')
   if (parts.length <= 3) return '…' + path.slice(-33)
   return parts[0] + '/…/' + parts.slice(-2).join('/')
-}
-
-function formatNumber(n: number): string {
-  return n.toLocaleString('en-US')
-}
-
-function formatTokens(tokens: number): string {
-  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`
-  if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(1)}K`
-  return tokens.toLocaleString()
-}
-
-function formatCost(cost: number): string {
-  return `$${cost.toFixed(2)}`
 }
 
 function formatLastActive(ts: number | null): string {

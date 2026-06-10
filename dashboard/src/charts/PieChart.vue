@@ -40,6 +40,8 @@ const props = withDefaults(
     tooltipFormatter?: (params: unknown) => string
     /** Legend position */
     legendPosition?: 'top' | 'bottom' | 'left' | 'right'
+    /** Show built-in ECharts legend. Defaults to true. */
+    showLegend?: boolean
   }>(),
   {
     height: '300px',
@@ -51,6 +53,7 @@ const props = withDefaults(
     showLabel: true,
     tooltipFormatter: undefined,
     legendPosition: 'right',
+    showLegend: true,
   },
 )
 
@@ -64,6 +67,7 @@ const chartOption = computed<EChartsOption | null>(() => {
     : ['0%', '70%']
 
   const legendConfig = (() => {
+    if (!props.showLegend) return { show: false }
     switch (props.legendPosition) {
       case 'top':
         return { orient: 'horizontal' as const, top: 0, left: 'center' }
@@ -94,7 +98,10 @@ const chartOption = computed<EChartsOption | null>(() => {
       {
         type: 'pie',
         radius,
-        center: props.legendPosition === 'right' ? ['40%', '50%'] : ['50%', '55%'],
+        center:
+          props.showLegend && props.legendPosition === 'right'
+            ? ['40%', '50%']
+            : ['50%', '55%'],
         data: props.data,
         label: {
           show: props.showLabel,

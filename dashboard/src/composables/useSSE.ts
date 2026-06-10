@@ -1,12 +1,14 @@
 /**
- * useSSE — Vue composable for SSE connection management.
+ * useSSE — Vue composable for route-aware SSE connection management.
  *
  * Provides:
  * - SSE connection lifecycle (connect/disconnect/reconnect)
  * - Exponential backoff reconnect with configurable base/max interval
  * - Max reconnect attempts with fallback to polling
  * - StatsNotification message parsing with type guard validation
- * - Single onNotification callback for validated notifications
+ * - Route-aware refresh: SSE notifications and polling refresh only the
+ *   current route's per-page store (no monolithic fetch-all)
+ * - 5000ms throttle per route to prevent SSE/polling flood
  * - Status indicator (green/yellow/red dot)
  * - Last sync time tracking
  *
@@ -14,50 +16,28 @@
  */
 
 import { ref, computed, type Ref, type ComputedRef } from 'vue'
+import { useRouter } from 'vue-router'
 import {
   isStatsNotification,
   SSE_EVENT_NAME,
-  type StatsNotification,
-  type SSEConnectionState,
 } from '../../../src/types/stream'
 import { connectSSE } from '../api/client'
+import { useOverviewStore } from '../stores/overview'
+import { useEfficiencyStore } from '../stores/efficiency'
+import { useModelsStore } from '../stores/models'
+import { useProjectsStore } from '../stores/projects'
+import { useToolsStore } from '../stores/tools'
+import { useSessionsStore } from '../stores/sessions'
 
 // ============================================================================
 // Types
 // ============================================================================
 
+export type RealtimeMode = 'sse' | 'polling' | 'disconnected'
 export type StatusDot = 'green' | 'yellow' | 'red'
 
-export interface UseSSEOptions {
-  url?: string
-
-  /** @deprecated Use reconnectBaseInterval instead */
-  reconnectInterval?: number
-
-  /** Base reconnect interval in ms (default: 1000) */
-  reconnectBaseInterval?: number
-
-  /** Max reconnect interval in ms after exponential backoff (default: 30000) */
-  reconnectMaxInterval?: number
-
-  /** Max reconnect attempts before giving up (default: 10) */
-  maxReconnectAttempts?: number
-
-  /** Fallback polling function called when max attempts reached */
-  fallbackToPolling?: () => Promise<void>
-
-  /** Polling interval in ms when in fallback mode (default: 10000) */
-  pollingInterval?: number
-
-  /** Called for each validated StatsNotification received via SSE */
-  onNotification?: (notification: StatsNotification) => void
-
-  /** Called when SSE reconnects after a disconnect (not on initial open) */
-  onOpen?: () => void
-}
-
 export interface UseSSEReturn {
-  connectionState: Ref<SSEConnectionState>
+  connectionState: Ref<'disconnected' | 'reconnecting' | 'connecting' | 'connected'>
   lastSyncTime: Ref<Date | null>
   hasNewData: Ref<boolean>
   reconnectInterval: Ref<number>
@@ -65,38 +45,97 @@ export interface UseSSEReturn {
   isFallbackPolling: Ref<boolean>
   statusDot: ComputedRef<StatusDot>
   statusLabel: ComputedRef<string>
+  realtimeMode: Ref<RealtimeMode>
+  lastUpdatedAt: Ref<Date | null>
+  lastDataUpdatedAt: Ref<Date | null>
+  refreshing: Ref<boolean>
   connect: () => void
   disconnect: () => void
   reconnect: () => void
   markSynced: () => void
+  refreshCurrentRoute: () => Promise<void>
 }
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+const RECONNECT_BASE_INTERVAL = 1000
+const RECONNECT_MAX_INTERVAL = 30_000
+const MAX_RECONNECT_ATTEMPTS = 10
+const POLLING_INTERVAL = 10_000
+const ROUTE_REFRESH_THROTTLE_MS = 5000
 
 // ============================================================================
 // Implementation
 // ============================================================================
 
-export function useSSE(options: UseSSEOptions = {}): UseSSEReturn {
-  const {
-    reconnectInterval: legacyReconnectInterval = 5000,
-    reconnectBaseInterval = 1000,
-    reconnectMaxInterval = 30_000,
-    maxReconnectAttempts = 10,
-    fallbackToPolling,
-    pollingInterval = 10_000,
-    onNotification,
-    onOpen,
-  } = options
+export function useSSE(): UseSSEReturn {
+  const router = useRouter()
 
-  const baseInterval = options.reconnectBaseInterval !== undefined
-    ? reconnectBaseInterval
-    : legacyReconnectInterval
+  // ── Route-Aware Refresh ────────────────────────────────────────────
+
+  const routeRefreshMap: Record<string, () => Promise<void>> = {
+    overview: () => useOverviewStore().fetchOverview(),
+    efficiency: () => useEfficiencyStore().fetchEfficiency(),
+    models: () => useModelsStore().fetchModels(),
+    projects: () => useProjectsStore().fetchProjects(),
+    tools: () => useToolsStore().fetchTools(),
+    sessions: () => useSessionsStore().fetchSessions(),
+  }
+
+  const lastRouteRefreshAt = new Map<string, number>()
+
+  async function refreshCurrentRoute(): Promise<void> {
+    const routeName = router.currentRoute.value.name as string | undefined
+    if (!routeName) return
+
+    const refresh = routeRefreshMap[routeName]
+    if (!refresh) return
+
+    const now = Date.now()
+    const lastRefresh = lastRouteRefreshAt.get(routeName) ?? 0
+    if (now - lastRefresh < ROUTE_REFRESH_THROTTLE_MS) return
+
+    lastRouteRefreshAt.set(routeName, now)
+    refreshing.value = true
+    try {
+      await refresh()
+      const ts = new Date()
+      lastDataUpdatedAt.value = ts
+      lastUpdatedAt.value = ts
+    } finally {
+      refreshing.value = false
+    }
+  }
+
+  // ── SSE Callbacks ──────────────────────────────────────────────────
+
+  function handleNotification(): void {
+    realtimeMode.value = 'sse'
+    refreshCurrentRoute()
+  }
+
+  function handleOpen(): void {
+    refreshCurrentRoute()
+  }
+
+  function handlePolling(): void {
+    realtimeMode.value = 'polling'
+    refreshCurrentRoute()
+  }
 
   // ── Reactive State ─────────────────────────────────────────────────
 
-  const connectionState = ref<SSEConnectionState>('disconnected') as Ref<SSEConnectionState>
+  const realtimeMode = ref<RealtimeMode>('disconnected') as Ref<RealtimeMode>
+  const lastUpdatedAt = ref<Date | null>(null) as Ref<Date | null>
+  const lastDataUpdatedAt = ref<Date | null>(null) as Ref<Date | null>
+  const refreshing = ref(false) as Ref<boolean>
+
+  const connectionState = ref<'disconnected' | 'reconnecting' | 'connecting' | 'connected'>('disconnected')
   const lastSyncTime = ref<Date | null>(null) as Ref<Date | null>
   const hasNewData = ref(false) as Ref<boolean>
-  const reconnectInterval = ref(baseInterval) as Ref<number>
+  const reconnectInterval = ref(RECONNECT_BASE_INTERVAL) as Ref<number>
   const reconnectAttempts = ref(0) as Ref<number>
   const isFallbackPolling = ref(false) as Ref<boolean>
 
@@ -150,7 +189,7 @@ export function useSSE(options: UseSSEOptions = {}): UseSSEReturn {
     hasNewData.value = true
     lastSyncTime.value = new Date()
 
-    onNotification?.(parsed)
+    handleNotification()
   }
 
   // ── Reconnect Logic ────────────────────────────────────────────────
@@ -160,11 +199,9 @@ export function useSSE(options: UseSSEOptions = {}): UseSSEReturn {
 
     reconnectAttempts.value++
 
-    if (reconnectAttempts.value >= maxReconnectAttempts) {
+    if (reconnectAttempts.value >= MAX_RECONNECT_ATTEMPTS) {
       connectionState.value = 'disconnected'
-      if (fallbackToPolling) {
-        startPollingFallback()
-      }
+      startPollingFallback()
       return
     }
 
@@ -173,8 +210,8 @@ export function useSSE(options: UseSSEOptions = {}): UseSSEReturn {
     clearReconnectTimer()
 
     const backoffInterval = Math.min(
-      baseInterval * Math.pow(2, reconnectAttempts.value - 1),
-      reconnectMaxInterval,
+      RECONNECT_BASE_INTERVAL * Math.pow(2, reconnectAttempts.value - 1),
+      RECONNECT_MAX_INTERVAL,
     )
     reconnectInterval.value = backoffInterval
 
@@ -196,11 +233,11 @@ export function useSSE(options: UseSSEOptions = {}): UseSSEReturn {
     isFallbackPolling.value = true
     clearPollingTimer()
 
-    fallbackToPolling?.()
+    handlePolling()
 
     pollingTimer = setInterval(() => {
-      fallbackToPolling?.()
-    }, pollingInterval)
+      handlePolling()
+    }, POLLING_INTERVAL)
   }
 
   function clearPollingTimer(): void {
@@ -232,11 +269,11 @@ export function useSSE(options: UseSSEOptions = {}): UseSSEReturn {
         pendingReconnect = false
         connectionState.value = 'connected'
         reconnectAttempts.value = 0
-        reconnectInterval.value = baseInterval
+        reconnectInterval.value = RECONNECT_BASE_INTERVAL
         clearPollingTimer()
         isFallbackPolling.value = false
         if (isReconnect) {
-          onOpen?.()
+          handleOpen()
         }
       })
 
@@ -263,7 +300,8 @@ export function useSSE(options: UseSSEOptions = {}): UseSSEReturn {
     intentionalClose = false
     pendingReconnect = false
     reconnectAttempts.value = 0
-    reconnectInterval.value = baseInterval
+    reconnectInterval.value = RECONNECT_BASE_INTERVAL
+    realtimeMode.value = 'sse'
     doConnect()
   }
 
@@ -274,6 +312,7 @@ export function useSSE(options: UseSSEOptions = {}): UseSSEReturn {
     closeEventSource()
     connectionState.value = 'disconnected'
     isFallbackPolling.value = false
+    realtimeMode.value = 'disconnected'
   }
 
   function reconnect(): void {
@@ -284,7 +323,7 @@ export function useSSE(options: UseSSEOptions = {}): UseSSEReturn {
     closeEventSource()
     isFallbackPolling.value = false
     reconnectAttempts.value = 0
-    reconnectInterval.value = baseInterval
+    reconnectInterval.value = RECONNECT_BASE_INTERVAL
     connectionState.value = 'disconnected'
     doConnect()
   }
@@ -303,9 +342,14 @@ export function useSSE(options: UseSSEOptions = {}): UseSSEReturn {
     isFallbackPolling,
     statusDot,
     statusLabel,
+    realtimeMode,
+    lastUpdatedAt,
+    lastDataUpdatedAt,
+    refreshing,
     connect,
     disconnect,
     reconnect,
     markSynced,
+    refreshCurrentRoute,
   }
 }
