@@ -2,6 +2,8 @@
   <AppLayout
     :realtime-mode="realtimeMode"
     :last-updated-at="lastUpdatedAt"
+    :last-data-updated-at="lastDataUpdatedAt"
+    :refreshing="refreshing"
     @refresh="handleRefresh"
   >
     <router-view />
@@ -16,6 +18,8 @@ import { useStatsStore } from './stores/stats'
 const store = useStatsStore()
 const realtimeMode = store.realtimeMode
 const lastUpdatedAt = store.lastUpdatedAt
+const lastDataUpdatedAt = store.lastDataUpdatedAt
+const refreshing = store.refreshing
 
 onMounted(() => {
   store.start()

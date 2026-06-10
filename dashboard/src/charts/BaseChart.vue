@@ -7,6 +7,7 @@
       :theme="theme"
       :loading="loading"
       :loading-options="loadingOptions"
+      :update-options="updateOptions"
     />
     <EmptyState
       v-else
@@ -83,9 +84,19 @@ const mergedOption = computed<EChartsOption>(() => {
     ...props.option,
     animation: true,
     animationDuration: 500,
+    animationDurationUpdate: 300,
     animationEasing: 'cubicInOut',
+    animationEasingUpdate: 'cubicOut',
   }
 })
+
+// ── Update Options ─────────────────────────────────────────────────
+// Merge mode (notMerge: false) + lazy update to batch rapid data changes
+
+const updateOptions = {
+  notMerge: false,
+  lazyUpdate: true,
+}
 </script>
 
 <style scoped>

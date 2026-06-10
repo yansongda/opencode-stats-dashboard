@@ -3,6 +3,8 @@
     <AppNav
       :realtime-mode="realtimeMode"
       :last-updated-at="lastUpdatedAt"
+      :last-data-updated-at="lastDataUpdatedAt"
+      :refreshing="refreshing"
       @refresh="$emit('refresh')"
     />
     <main class="app-main">
@@ -18,6 +20,8 @@ import type { RealtimeMode } from '../stores/stats'
 defineProps<{
   realtimeMode: RealtimeMode
   lastUpdatedAt: Date | null
+  lastDataUpdatedAt: Date | null
+  refreshing: boolean
 }>()
 
 defineEmits<{

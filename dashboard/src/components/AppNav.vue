@@ -29,6 +29,10 @@
         <span class="status-dot" :class="dotClass"></span>
         <span class="status-label">{{ statusLabel }}</span>
       </div>
+      <span v-if="formattedUpdatedAt" class="data-updated-at" data-testid="data-updated-at">
+        数据更新时间: {{ formattedUpdatedAt }}
+        <span v-if="refreshing" class="refreshing-indicator">刷新中</span>
+      </span>
       <span class="audit-badge" title="所有工具调用均被完整记录">审计完整</span>
       <span class="privacy-badge" title="数据仅存储在本地，不会上传到云端">本地隐私</span>
     </div>
@@ -42,6 +46,8 @@ import type { RealtimeMode } from '../stores/stats'
 const props = defineProps<{
   realtimeMode: RealtimeMode
   lastUpdatedAt: Date | null
+  lastDataUpdatedAt: Date | null
+  refreshing: boolean
 }>()
 
 defineEmits<{
@@ -73,6 +79,16 @@ const statusLabel = computed(() => {
     case 'polling': return 'Polling'
     case 'disconnected': return 'Offline'
   }
+})
+
+function pad2(n: number): string {
+  return n < 10 ? `0${n}` : `${n}`
+}
+
+const formattedUpdatedAt = computed<string | null>(() => {
+  const d = props.lastDataUpdatedAt
+  if (!d) return null
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`
 })
 </script>
 
@@ -204,6 +220,22 @@ const statusLabel = computed(() => {
 
 .realtime-disconnected .status-label {
   color: var(--danger);
+}
+
+.data-updated-at {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background-color: rgba(0, 0, 0, 0.03);
+  border: 1px solid var(--border);
+}
+
+.refreshing-indicator {
+  color: var(--warning);
+  font-weight: 500;
+  margin-left: var(--spacing-1);
 }
 
 .audit-badge,
