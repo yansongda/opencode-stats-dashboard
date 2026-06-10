@@ -1,10 +1,9 @@
 /**
  * API request/response type definitions for the Event-Sourced Stats Engine.
  *
- * REST API endpoints for querying stats, sessions, tools, models, and projects.
+ * Provides the /api/v1/dashboard/* page-level response contracts.
  */
 
-import type { ModelUsage } from "@defs/projections";
 import type { Hono } from "hono";
 
 // ============================================================================
@@ -13,301 +12,446 @@ import type { Hono } from "hono";
 
 /**
  * A route registrar function that mounts its routes onto the Hono app.
- * Used by handler modules (stats, stream, ingest, etc.)
+ * Used by handler modules (dashboard, stream, ingest, etc.)
  */
 export type RouteRegistrar = (app: Hono) => void;
-
-// ============================================================================
-// Common Types
-// ============================================================================
-
-/** Time range for queries */
-export interface TimeRange {
-  start: number;
-  end: number;
-}
 
 /** Sort order */
 export type SortOrder = "asc" | "desc";
 
-/** Group by dimensions */
-export type GroupByDimension = "date" | "project" | "model" | "agent";
+// ============================================================================
+// Dashboard API Response Contracts (/api/v1/dashboard/*)
+// ============================================================================
 
-/** Pagination parameters */
-export interface PaginationParams {
-  limit?: number;
-  offset?: number;
-}
+// -- Response wrappers -------------------------------------------------------
 
-/** Standard API response wrapper */
-export interface ApiResponse<T> {
+export interface DashboardDataResponse<T> {
   data: T;
-  meta?: {
-    total?: number;
-    limit?: number;
-    offset?: number;
+}
+
+export interface DashboardListResponse<T> {
+  data: T[];
+  meta: {
+    total: number;
+    limit: number;
+    offset: number;
   };
 }
 
-/** API error response */
-export interface ApiError {
-  error: string;
-  message?: string;
-  code?: string;
-}
+// -- 1. GET /api/v1/dashboard/overview ---------------------------------------
 
-// ============================================================================
-// Query Parameters
-// ============================================================================
-
-/** Stats query parameters */
-export interface StatsQuery {
-  /** Time range */
-  timeRange?: TimeRange;
-
-  /** Filter conditions */
-  filters?: {
-    project?: string;
-    model?: string;
-    status?: string;
-    agent?: string;
-  };
-
-  /** Aggregation dimensions */
-  groupBy?: GroupByDimension[];
-
-  /** Sort field */
-  sortBy?: string;
-
-  /** Sort order */
-  sortOrder?: SortOrder;
-
-  /** Pagination */
-  limit?: number;
-  offset?: number;
-}
-
-// ============================================================================
-// Overview Endpoint
-// ============================================================================
-
-/** Overview stats response */
-export interface OverviewStats {
-  /** Total sessions */
+export interface DashboardOverviewSummary {
   total_sessions: number;
   active_sessions: number;
   deleted_sessions: number;
-
-  /** Total tokens */
+  total_messages: number;
+  total_user_messages: number;
+  total_assistant_messages: number;
   total_tokens: number;
   input_tokens: number;
   output_tokens: number;
   reasoning_tokens: number;
   cache_read: number;
   cache_write: number;
-
-  /** Total cost */
   total_cost_usd: number;
-
-  /** Tool stats */
-  tool_call_count: number;
-  tool_error_count: number;
-
-  /** File stats */
+  total_tool_calls: number;
+  total_tool_errors: number;
+  total_errors: number;
   files_changed: number;
   lines_added: number;
   lines_deleted: number;
-
-  /** Error stats */
-  error_count: number;
-
-  /** Time stats */
+  total_projects: number;
+  total_models: number;
+  active_days: number;
+  avg_tokens_per_session: number | null;
+  avg_cost_per_session: number | null;
+  avg_messages_per_session: number | null;
   first_event_at_ms: number | null;
   last_event_at_ms: number | null;
 }
 
-// ============================================================================
-// Trend Endpoint
-// ============================================================================
-
-/** Trend data point */
-export interface TrendDataPoint {
+export interface DashboardOverviewTrendPoint {
   date: string;
+  sessions: number;
+  messages: number;
   tokens: number;
   cost_usd: number;
+  tool_calls: number;
+  errors: number;
 }
 
-/** Trend response */
-export interface TrendResponse {
-  granularity: "day" | "week" | "month";
-  data: TrendDataPoint[];
-}
-
-// ============================================================================
-// Sessions Endpoint
-// ============================================================================
-
-/** Session list item */
-export interface SessionListItem {
+export interface DashboardOverviewRecentSession {
   session_id: string;
   project_path: string | null;
   title: string | null;
   status: "active" | "deleted";
-  primary_model: string | null;
   total_tokens: number;
   total_cost_usd: number;
-  duration_ms: number | null;
   last_event_at_ms: number | null;
-  event_count: number;
 }
 
-/** Session detail */
-export interface SessionDetail extends SessionListItem {
-  // Model usage
-  model_usage: ModelUsage | null;
+export interface DashboardOverviewTopModel {
+  model: string;
+  total_tokens: number;
+  cost_usd: number;
+  message_count: number;
+}
 
-  // Time stats
-  first_event_at_ms: number | null;
+export interface DashboardOverviewTopTool {
+  tool_name: string;
+  call_count: number;
+  error_count: number;
+  avg_duration_ms: number | null;
+}
 
-  // Message stats
-  user_message_count: number;
-  assistant_message_count: number;
+export interface DashboardOverviewData {
+  summary: DashboardOverviewSummary;
+  trend: DashboardOverviewTrendPoint[];
+  recent_sessions: DashboardOverviewRecentSession[];
+  top_models: DashboardOverviewTopModel[];
+  top_tools: DashboardOverviewTopTool[];
+}
 
-  // Token breakdown
+// -- 2. GET /api/v1/dashboard/efficiency -------------------------------------
+
+export interface DashboardEfficiencySummary {
+  total_sessions: number;
+  total_messages: number;
+  total_tokens: number;
+  total_cost_usd: number;
+  avg_session_duration_ms: number | null;
+  avg_tokens_per_session: number | null;
+  avg_cost_per_session: number | null;
+  avg_messages_per_session: number | null;
+  total_lines_added: number;
+  total_lines_deleted: number;
+  total_files_changed: number;
+  tokens_per_usd: number | null;
+  lines_changed_per_usd: number | null;
+  messages_per_active_hour: number | null;
+}
+
+export interface DashboardEfficiencyTimelinePoint {
+  bucket: string;
+  sessions: number;
+  messages: number;
+  tokens: number;
+  cost_usd: number;
+  lines_added: number;
+  lines_deleted: number;
+  files_changed: number;
+  avg_session_duration_ms: number | null;
+}
+
+export interface DashboardEfficiencyHeatmapPoint {
+  weekday: number;
+  hour: number;
+  messages: number;
+  tokens: number;
+  cost_usd: number;
+  tool_calls: number;
+  errors: number;
+}
+
+export interface DashboardEfficiencyModelItem {
+  model: string;
+  messages: number;
+  tokens: number;
+  cost_usd: number;
+  avg_tokens_per_message: number | null;
+  cost_per_1k_tokens: number | null;
+}
+
+export interface DashboardEfficiencyData {
+  summary: DashboardEfficiencySummary;
+  timeline: DashboardEfficiencyTimelinePoint[];
+  heatmap: DashboardEfficiencyHeatmapPoint[];
+  model_efficiency: DashboardEfficiencyModelItem[];
+}
+
+// -- 3. GET /api/v1/dashboard/models -----------------------------------------
+
+export interface DashboardModelsSummary {
+  total_models: number;
+  total_messages: number;
+  total_tokens: number;
+  total_cost_usd: number;
+  top_model_by_tokens: string | null;
+  top_model_by_cost: string | null;
+  cheapest_model_per_1k_tokens: string | null;
+}
+
+export interface DashboardModelItem {
+  model: string;
+  message_count: number;
+  session_count: number;
   input_tokens: number;
   output_tokens: number;
   reasoning_tokens: number;
   cache_read: number;
   cache_write: number;
+  total_tokens: number;
+  cost_usd: number;
+  avg_tokens_per_message: number | null;
+  avg_cost_per_message: number | null;
+  cost_per_1k_tokens: number | null;
+  associated_tool_call_count: number;
+  error_count: number;
+  error_rate: number | null;
+  first_used_at_ms: number | null;
+  last_used_at_ms: number | null;
+}
 
-  // Tool stats
-  tool_call_count: number;
-  tool_error_count: number;
+export interface DashboardModelCostTrendPoint {
+  date: string;
+  model: string;
+  tokens: number;
+  cost_usd: number;
+  messages: number;
+}
 
-  // File stats
+export interface DashboardModelsData {
+  summary: DashboardModelsSummary;
+  models: DashboardModelItem[];
+  cost_trend: DashboardModelCostTrendPoint[];
+}
+
+// -- 4. GET /api/v1/dashboard/projects ---------------------------------------
+
+export interface DashboardProjectsSummary {
+  total_projects: number;
+  active_projects: number;
+  total_sessions: number;
+  total_messages: number;
+  total_tokens: number;
+  total_cost_usd: number;
+  total_files_changed: number;
+  total_lines_added: number;
+  total_lines_deleted: number;
+  top_project_by_tokens: string | null;
+  top_project_by_cost: string | null;
+  top_project_by_activity: string | null;
+}
+
+export interface DashboardProjectItem {
+  project_path: string;
+  session_count: number;
+  message_count: number;
+  input_tokens: number;
+  output_tokens: number;
+  reasoning_tokens: number;
+  cache_read: number;
+  cache_write: number;
+  total_tokens: number;
+  cost_usd: number;
   files_changed: number;
   lines_added: number;
   lines_deleted: number;
-
-  // Error stats
+  tool_call_count: number;
+  tool_error_count: number;
   error_count: number;
+  primary_model: string | null;
+  model_count: number;
+  avg_tokens_per_session: number | null;
+  avg_cost_per_session: number | null;
+  avg_messages_per_session: number | null;
+  first_event_at_ms: number | null;
+  last_event_at_ms: number | null;
 }
 
-/** Sessions list response */
-export interface SessionsListResponse {
-  sessions: SessionListItem[];
-  total: number;
+export interface DashboardProjectActivityTrendPoint {
+  date: string;
+  project_path: string;
+  sessions: number;
+  messages: number;
+  tokens: number;
+  cost_usd: number;
+  files_changed: number;
+  lines_added: number;
+  lines_deleted: number;
 }
 
-// ============================================================================
-// Tools Endpoint
-// ============================================================================
+export interface DashboardProjectModelUsageItem {
+  project_path: string;
+  model: string;
+  messages: number;
+  tokens: number;
+  cost_usd: number;
+}
 
-/** Tool stats item */
-export interface ToolStatsItem {
+export interface DashboardProjectsData {
+  summary: DashboardProjectsSummary;
+  projects: DashboardProjectItem[];
+  activity_trend: DashboardProjectActivityTrendPoint[];
+  project_model_usage: DashboardProjectModelUsageItem[];
+}
+
+// -- 5. GET /api/v1/dashboard/tools ------------------------------------------
+
+export interface DashboardToolsSummary {
+  total_tool_calls: number;
+  completed_tool_calls: number;
+  failed_tool_calls: number;
+  running_tool_calls: number;
+  tool_error_rate: number | null;
+  avg_duration_ms: number | null;
+  total_tools: number;
+  most_used_tool: string | null;
+  slowest_tool: string | null;
+  most_error_prone_tool: string | null;
+}
+
+export interface DashboardToolItem {
   tool_name: string;
   call_count: number;
-  error_count: number;
-  success_rate: number;
-  avg_duration_ms: number;
+  completed_count: number;
+  failed_count: number;
+  running_count: number;
+  error_rate: number | null;
+  avg_duration_ms: number | null;
+  min_duration_ms: number | null;
+  max_duration_ms: number | null;
+  first_used_at_ms: number | null;
+  last_used_at_ms: number | null;
 }
 
-/** Tools stats response */
-export interface ToolsStatsResponse {
-  tools: ToolStatsItem[];
-  total_calls: number;
-  total_errors: number;
-  success_rate: number;
+export interface DashboardToolTimelinePoint {
+  date: string;
+  tool_name: string;
+  call_count: number;
+  failed_count: number;
+  avg_duration_ms: number | null;
 }
 
-// ============================================================================
-// Models Endpoint
-// ============================================================================
+export interface DashboardToolRecentError {
+  call_id: string;
+  session_id: string;
+  tool_name: string;
+  error_message: string;
+  started_at_ms: number | null;
+  completed_at_ms: number | null;
+  duration_ms: number | null;
+}
 
-/** Model comparison item */
-export interface ModelComparisonItem {
-  model: string;
-  session_count: number;
+export interface DashboardToolsData {
+  summary: DashboardToolsSummary;
+  tools: DashboardToolItem[];
+  timeline: DashboardToolTimelinePoint[];
+  recent_errors: DashboardToolRecentError[];
+}
+
+// -- 6. GET /api/v1/dashboard/sessions ---------------------------------------
+
+export interface DashboardSessionListItem {
+  session_id: string;
+  project_path: string | null;
+  title: string | null;
+  status: "active" | "deleted";
   message_count: number;
+  user_message_count: number;
+  assistant_message_count: number;
+  total_tokens: number;
+  total_cost_usd: number;
+  tool_call_count: number;
+  tool_error_count: number;
+  error_count: number;
+  files_changed: number;
+  lines_added: number;
+  lines_deleted: number;
+  primary_model: string | null;
+  model_count: number;
+  first_event_at_ms: number | null;
+  last_event_at_ms: number | null;
+  duration_ms: number | null;
+}
+
+// -- 7. GET /api/v1/dashboard/sessions/:id -----------------------------------
+
+export interface DashboardSessionDetailSummary {
+  session_id: string;
+  project_path: string | null;
+  title: string | null;
+  status: "active" | "deleted";
+  message_count: number;
+  user_message_count: number;
+  assistant_message_count: number;
   total_tokens: number;
   input_tokens: number;
   output_tokens: number;
   reasoning_tokens: number;
+  cache_read: number;
+  cache_write: number;
   total_cost_usd: number;
-  avg_cost_per_session: number;
-}
-
-/** Models comparison response */
-export interface ModelsComparisonResponse {
-  models: ModelComparisonItem[];
-  total_cost_usd: number;
-}
-
-// ============================================================================
-// Projects Endpoint
-// ============================================================================
-
-/** Project stats item */
-export interface ProjectStatsItem {
-  project_path: string;
-  session_count: number;
-  total_tokens: number;
-  total_cost_usd: number;
-  last_event_at_ms: number | null;
+  tool_call_count: number;
+  tool_error_count: number;
+  error_count: number;
+  files_changed: number;
+  lines_added: number;
+  lines_deleted: number;
   primary_model: string | null;
+  model_count: number;
+  first_event_at_ms: number | null;
+  last_event_at_ms: number | null;
+  duration_ms: number | null;
 }
 
-/** Projects stats response */
-export interface ProjectsStatsResponse {
-  projects: ProjectStatsItem[];
-  total_cost_usd: number;
+export interface DashboardSessionMessageMetadata {
+  message_id: string;
+  event_id: string;
+  role: "user" | "assistant";
+  model: string | null;
+  agent: string | null;
+  input_tokens: number;
+  output_tokens: number;
+  reasoning_tokens: number;
+  cache_read: number;
+  cache_write: number;
+  total_tokens: number;
+  cost_usd: number;
+  lines_added: number;
+  lines_deleted: number;
+  files_changed: number;
+  created_at_ms: number;
+  completed_at_ms: number | null;
+  duration_ms: number | null;
+  has_error: number;
+  error_type: string | null;
 }
 
-// ============================================================================
-// Errors Endpoint
-// ============================================================================
-
-/** Error stats item */
-export interface ErrorStatsItem {
-  error_type: string;
-  count: number;
-  last_occurrence: number;
-  session_ids: string[];
+export interface DashboardSessionModelUsage {
+  model: string;
+  message_count: number;
+  input_tokens: number;
+  output_tokens: number;
+  reasoning_tokens: number;
+  cache_read: number;
+  cache_write: number;
+  total_tokens: number;
+  cost_usd: number;
 }
 
-/** Errors stats response */
-export interface ErrorsStatsResponse {
-  errors: ErrorStatsItem[];
-  total_errors: number;
+export interface DashboardSessionToolCall {
+  call_id: string;
+  tool_name: string;
+  status: string | null;
+  title: string | null;
+  error_message: string | null;
+  started_at_ms: number | null;
+  completed_at_ms: number | null;
+  duration_ms: number | null;
 }
 
-// ============================================================================
-// Ingest Endpoint
-// ============================================================================
-
-/** Ingest request */
-export interface IngestRequest {
-  events: Array<{
-    event_id: string;
-    event_type: string;
-    session_id: string;
-    project_path: string;
-    timestamp_ms: number;
-    model: string;
-    tokens: number;
-    cost_usd: number;
-    tool: string | null;
-    status: string | null;
-    summary: string | null;
-    deleted: boolean;
-    metadata: Record<string, unknown>;
-  }>;
+export interface DashboardSessionError {
+  event_id: string;
+  event_type: string;
+  created_at_ms: number;
+  message: string;
 }
 
-/** Ingest response */
-export interface IngestResponse {
-  accepted: number;
-  rejected: number;
-  duplicates: number;
-  event_ids: string[];
+export interface DashboardSessionDetailData {
+  session: DashboardSessionDetailSummary;
+  messages: DashboardSessionMessageMetadata[];
+  model_usage: DashboardSessionModelUsage[];
+  tool_calls: DashboardSessionToolCall[];
+  errors: DashboardSessionError[];
 }
