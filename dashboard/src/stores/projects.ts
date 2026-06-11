@@ -15,11 +15,29 @@ const loading = ref(false) as Ref<boolean>
 const error = ref<string | null>(null) as Ref<string | null>
 const lastFetchedAt = ref<number | null>(null) as Ref<number | null>
 
-export async function fetchProjects(start?: number, end?: number): Promise<void> {
+const lastParams = ref<{
+  start?: number
+  end?: number
+  params?: { sort?: string; order?: 'asc' | 'desc' }
+} | null>(null)
+
+export async function fetchProjects(
+  start?: number,
+  end?: number,
+  params?: { sort?: string; order?: 'asc' | 'desc' },
+): Promise<void> {
+  if (arguments.length > 0) {
+    lastParams.value = { start, end, params }
+  } else if (lastParams.value) {
+    start = lastParams.value.start
+    end = lastParams.value.end
+    params = lastParams.value.params
+  }
+
   loading.value = true
   error.value = null
   try {
-    const data = await fetchDashboardProjects(start, end)
+    const data = await fetchDashboardProjects(start, end, params)
     projects.value = data.projects
     projectsSummary.value = data.summary
     activityTrend.value = data.activity_trend

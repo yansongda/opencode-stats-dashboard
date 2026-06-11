@@ -9,11 +9,27 @@ const loading = ref(false) as Ref<boolean>
 const error = ref<string | null>(null) as Ref<string | null>
 const lastFetchedAt = ref<number | null>(null) as Ref<number | null>
 
+type FetchSessionsParams = Parameters<typeof fetchDashboardSessions>[2]
+
+const lastParams = ref<{
+  start?: number
+  end?: number
+  params?: FetchSessionsParams
+} | null>(null)
+
 export async function fetchSessions(
   start?: number,
   end?: number,
-  params?: { limit?: number; offset?: number; status?: string },
+  params?: FetchSessionsParams,
 ): Promise<void> {
+  if (arguments.length > 0) {
+    lastParams.value = { start, end, params }
+  } else if (lastParams.value) {
+    start = lastParams.value.start
+    end = lastParams.value.end
+    params = lastParams.value.params
+  }
+
   loading.value = true
   error.value = null
   try {

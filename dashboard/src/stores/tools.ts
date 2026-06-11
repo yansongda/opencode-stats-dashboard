@@ -15,7 +15,16 @@ const loading = ref(false) as Ref<boolean>
 const error = ref<string | null>(null) as Ref<string | null>
 const lastFetchedAt = ref<number | null>(null) as Ref<number | null>
 
+const lastParams = ref<{ start?: number; end?: number } | null>(null)
+
 export async function fetchTools(start?: number, end?: number): Promise<void> {
+  if (arguments.length > 0) {
+    lastParams.value = { start, end }
+  } else if (lastParams.value) {
+    start = lastParams.value.start
+    end = lastParams.value.end
+  }
+
   loading.value = true
   error.value = null
   try {
