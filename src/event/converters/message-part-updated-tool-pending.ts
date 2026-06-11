@@ -10,10 +10,7 @@ export const convert = (
 ): StatsEvent[] => {
   const { part } = event.properties;
 
-  // 只处理 tool 类型
   if (part.type !== "tool") return [];
-
-  // 只处理 pending 状态
   if (part.state.status !== "pending") return [];
 
   return [

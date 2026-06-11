@@ -1,16 +1,9 @@
 /**
- * useSSE — Vue composable for route-aware SSE connection management.
+ * Route-aware SSE connection manager for dashboard pages.
  *
- * Provides:
- * - SSE connection lifecycle (connect/disconnect/reconnect)
- * - Exponential backoff reconnect with configurable base/max interval
- * - Route-aware refresh: refresh only the current route's per-page store
- * - SSE notification coalescing: notification -> one silent refresh after 10s
- * - Idle fallback polling: silent refresh every 30s even when SSE is quiet
- * - Status indicator (green/yellow/red dot)
- * - Last data update time tracking; failed refreshes keep stale data and timestamp
- *
- * Design reference: docs/superpowers/specs/2026-06-04-event-sourced-stats-engine-design.md §6.3–6.6, §11.8
+ * SSE frames are lightweight invalidation notices. This composable coalesces
+ * notices into silent route refreshes, keeps a fallback polling loop active,
+ * and exposes connection state for the dashboard status indicator.
  */
 
 import { ref, computed, type Ref, type ComputedRef } from 'vue'
@@ -161,8 +154,7 @@ export function useSSE(): UseSSEReturn {
   }
 
   function handleOpen(): void {
-    // Reconnect catch-up: immediately refresh after reconnect so missed SSE
-    // notifications are covered by the REST fallback source of truth.
+    // A reconnect can miss invalidation frames; refresh once from REST, which is the source of truth.
     void runScheduledRefresh()
   }
 

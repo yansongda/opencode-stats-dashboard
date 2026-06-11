@@ -10,7 +10,6 @@ export const convert = (
 ): StatsEvent[] => {
   const info = event.properties.info;
 
-  // 只处理 assistant 角色
   if (info.role !== "assistant") return [];
 
   const completed_at_ms = info.time.completed;

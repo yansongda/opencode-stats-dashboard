@@ -1,7 +1,7 @@
 # OpenCode Stats Engine 架构文档
 
-> 本文档覆盖插件的核心架构: 事件采集、持久化、投影统计。
-> **不涉及** `src/api/` 和 `src/sse/` 的内部实现, 它们仅作为数据流边界出现。
+> 本文档覆盖插件的核心架构: 事件采集、持久化、投影统计、HTTP 所有权管理和 Dashboard API 边界。
+> Dashboard 前端实现位于 `dashboard/`，不在本文档范围内。
 
 ---
 
@@ -9,9 +9,13 @@
 
 | 范围内 | 范围外 |
 |--------|--------|
-| 插件入口与生命周期 (`src/index.ts`) | HTTP 路由 (`src/api/`) |
-| 事件转换 (`src/event/`) | SSE 广播内部 (`src/sse/`) |
-| 事件存储 (`src/store/`) | 仪表盘 (`dashboard/`) |
+| 插件入口与生命周期 (`src/index.ts`) | 仪表盘前端 (`dashboard/`) |
+| 结构化日志 (`src/logger.ts`) | 前端构建产物 (`dashboard/dist/`) |
+| 多实例 HTTP 所有权 (`src/server/`) | |
+| Dashboard API 路由边界 (`src/api/dashboard/`) | |
+| SSE 广播边界 (`src/sse/`) | |
+| 事件转换 (`src/event/`) | |
+| 事件存储 (`src/store/`) | |
 | 投影引擎与处理器 (`src/projection/`) | |
 | 数据库 schema 与迁移 (`src/db/`) | |
 | 类型定义与不变量 (`src/types/`) | |
@@ -24,7 +28,7 @@
 |------|----------|
 | 事件溯源: 所有状态可追溯、可重放 | 追加式事件表, 投影表从事件派生 |
 | 幂等写入 | DB 层保障: `INSERT OR IGNORE` (events) + `ON CONFLICT DO UPDATE` (messages) |
-| 错误隔离 | `processEvent` 四阶段独立 try/catch |
+| 错误隔离 | `processEvent` 分阶段捕获错误；下游阶段按一致性规则短路 |
 | 事务安全 | 投影处理器在 `db.transaction()` 内执行, 失败自动回滚 |
 | 隐私保护 | `FORBIDDEN_METADATA_KEYS` 禁止敏感字段进入元数据 |
 
@@ -73,7 +77,7 @@ events 表                  +--------+--------+
 4. broadcaster.broadcast(update)   -- 边界输出, 逐事件广播
 ```
 
-每个阶段被独立的 `try/catch` 包裹: 一个阶段的异常不会阻断后续阶段, 也不会影响下一个事件的处理。
+转换、存储、投影、广播阶段均有错误边界。为保证事件溯源一致性，持久化失败会阻断投影和广播，投影失败会阻断广播；这些错误会被记录但不会向 OpenCode 宿主传播，也不会影响下一个事件的处理。
 
 ---
 
@@ -87,8 +91,27 @@ events 表                  +--------+--------+
 - 创建 SQLite 连接, 配置 PRAGMA, 运行迁移
 - 实例化 `EventStore`, `ProjectionEngine`, `SSEBroadcaster`
 - 注册三个投影处理器: `sessions`, `messages`, `tool-calls`
-- 启动 HTTP 服务器 (`Bun.serve`)
+- 通过 `src/server/leader.ts` 管理多实例 leader/follower HTTP 所有权
+- 启动 HTTP 服务器 (`Bun.serve`) 并挂载 Dashboard REST/SSE 路由
+- 使用 `src/logger.ts` 写入 best-effort 结构化日志
 - 提供 `dispose()` 释放所有资源
+
+### Dashboard API (`src/api/dashboard/`)
+
+Dashboard API 作为投影表的查询边界，注册 7 个 REST 端点和 1 个 SSE stream 端点：
+
+- `overview`, `efficiency`, `models`, `projects`, `tools`, `sessions`, `sessions/:id` 提供页面级查询响应
+- `helpers/` 集中处理时区、时间范围、分页、排序、WHERE 片段、数值转换和 SQL offset 表达式
+- `components/` 提供 `heatmap`、`primary-model` 等跨端点复用查询组件
+- `stream` 端点通过 `SSEBroadcaster` 推送轻量级失效通知，不返回业务聚合数据
+
+### 多实例 HTTP 所有权 (`src/server/leader.ts`)
+
+插件可能被多个 OpenCode 实例加载。当前实现采用 leader/follower 模式：第一个成功绑定端口的实例成为 leader 并提供 HTTP 服务；端口被占用的实例成为 follower，仅继续写入本地事件和投影。详见 [multi-instance.md](./multi-instance.md)。
+
+### 结构化日志 (`src/logger.ts`)
+
+日志写入是 best-effort：文件日志失败不会中断插件生命周期、事件处理或 HTTP 服务启动。
 
 ### 事件转换器 (`src/event/`)
 
@@ -255,6 +278,17 @@ SDK "message.part.updated"  -->  [ToolExecutePendingEvent]  (根据状态分发)
 - 跟踪表: `schema_migrations` (version INTEGER PK, applied_at DATETIME)
 - `runMigrations(db)` 在单事务中执行所有未应用的迁移, 幂等可重入
 
+### 当前索引
+
+初始迁移创建以下查询索引，主要服务 Dashboard 时间范围、会话详情、模型/工具聚合和错误查询：
+
+| 表 | 索引 |
+|----|------|
+| `sessions` | `idx_sessions_last_event_ms`, `idx_sessions_first_event_ms`, `idx_sessions_status_last_event_ms`, `idx_sessions_project_last_event_ms` |
+| `messages` | `idx_messages_created_at_ms`, `idx_messages_session_created_at_ms`, `idx_messages_role_created_model`, `idx_messages_session_model`, `idx_messages_session_error` |
+| `tool_calls` | `idx_tool_calls_started_at_ms`, `idx_tool_calls_session_started_at_ms`, `idx_tool_calls_error_started_at_ms` |
+| `events` | `idx_events_session_error`, `idx_events_error_created_at_ms` |
+
 ---
 
 ## 关键不变量
@@ -262,7 +296,7 @@ SDK "message.part.updated"  -->  [ToolExecutePendingEvent]  (根据状态分发)
 1. **事件不可变**: 写入 events 表后不修改、不删除
 2. **幂等保障**: DB 层 `INSERT OR IGNORE` (events 表) + `ON CONFLICT DO UPDATE` (messages 投影), 无内存去重集合
 3. **事务原子性**: 单个事件的所有投影操作在同一事务中, 任一失败则全部回滚
-4. **错误隔离**: `processEvent` 中 convert/store/project/broadcast 四阶段独立 try/catch, 互不阻断
+4. **错误隔离**: `processEvent` 中 convert/store/project/broadcast 均有错误边界；store 失败短路 project/broadcast，project 失败短路 broadcast
 5. **会话存在性**: `ensureSessionExists()` 保证 message/tool 事件到达时目标会话行已存在
 6. **隐私红线**: `FORBIDDEN_METADATA_KEYS` 中的字段不得出现在事件元数据
 
@@ -293,7 +327,7 @@ SDK "message.part.updated"  -->  [ToolExecutePendingEvent]  (根据状态分发)
 
 ## 验证建议
 
-以下命令用于验证架构各层的正确性 (不保证测试文件当前存在):
+以下命令用于验证架构各层的正确性。当前 `package.json` 的 `bun test` 使用 `--pass-with-no-tests`，因此无测试文件时也会成功退出；新增测试后应继续使用 `bun:test`。
 
 ```bash
 # 类型检查
@@ -302,10 +336,10 @@ bun run typecheck
 # 代码检查
 bun run biome:check
 
-# 运行测试 (如存在)
+# 运行测试（当前允许无测试文件）
 bun test
 
-# 运行特定模块测试 (如存在)
+# 运行特定模块测试（新增对应目录后使用）
 bun test tests/projection/
 bun test tests/store/
 bun test tests/events/

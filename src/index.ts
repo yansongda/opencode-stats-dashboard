@@ -6,7 +6,7 @@
  *
  * 环境变量配置：
  *  - STATS_PORT（默认：11133）
- *  - STATS_DB_DIR（默认：~/.local/share/opencode-stats-dashboard/）
+ *  - STATS_DB_DIR（默认：~/.local/share/opencode-stats-engine/）
  *  - STATS_DB_PATH（默认：STATS_DB_DIR/stats.db）
  */
 

@@ -41,7 +41,7 @@
 
 ## 数据库 Schema 概览
 
-当前迁移创建 4 张业务表: `events`, `sessions`, `messages`, `tool_calls`。
+当前迁移创建 4 张业务表: `events`, `sessions`, `messages`, `tool_calls`，并为 Dashboard 常用查询创建 14 个索引。
 
 ### events 表
 
@@ -80,7 +80,7 @@
 | `event_id` | TEXT NOT NULL | 关联事件 ID |
 | `session_id` | TEXT NOT NULL | 关联会话 ID |
 | `project_path` | TEXT NOT NULL | 项目目录 |
-| `model` | TEXT NOT NULL | 模型标识 (如 `anthropic/claude-sonnet-4-20250514`)；注意当前 user 消息投影写入 `null`，与 schema 约束存在不一致 |
+| `model` | TEXT | 模型标识 (如 `anthropic/claude-sonnet-4-20250514`)；user 消息投影写入 `null`，assistant 消息要求非空 model |
 | `role` | TEXT NOT NULL | `user` 或 `assistant` |
 | `agent` | TEXT | agent/mode 名称 |
 | `input_tokens` | INTEGER DEFAULT 0 | 输入 token 数 |
@@ -118,6 +118,27 @@
 | `error_message` | TEXT | 错误信息 |
 | `created_at` | DATETIME | 自动生成 |
 | `updated_at` | DATETIME | 自动更新 |
+
+---
+
+## 当前索引
+
+| 表 | 索引 | 主要用途 |
+|---|---|---|
+| `sessions` | `idx_sessions_last_event_ms` | 会话列表默认时间排序与范围过滤 |
+| `sessions` | `idx_sessions_first_event_ms` | 按首次事件时间过滤 |
+| `sessions` | `idx_sessions_status_last_event_ms` | 会话状态筛选 + 最近活动排序 |
+| `sessions` | `idx_sessions_project_last_event_ms` | 项目筛选 + 最近活动排序 |
+| `messages` | `idx_messages_created_at_ms` | Dashboard 消息时间范围查询 |
+| `messages` | `idx_messages_session_created_at_ms` | 会话详情消息时间线 |
+| `messages` | `idx_messages_role_created_model` | assistant/model 聚合与趋势 |
+| `messages` | `idx_messages_session_model` | 会话模型使用聚合 |
+| `messages` | `idx_messages_session_error` | 会话消息错误查询 |
+| `tool_calls` | `idx_tool_calls_started_at_ms` | 工具调用时间范围查询 |
+| `tool_calls` | `idx_tool_calls_session_started_at_ms` | 会话工具调用时间线 |
+| `tool_calls` | `idx_tool_calls_error_started_at_ms` | 近期工具错误查询 |
+| `events` | `idx_events_session_error` | 会话错误事件查询 |
+| `events` | `idx_events_error_created_at_ms` | 错误事件时间范围查询 |
 
 ---
 

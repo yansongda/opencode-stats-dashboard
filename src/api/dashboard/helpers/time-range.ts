@@ -31,7 +31,6 @@ export function parseTimeRange(
 ): TimeRangeResult {
   const now = Date.now();
 
-  // Both absent → full range
   if (rawStart === undefined && rawEnd === undefined) {
     return { ok: true, start: 0, end: now };
   }
@@ -63,11 +62,9 @@ export function parseTimeRange(
     end = Math.floor(parsed);
   }
 
-  // Fill defaults when only one side is provided
   const resolvedStart = start ?? 0;
   const resolvedEnd = end ?? now;
 
-  // Cross-field validation
   if (resolvedStart > resolvedEnd) {
     return {
       ok: false,

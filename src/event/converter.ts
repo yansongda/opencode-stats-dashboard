@@ -14,7 +14,6 @@ import type { Event } from "@opencode-ai/sdk";
 
 type ConvertFn = (event: Event, directory: string) => StatsEvent[];
 
-// 事件类型 → 转换器列表的映射
 const converters = new Map<string, ConvertFn[]>();
 
 export function registerConverter(eventType: string, fn: ConvertFn): void {
@@ -32,7 +31,6 @@ export function convertEvent(event: Event, directory: string): StatsEvent[] {
   return results;
 }
 
-// 注册所有转换器
 import * as messagePartUpdatedToolCompleted from "@event/converters/message-part-updated-tool-completed";
 import * as messagePartUpdatedToolFailed from "@event/converters/message-part-updated-tool-failed";
 import * as messagePartUpdatedToolPending from "@event/converters/message-part-updated-tool-pending";
@@ -44,7 +42,6 @@ import * as sessionDeleted from "@event/converters/session-deleted";
 import * as sessionError from "@event/converters/session-error";
 import * as sessionUpdated from "@event/converters/session-updated";
 
-// 所有已注册的转换器模块
 const REGISTERED = [
   sessionCreated,
   sessionUpdated,

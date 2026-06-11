@@ -21,7 +21,6 @@ const MAX_TZ_LENGTH = 50;
 export function parseTimezone(
   rawTz: string | undefined,
 ): { ok: true; tz: string } | { ok: false; error: string } {
-  // Absent / empty / whitespace → UTC
   if (rawTz === undefined || rawTz.trim() === "") {
     return { ok: true, tz: "UTC" };
   }
@@ -35,7 +34,6 @@ export function parseTimezone(
     };
   }
 
-  // Validate via Intl — throws RangeError for invalid IANA zones
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: tz });
   } catch {

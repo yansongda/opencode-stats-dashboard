@@ -47,7 +47,6 @@ cd dashboard && bun run dev               # 开发服务器（代理 /api → :1
 | `@event/*` | `src/event/*` |
 | `@db/*` | `src/db/*` |
 | `@projection/*` | `src/projection/*` |
-| `@snapshot/*` | `src/snapshot/*` |
 | `@sse/*` | `src/sse/*` |
 | `@store/*` | `src/store/*` |
 | `@defs/*` | `src/types/*` |
@@ -59,8 +58,11 @@ cd dashboard && bun run dev               # 开发服务器（代理 /api → :1
 ```
 src/
 ├── index.ts          # 插件入口 — StatsPlugin（默认导出）
+├── logger.ts         # 结构化文件日志（best-effort，不阻断插件生命周期）
 ├── api/
 │   └── dashboard/    # Hono 路由（7 个 REST 端点 + SSE stream）
+│       ├── helpers/  # 时区、时间范围、分页、排序、SQL offset 等查询工具
+│       └── components/ # heatmap、primary-model 等复用查询组件
 ├── db/               # SQLite schema + 迁移（schema.ts, migrations/001_initial.ts）
 ├── event/            # 事件转换器（SDK Event → StatsEvent）
 │   ├── converter.ts  # 注册表：映射 event.type → 转换函数
@@ -72,6 +74,7 @@ src/
 │   ├── messages.ts   # messages 投影处理器
 │   ├── tool-calls.ts # tool_calls 投影处理器
 │   └── utils.ts      # 投影工具函数（totalTokens）
+├── server/           # 多实例 leader/follower HTTP 所有权管理
 ├── sse/              # SSE 广播器（实时推送到仪表盘）
 ├── store/            # EventStore（追加式事件持久化）
 └── types/            # TypeScript 类型（events.ts, projections.ts, api.ts, stream.ts）
@@ -120,8 +123,8 @@ src/
 ## 开发规范
 
 - **禁止 `as any` 或 `@ts-ignore`** — 严格模式已开启，修复类型
-- **幂等写入** — EventStore 使用 `INSERT OR IGNORE`，投影检查 `processedEvents` 集合
-- **错误隔离** — `processEvent` 将每个阶段（存储 → 投影 → 广播）包装在 try/catch 中；一个阶段的失败不会阻塞其他阶段
+- **幂等写入** — EventStore 使用 `INSERT OR IGNORE`，messages 投影使用 `ON CONFLICT DO UPDATE`；不维护内存去重集合
+- **错误隔离** — `processEvent` 隔离转换、存储、投影、广播错误；存储失败会阻断投影和广播，投影失败会阻断广播，但错误不会向宿主传播
 - **预编译语句** — EventStore 在 `queryCache` Map 中缓存 SQL 语句
 - **事务安全** — 投影处理器在 `db.transaction()` 内运行；失败 = 回滚
 - **隐私保护** — `src/types/events.ts` 中的 `FORBIDDEN_METADATA_KEYS` 列出了绝不能出现在元数据中的字段（`tool_input`, `tool_output`, `message_body`, `raw_input`, `raw_output`）
@@ -161,3 +164,4 @@ src/
 - `architecture.md`：核心架构和数据流
 - `event-table-mapping.md`：事件与数据表映射关系
 - `dashboard-page-metrics-api-mapping.md`：Dashboard API 端点规范
+- `multi-instance.md`：多实例 leader/follower 并发模型

@@ -10,7 +10,6 @@ export const convert = (
 ): StatsEvent[] => {
   const info = event.properties.info;
 
-  // 只处理 user 角色
   if (info.role !== "user") return [];
 
   const summary = info.summary;
