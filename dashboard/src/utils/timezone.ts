@@ -76,6 +76,51 @@ export function formatRelativeTimeFromDate(date: Date): string {
   })
 }
 
+/**
+ * Convert a UTC bucket string from the backend to a local-timezone display label.
+ *
+ * Handles two formats:
+ * - Daily:  "YYYY-MM-DD"           → "MM-DD" (or "YYYY-MM-DD" if year differs)
+ * - Hourly: "YYYY-MM-DD HH:00"    → "MM-DD HH:00" (or "YYYY-MM-DD HH:00" if year differs)
+ *
+ * Parses the string as UTC and reformats using the browser's local timezone.
+ */
+export function formatBucketLocal(bucket: string): string {
+  // Hourly format: "YYYY-MM-DD HH:00" (space-separated, has ":00")
+  const hourlyMatch = bucket.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):00$/)
+  if (hourlyMatch) {
+    const [, y, m, d, h] = hourlyMatch
+    const utcDate = new Date(Date.UTC(Number(y), Number(m) - 1, Number(d), Number(h)))
+    const localY = utcDate.getFullYear()
+    const localM = String(utcDate.getMonth() + 1).padStart(2, '0')
+    const localD = String(utcDate.getDate()).padStart(2, '0')
+    const localH = String(utcDate.getHours()).padStart(2, '0')
+    const currentYear = new Date().getFullYear()
+    if (localY !== currentYear) {
+      return `${localY}-${localM}-${localD} ${localH}:00`
+    }
+    return `${localM}-${localD} ${localH}:00`
+  }
+
+  // Daily format: "YYYY-MM-DD"
+  const dailyMatch = bucket.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (dailyMatch) {
+    const [, y, m, d] = dailyMatch
+    const utcDate = new Date(Date.UTC(Number(y), Number(m) - 1, Number(d)))
+    const localY = utcDate.getFullYear()
+    const localM = String(utcDate.getMonth() + 1).padStart(2, '0')
+    const localD = String(utcDate.getDate()).padStart(2, '0')
+    const currentYear = new Date().getFullYear()
+    if (localY !== currentYear) {
+      return `${localY}-${localM}-${localD}`
+    }
+    return `${localM}-${localD}`
+  }
+
+  // Unrecognized format, return as-is
+  return bucket
+}
+
 export const COMMON_TIMEZONES = [
   'UTC',
   'Asia/Shanghai',
