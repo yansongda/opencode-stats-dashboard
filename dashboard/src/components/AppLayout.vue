@@ -6,6 +6,7 @@
       :last-data-updated-at="lastDataUpdatedAt"
       :refreshing="refreshing"
       @refresh="$emit('refresh')"
+      @reconnect="$emit('reconnect')"
     />
     <main class="app-main">
       <slot />
@@ -26,6 +27,7 @@ defineProps<{
 
 defineEmits<{
   refresh: []
+  reconnect: []
 }>()
 </script>
 

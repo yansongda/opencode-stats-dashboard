@@ -4,11 +4,11 @@
  * Provides:
  * - SSE connection lifecycle (connect/disconnect/reconnect)
  * - Exponential backoff reconnect with configurable base/max interval
- * - Max reconnect attempts with fallback to polling
+ * - Max reconnect attempts with disconnected fallback (no polling)
  * - StatsNotification message parsing with type guard validation
- * - Route-aware refresh: SSE notifications and polling refresh only the
- *   current route's per-page store (no monolithic fetch-all)
- * - 5000ms throttle per route to prevent SSE/polling flood
+ * - Route-aware refresh: SSE notifications refresh only the current
+ *   route's per-page store (no monolithic fetch-all)
+ * - 10s trailing debounce + 30s maxWait for SSE notification coalescing
  * - Status indicator (green/yellow/red dot)
  * - Last sync time tracking
  *
@@ -28,6 +28,7 @@ import { useModelsStore } from '../stores/models'
 import { useProjectsStore } from '../stores/projects'
 import { useToolsStore } from '../stores/tools'
 import { useSessionsStore } from '../stores/sessions'
+import { createDebouncedWithMaxWait } from '../utils/debounce'
 
 // ============================================================================
 // Types
@@ -53,7 +54,8 @@ export interface UseSSEReturn {
   disconnect: () => void
   reconnect: () => void
   markSynced: () => void
-  refreshCurrentRoute: () => Promise<void>
+  refreshCurrentRoute: (silent?: boolean) => Promise<void>
+  cancelDebouncedRefresh: () => void
 }
 
 // ============================================================================
@@ -63,8 +65,8 @@ export interface UseSSEReturn {
 const RECONNECT_BASE_INTERVAL = 1000
 const RECONNECT_MAX_INTERVAL = 30_000
 const MAX_RECONNECT_ATTEMPTS = 10
-const POLLING_INTERVAL = 10_000
-const ROUTE_REFRESH_THROTTLE_MS = 5000
+const SSE_REFRESH_WAIT_MS = 10_000
+const SSE_REFRESH_MAX_WAIT_MS = 30_000
 
 // ============================================================================
 // Implementation
@@ -75,32 +77,25 @@ export function useSSE(): UseSSEReturn {
 
   // ── Route-Aware Refresh ────────────────────────────────────────────
 
-  const routeRefreshMap: Record<string, () => Promise<void>> = {
-    overview: () => useOverviewStore().fetchOverview(),
-    efficiency: () => useEfficiencyStore().fetchEfficiency(),
-    models: () => useModelsStore().fetchModels(),
-    projects: () => useProjectsStore().fetchProjects(),
-    tools: () => useToolsStore().fetchTools(),
-    sessions: () => useSessionsStore().fetchSessions(),
+  const routeRefreshMap: Record<string, (silent: boolean) => Promise<void>> = {
+    overview: (silent) => useOverviewStore().fetchOverview(undefined, undefined, { silent }),
+    efficiency: (silent) => useEfficiencyStore().fetchEfficiency(undefined, undefined, { silent }),
+    models: (silent) => useModelsStore().fetchModels(undefined, undefined, { silent }),
+    projects: (silent) => useProjectsStore().fetchProjects(undefined, undefined, undefined, { silent }),
+    tools: (silent) => useToolsStore().fetchTools(undefined, undefined, { silent }),
+    sessions: (silent) => useSessionsStore().fetchSessions(undefined, undefined, undefined, { silent }),
   }
 
-  const lastRouteRefreshAt = new Map<string, number>()
-
-  async function refreshCurrentRoute(): Promise<void> {
+  async function refreshCurrentRoute(silent = true): Promise<void> {
     const routeName = router.currentRoute.value.name as string | undefined
     if (!routeName) return
 
     const refresh = routeRefreshMap[routeName]
     if (!refresh) return
 
-    const now = Date.now()
-    const lastRefresh = lastRouteRefreshAt.get(routeName) ?? 0
-    if (now - lastRefresh < ROUTE_REFRESH_THROTTLE_MS) return
-
-    lastRouteRefreshAt.set(routeName, now)
     refreshing.value = true
     try {
-      await refresh()
+      await refresh(silent)
       const ts = new Date()
       lastDataUpdatedAt.value = ts
       lastUpdatedAt.value = ts
@@ -109,20 +104,30 @@ export function useSSE(): UseSSEReturn {
     }
   }
 
+  // ── Debounced Refresh ──────────────────────────────────────────────
+
+  const debouncedRefresh = createDebouncedWithMaxWait(
+    () => {
+      void refreshCurrentRoute(true)
+    },
+    SSE_REFRESH_WAIT_MS,
+    SSE_REFRESH_MAX_WAIT_MS,
+  )
+
+  function cancelDebouncedRefresh(): void {
+    debouncedRefresh.cancel()
+  }
+
   // ── SSE Callbacks ──────────────────────────────────────────────────
 
   function handleNotification(): void {
     realtimeMode.value = 'sse'
-    refreshCurrentRoute()
+    debouncedRefresh()
   }
 
   function handleOpen(): void {
-    refreshCurrentRoute()
-  }
-
-  function handlePolling(): void {
-    realtimeMode.value = 'polling'
-    refreshCurrentRoute()
+    // Reconnect catch-up: immediate silent refresh bypassing debounce
+    void refreshCurrentRoute(true)
   }
 
   // ── Reactive State ─────────────────────────────────────────────────
@@ -144,7 +149,6 @@ export function useSSE(): UseSSEReturn {
 
   let eventSource: EventSource | null = null
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
-  let pollingTimer: ReturnType<typeof setInterval> | null = null
   let intentionalClose = false
   let pendingReconnect = false
 
@@ -202,7 +206,7 @@ export function useSSE(): UseSSEReturn {
 
     if (reconnectAttempts.value >= MAX_RECONNECT_ATTEMPTS) {
       connectionState.value = 'disconnected'
-      startPollingFallback()
+      realtimeMode.value = 'disconnected'
       return
     }
 
@@ -230,24 +234,6 @@ export function useSSE(): UseSSEReturn {
     }
   }
 
-  function startPollingFallback(): void {
-    isFallbackPolling.value = true
-    clearPollingTimer()
-
-    handlePolling()
-
-    pollingTimer = setInterval(() => {
-      handlePolling()
-    }, POLLING_INTERVAL)
-  }
-
-  function clearPollingTimer(): void {
-    if (pollingTimer !== null) {
-      clearInterval(pollingTimer)
-      pollingTimer = null
-    }
-  }
-
   // ── Connection Lifecycle ───────────────────────────────────────────
 
   function doConnect(): void {
@@ -269,10 +255,9 @@ export function useSSE(): UseSSEReturn {
         const isReconnect = pendingReconnect
         pendingReconnect = false
         connectionState.value = 'connected'
+        realtimeMode.value = 'sse'
         reconnectAttempts.value = 0
         reconnectInterval.value = RECONNECT_BASE_INTERVAL
-        clearPollingTimer()
-        isFallbackPolling.value = false
         if (isReconnect) {
           handleOpen()
         }
@@ -309,7 +294,7 @@ export function useSSE(): UseSSEReturn {
   function disconnect(): void {
     intentionalClose = true
     clearReconnectTimer()
-    clearPollingTimer()
+    cancelDebouncedRefresh()
     closeEventSource()
     connectionState.value = 'disconnected'
     isFallbackPolling.value = false
@@ -320,7 +305,6 @@ export function useSSE(): UseSSEReturn {
     intentionalClose = false
     pendingReconnect = true
     clearReconnectTimer()
-    clearPollingTimer()
     closeEventSource()
     isFallbackPolling.value = false
     reconnectAttempts.value = 0
@@ -352,5 +336,6 @@ export function useSSE(): UseSSEReturn {
     reconnect,
     markSynced,
     refreshCurrentRoute,
+    cancelDebouncedRefresh,
   }
 }

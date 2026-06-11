@@ -17,16 +17,21 @@ const lastFetchedAt = ref<number | null>(null) as Ref<number | null>
 
 const lastParams = ref<{ start?: number; end?: number } | null>(null)
 
-export async function fetchTools(start?: number, end?: number): Promise<void> {
-  if (arguments.length > 0) {
+export async function fetchTools(start?: number, end?: number, options?: { silent?: boolean }): Promise<void> {
+  const silent = options?.silent === true
+  const isSilentOnlyRefresh = options !== undefined && start === undefined && end === undefined
+
+  if (arguments.length > 0 && !isSilentOnlyRefresh) {
     lastParams.value = { start, end }
   } else if (lastParams.value) {
     start = lastParams.value.start
     end = lastParams.value.end
   }
 
-  loading.value = true
-  error.value = null
+  if (!silent) {
+    loading.value = true
+    error.value = null
+  }
   try {
     const data = await fetchDashboardTools(start, end)
     toolCalls.value = data.tools
@@ -35,9 +40,15 @@ export async function fetchTools(start?: number, end?: number): Promise<void> {
     toolRecentErrors.value = data.recent_errors
     lastFetchedAt.value = Date.now()
   } catch (err) {
-    error.value = err instanceof Error ? err.message : '加载工具数据时发生未知错误'
+    if (silent) {
+      console.warn('[silent fetch] tools failed:', err)
+    } else {
+      error.value = err instanceof Error ? err.message : '加载工具数据时发生未知错误'
+    }
   } finally {
-    loading.value = false
+    if (!silent) {
+      loading.value = false
+    }
   }
 }
 

@@ -490,7 +490,10 @@ function buildUrl(path: string, params?: Record<string, string | boolean | numbe
 
 async function getJson<T>(path: string, params?: Record<string, string | boolean | number | undefined>): Promise<T> {
   const url = buildUrl(path, params)
-  const res = await fetch(url, { headers: { Accept: 'application/json' } })
+  const res = await fetch(url, {
+    cache: 'no-store',
+    headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' },
+  })
   if (!res.ok) {
     throw new Error(`API error: ${res.status} ${res.statusText}`)
   }

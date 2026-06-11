@@ -5,6 +5,7 @@
     :last-data-updated-at="lastDataUpdatedAt"
     :refreshing="refreshing"
     @refresh="handleRefresh"
+    @reconnect="handleReconnect"
   >
     <router-view />
   </AppLayout>
@@ -27,7 +28,12 @@ onUnmounted(() => {
 })
 
 async function handleRefresh() {
-  await sse.refreshCurrentRoute()
+  sse.cancelDebouncedRefresh()
+  await sse.refreshCurrentRoute(false)
+}
+
+function handleReconnect(): void {
+  sse.reconnect()
 }
 </script>
 

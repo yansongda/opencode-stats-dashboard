@@ -33,6 +33,14 @@
         <span class="status-dot" :class="dotClass"></span>
         <span class="status-label">{{ statusLabel }}</span>
       </div>
+      <button
+        v-if="realtimeMode === 'disconnected'"
+        class="reconnect-btn"
+        data-testid="reconnect-btn"
+        @click="$emit('reconnect')"
+      >
+        重新连接
+      </button>
       <span v-if="formattedUpdatedAt" class="data-updated-at" data-testid="data-updated-at">
         数据更新时间: {{ formattedUpdatedAt }}
         <span v-if="refreshing" class="refreshing-indicator">刷新中</span>
@@ -55,6 +63,7 @@ const props = defineProps<{
 
 defineEmits<{
   refresh: []
+  reconnect: []
 }>()
 
 const menuOpen = ref(false)
@@ -240,6 +249,24 @@ const formattedUpdatedAt = computed<string | null>(() => {
   color: var(--warning);
   font-weight: 500;
   margin-left: var(--spacing-1);
+}
+
+.reconnect-btn {
+  padding: 2px 8px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--danger);
+  background: transparent;
+  border: 1px solid var(--danger);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.reconnect-btn:hover {
+  background-color: var(--danger);
+  color: white;
 }
 
 .audit-badge,

@@ -25,8 +25,12 @@ export async function fetchProjects(
   start?: number,
   end?: number,
   params?: { sort?: string; order?: 'asc' | 'desc' },
+  options?: { silent?: boolean },
 ): Promise<void> {
-  if (arguments.length > 0) {
+  const silent = options?.silent === true
+  const isSilentOnlyRefresh = options !== undefined && start === undefined && end === undefined && params === undefined
+
+  if (arguments.length > 0 && !isSilentOnlyRefresh) {
     lastParams.value = { start, end, params }
   } else if (lastParams.value) {
     start = lastParams.value.start
@@ -34,8 +38,10 @@ export async function fetchProjects(
     params = lastParams.value.params
   }
 
-  loading.value = true
-  error.value = null
+  if (!silent) {
+    loading.value = true
+    error.value = null
+  }
   try {
     const data = await fetchDashboardProjects(start, end, params)
     projects.value = data.projects
@@ -44,9 +50,15 @@ export async function fetchProjects(
     projectModelUsage.value = data.project_model_usage
     lastFetchedAt.value = Date.now()
   } catch (err) {
-    error.value = err instanceof Error ? err.message : '加载项目数据时发生未知错误'
+    if (silent) {
+      console.warn('[silent fetch] projects failed:', err)
+    } else {
+      error.value = err instanceof Error ? err.message : '加载项目数据时发生未知错误'
+    }
   } finally {
-    loading.value = false
+    if (!silent) {
+      loading.value = false
+    }
   }
 }
 

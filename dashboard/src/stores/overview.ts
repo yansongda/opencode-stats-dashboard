@@ -27,32 +27,72 @@ const lastFetchedAt = ref<number | null>(null) as Ref<number | null>
 
 const lastParams = ref<{ start?: number; end?: number } | null>(null)
 
-export async function fetchOverview(start?: number, end?: number): Promise<void> {
-  if (arguments.length > 0) {
+export async function fetchOverview(
+  start?: number,
+  end?: number,
+  options?: { silent?: boolean },
+): Promise<void> {
+  const silent = options?.silent ?? false
+  const isSilentOnlyRefresh = options !== undefined && start === undefined && end === undefined
+
+  if (arguments.length > 0 && !isSilentOnlyRefresh) {
     lastParams.value = { start, end }
   } else if (lastParams.value) {
     start = lastParams.value.start
     end = lastParams.value.end
   }
 
-  loading.value = true
-  error.value = null
+  if (!silent) {
+    loading.value = true
+    error.value = null
+  }
+
   try {
-    const [overviewData, projectsData] = await Promise.all([
+    const [overviewResult, projectsResult] = await Promise.allSettled([
       fetchDashboardOverview(start, end),
       fetchDashboardProjects(start, end),
     ])
-    overview.value = overviewData.summary
-    trend.value = overviewData.trend ?? []
-    topModels.value = overviewData.top_models ?? []
-    topTools.value = overviewData.top_tools ?? []
-    modelMessageDistribution.value = overviewData.model_message_distribution ?? []
-    projects.value = projectsData.projects ?? []
-    lastFetchedAt.value = Date.now()
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : '加载数据时发生未知错误'
+
+    const failedMessages: string[] = []
+
+    if (overviewResult.status === 'fulfilled') {
+      const overviewData = overviewResult.value
+      overview.value = overviewData.summary
+      trend.value = overviewData.trend ?? []
+      topModels.value = overviewData.top_models ?? []
+      topTools.value = overviewData.top_tools ?? []
+      modelMessageDistribution.value = overviewData.model_message_distribution ?? []
+    } else {
+      const msg = `overview failed: ${overviewResult.reason instanceof Error ? overviewResult.reason.message : String(overviewResult.reason)}`
+      if (silent) {
+        console.warn(`[silent fetch] ${msg}`)
+      } else {
+        failedMessages.push(msg)
+      }
+    }
+
+    if (projectsResult.status === 'fulfilled') {
+      projects.value = projectsResult.value.projects ?? []
+    } else {
+      const msg = `projects failed: ${projectsResult.reason instanceof Error ? projectsResult.reason.message : String(projectsResult.reason)}`
+      if (silent) {
+        console.warn(`[silent fetch] ${msg}`)
+      } else {
+        failedMessages.push(msg)
+      }
+    }
+
+    if (overviewResult.status === 'fulfilled' || projectsResult.status === 'fulfilled') {
+      lastFetchedAt.value = Date.now()
+    }
+
+    if (!silent && failedMessages.length > 0) {
+      error.value = failedMessages.join('; ')
+    }
   } finally {
-    loading.value = false
+    if (!silent) {
+      loading.value = false
+    }
   }
 }
 

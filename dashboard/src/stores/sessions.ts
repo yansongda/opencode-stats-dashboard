@@ -21,25 +21,36 @@ export async function fetchSessions(
   start?: number,
   end?: number,
   params?: FetchSessionsParams,
+  options?: { silent?: boolean },
 ): Promise<void> {
-  if (arguments.length > 0) {
+  const silent = options?.silent ?? false
+  const isSilentOnlyRefresh = options !== undefined && start === undefined && end === undefined && params === undefined
+
+  if (arguments.length > 0 && !isSilentOnlyRefresh) {
     lastParams.value = { start, end, params }
   } else if (lastParams.value) {
     start = lastParams.value.start
     end = lastParams.value.end
     params = lastParams.value.params
   }
-
-  loading.value = true
-  error.value = null
+  if (!silent) {
+    loading.value = true
+    error.value = null
+  }
   try {
     const res = await fetchDashboardSessions(start, end, params)
     sessions.value = res.data
     lastFetchedAt.value = Date.now()
   } catch (err) {
-    error.value = err instanceof Error ? err.message : '加载会话数据时发生未知错误'
+    if (!silent) {
+      error.value = err instanceof Error ? err.message : '加载会话数据时发生未知错误'
+    } else {
+      console.warn('[silent fetch] sessions failed:', err instanceof Error ? err.message : err)
+    }
   } finally {
-    loading.value = false
+    if (!silent) {
+      loading.value = false
+    }
   }
 }
 
