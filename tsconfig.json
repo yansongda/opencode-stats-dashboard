@@ -23,8 +23,9 @@
     "outDir": "./dist",
     "rootDir": "./src",
     "declaration": true,
-    "declarationMap": true,
+    "declarationMap": false,
     "sourceMap": true,
+    "emitDeclarationOnly": false,
 
     "baseUrl": ".",
     "paths": {

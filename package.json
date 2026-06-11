@@ -1,10 +1,38 @@
 {
   "name": "opencode-stats-engine",
-  "version": "0.3.0",
-  "private": true,
+  "version": "1.0.0-beta.0",
   "description": "OpenCode Event-Sourced Stats Engine",
   "type": "module",
-  "main": "src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/index.js",
+    "dist/index.d.ts",
+    "dashboard/dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "stats",
+    "dashboard",
+    "bun"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yansongda/opencode-stats-engine"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
+  },
   "scripts": {
     "test": "bun test --pass-with-no-tests",
     "test:watch": "bun test --watch --pass-with-no-tests",
@@ -12,17 +40,19 @@
     "biome:fix": "biome check --fix",
     "biome:fix-unsafe": "biome check --fix --unsafe",
     "typecheck": "tsc --noEmit",
-    "build:dashboard": "bun run --cwd dashboard build"
+    "build": "bun build ./src/index.ts --target=bun --format=esm --outdir=dist --external @opencode-ai/plugin --external @opencode-ai/sdk --external hono && tsc --emitDeclarationOnly",
+    "build:dashboard": "bun run --cwd dashboard build",
+    "prepublishOnly": "bun run biome:check && bun run typecheck && bun run test && bun run build:dashboard && bun run build"
   },
   "dependencies": {
     "@opencode-ai/plugin": "^1.16.0",
     "@opencode-ai/sdk": "^1.16.0",
-    "bun-types": "latest",
     "hono": "^4.12.23"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.16",
     "@types/bun": "latest",
+    "bun-types": "latest",
     "typescript": "^5.8.0"
   }
 }
