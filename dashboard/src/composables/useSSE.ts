@@ -128,8 +128,9 @@ export function useSSE(): UseSSEReturn {
   // ── Reactive State ─────────────────────────────────────────────────
 
   const realtimeMode = ref<RealtimeMode>('disconnected') as Ref<RealtimeMode>
-  const lastUpdatedAt = ref<Date | null>(null) as Ref<Date | null>
-  const lastDataUpdatedAt = ref<Date | null>(null) as Ref<Date | null>
+  const initialUpdatedAt = new Date()
+  const lastUpdatedAt = ref<Date | null>(initialUpdatedAt) as Ref<Date | null>
+  const lastDataUpdatedAt = ref<Date | null>(initialUpdatedAt) as Ref<Date | null>
   const refreshing = ref(false) as Ref<boolean>
 
   const connectionState = ref<'disconnected' | 'reconnecting' | 'connecting' | 'connected'>('disconnected')
