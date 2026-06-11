@@ -7,13 +7,9 @@
 
     /* Bundler mode */
     "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
     "isolatedModules": true,
     "moduleDetection": "force",
-    "composite": true,
-    "noEmit": false,
-    "declaration": true,
-    "declarationMap": true,
+    "noEmit": true,
 
     /* Linting */
     "strict": true,
