@@ -1,3 +1,5 @@
+export type TimeRange = '1d' | '7d' | '30d' | 'all'
+
 export function getBrowserTimezone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone
 }

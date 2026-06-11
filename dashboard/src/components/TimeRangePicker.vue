@@ -24,7 +24,7 @@
  * buttons and emits `update:modelValue`.
  */
 
-export type TimeRange = '1d' | '7d' | '30d' | 'all'
+import type { TimeRange } from '../utils/timezone'
 
 withDefaults(
   defineProps<{

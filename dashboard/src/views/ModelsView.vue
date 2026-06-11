@@ -75,7 +75,10 @@
     <div class="charts-grid resp-two-col">
       <!-- Token Breakdown (Stacked Bar) -->
       <div class="chart-card" data-testid="token-breakdown-chart">
-        <h3 class="chart-title">Token 细分对比</h3>
+        <div class="chart-card-header">
+          <h3 class="chart-card-title">Token 细分对比</h3>
+          <span class="chart-card-subtitle">默认展示成本最高的 20 个模型</span>
+        </div>
         <BarChart
           :x-data="tokenChartLabels"
           :series="tokenChartSeries"
@@ -88,7 +91,10 @@
 
       <!-- Message/Session Comparison (Dual-Axis Bar) -->
       <div class="chart-card" data-testid="message-session-chart">
-        <h3 class="chart-title">消息会话数对比</h3>
+        <div class="chart-card-header">
+          <h3 class="chart-card-title">消息会话数对比</h3>
+          <span class="chart-card-subtitle">仅显示会话数最多的 8 个模型</span>
+        </div>
         <BarChart
           :x-data="messageSessionChartLabels"
           :series="messageSessionChartSeries"
@@ -103,7 +109,10 @@
 
     <!-- Charts Row 2: Cost Comparison (full width) -->
     <div class="chart-card chart-card-full" data-testid="cost-trend-chart">
-      <h3 class="chart-title">成本对比</h3>
+      <div class="chart-card-header">
+        <h3 class="chart-card-title">成本对比</h3>
+        <span class="chart-card-subtitle">默认展示成本最高的 20 个模型</span>
+      </div>
       <BarChart
         :x-data="costChartLabels"
         :series="costChartSeries"
@@ -115,7 +124,10 @@
 
     <!-- Charts Row 3: Cost-Performance Scatter (full width) -->
     <div class="chart-card chart-card-full" data-testid="cost-performance-chart">
-      <h3 class="chart-title">性价比分析</h3>
+      <div class="chart-card-header">
+        <h3 class="chart-card-title">性价比分析</h3>
+        <span class="chart-card-subtitle">默认展示成本最高的 20 个模型</span>
+      </div>
       <ScatterChart
         :data="scatterData"
         x-label="总成本 (USD)"
@@ -136,10 +148,10 @@ import EmptyState from '../components/EmptyState.vue'
 import LoadingState from '../components/LoadingState.vue'
 import BarChart from '../charts/BarChart.vue'
 import ScatterChart from '../charts/ScatterChart.vue'
-import TimeRangePicker, { type TimeRange } from '../components/TimeRangePicker.vue'
+import TimeRangePicker from '../components/TimeRangePicker.vue'
 import type { DashboardModelItem } from '../api/client'
 import { formatNumber, formatTokens, formatCost } from '../utils/format'
-import { getRangeMs, formatBucketLocal } from '../utils/timezone'
+import { getRangeMs, formatBucketLocal, type TimeRange } from '../utils/timezone'
 
 // ── Store ──────────────────────────────────────────────────────────────
 const store = useModelsStore()
@@ -151,7 +163,7 @@ const selectedPeriod = ref<TimeRange>('7d')
 
 function fetchCurrentPeriod(): void {
   const { start, end } = getRangeMs(selectedPeriod.value)
-  void store.fetchModels(start, end)
+  void store.fetchModels(start, end, { range: selectedPeriod.value })
 }
 
 function retry(): void {
@@ -439,10 +451,21 @@ function errorRateClass(m: DashboardModelItem): string {
   grid-column: 1 / -1;
 }
 
-.chart-title {
+.chart-card-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+}
+
+.chart-card-title {
   font-size: var(--text-lg);
   font-weight: 600;
   color: var(--text);
+}
+
+.chart-card-subtitle {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
 }
 
 </style>

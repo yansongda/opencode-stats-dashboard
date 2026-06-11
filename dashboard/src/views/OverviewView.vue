@@ -28,6 +28,12 @@
 
         <!-- Content -->
         <template v-else>
+            <!-- Page Header -->
+            <div class="view-header resp-header">
+                <h1 class="view-title">概览</h1>
+                <TimeRangePicker v-model="selectedPeriod" />
+            </div>
+
             <!-- Metric Cards -->
             <div class="metrics-row resp-metrics-5" data-testid="metrics-row">
                 <MetricCard
@@ -77,10 +83,7 @@
 
             <!-- Usage Trend (dual y-axis: Token left, Messages right) -->
             <div class="trend-section" data-testid="trend-section">
-                <div class="section-header">
-                    <h3 class="section-title">使用趋势</h3>
-                    <TimeRangePicker v-model="selectedPeriod" />
-                </div>
+                <h3 class="section-title">使用趋势</h3>
                 <LineChart
                     :x-data="trendDates"
                     :series="trendSeries"
@@ -94,9 +97,27 @@
                 />
             </div>
 
+            <!-- Working Hour Heatmap -->
+            <div class="chart-card" data-testid="working-hour-heatmap">
+                <div class="chart-card-header">
+                    <h3 class="chart-card-title">工作时段分布</h3>
+                    <span class="chart-card-subtitle">消息活跃度按小时 × 星期</span>
+                </div>
+                <HeatmapChart
+                    :data="heatmapData"
+                    :day-labels="dayLabels"
+                    height="280px"
+                    min-color="#eff6ff"
+                    max-color="#3b82f6"
+                />
+            </div>
+
             <!-- Model Distribution: cost + messages in one card -->
             <div class="chart-card" data-testid="model-distribution">
-                <h3 class="section-title">模型分布</h3>
+                <div class="chart-card-header">
+                    <h3 class="chart-card-title">模型分布</h3>
+                    <span class="chart-card-subtitle">成本分布仅显示成本最高的 5 个模型，消息分布显示全部有消息的模型</span>
+                </div>
                 <EmptyState
                     v-if="modelCostPieRawData.length === 0 && modelMessagePieRawData.length === 0"
                     title="暂无模型数据"
@@ -163,7 +184,10 @@
 
             <!-- Project Distribution: cost + sessions in one card -->
             <div class="chart-card" data-testid="project-distribution">
-                <h3 class="section-title">项目分布</h3>
+                <div class="chart-card-header">
+                    <h3 class="chart-card-title">项目分布</h3>
+                    <span class="chart-card-subtitle">仅显示用量最高的 8 个项目，其余归入「其他」</span>
+                </div>
                 <EmptyState
                     v-if="projectCostPieRawData.length === 0 && projectSessionPieRawData.length === 0"
                     title="暂无项目数据"
@@ -228,16 +252,6 @@
                 </template>
             </div>
 
-            <!-- Tool Top 5 -->
-            <div class="chart-card" data-testid="tool-top5">
-                <h3 class="section-title">工具调用 Top 5</h3>
-                <BarChart
-                    :x-data="toolNames"
-                    :series="toolSeries"
-                    height="260px"
-                    :horizontal="true"
-                />
-            </div>
         </template>
     </div>
 </template>
@@ -249,13 +263,12 @@ import EmptyState from "../components/EmptyState.vue";
 import LoadingState from "../components/LoadingState.vue";
 import LineChart from "../charts/LineChart.vue";
 import PieChart from "../charts/PieChart.vue";
-import BarChart from "../charts/BarChart.vue";
+import HeatmapChart from "../charts/HeatmapChart.vue";
 import TimeRangePicker from "../components/TimeRangePicker.vue";
-import type { TimeRange } from "../components/TimeRangePicker.vue";
 import { useOverviewStore } from "../stores/overview";
-import type { DashboardProjectItem } from "../api/client";
+import type { DashboardOverviewProjectDistributionItem, DashboardEfficiencyHeatmapPoint } from "../api/client";
 import { formatTokens, formatCost, formatNumber } from "../utils/format";
-import { formatBucketLocal, getRangeMs } from "../utils/timezone";
+import { formatBucketLocal, getRangeMs, type TimeRange } from "../utils/timezone";
 
 // ── ECharts default palette (matches PieChart.vue) ─────────────────
 
@@ -292,7 +305,7 @@ const STALE_MS = 60_000;
 
 function doFetch(): void {
     const { start, end } = getRangeMs(selectedPeriod.value);
-    void store.fetchOverview(start, end);
+    void store.fetchOverview(start, end, { range: selectedPeriod.value });
 }
 
 function retryFetch(): void {
@@ -316,7 +329,6 @@ const overview = computed(() => store.overview.value);
 const loading = computed(() => store.loading.value);
 const error = computed(() => store.error.value);
 const trendData = computed(() => store.trend.value);
-const topTools = computed(() => store.topTools.value);
 const topModels = computed(() => store.topModels.value);
 const projects = computed(() => store.projects.value);
 
@@ -449,8 +461,8 @@ function formatProjectPath(path: string): string {
 }
 
 function buildProjectPieData(
-    items: DashboardProjectItem[],
-    accessor: (p: DashboardProjectItem) => number,
+    items: DashboardOverviewProjectDistributionItem[],
+    accessor: (p: DashboardOverviewProjectDistributionItem) => number,
     precision: number,
 ): Array<{ name: string; value: number }> {
     const withData = items.filter((p) => accessor(p) > 0);
@@ -459,7 +471,7 @@ function buildProjectPieData(
     const top = sorted.slice(0, MAX_PIE_SLICES);
     const rest = sorted.slice(MAX_PIE_SLICES);
     const result: Array<{ name: string; value: number }> = top.map((p) => ({
-        name: formatProjectPath(p.project_path),
+        name: formatProjectPath(p.project_path ?? ""),
         value: precision > 0 ? Number(accessor(p).toFixed(precision)) : accessor(p),
     }));
     if (rest.length > 0) {
@@ -516,19 +528,20 @@ const projectSessionTooltip = (params: unknown): string => {
     return `${p.name}<br/>会话: ${p.value.toLocaleString("en-US")} (${p.percent.toFixed(1)}%)`;
 };
 
-// ── Tool Top 5 ─────────────────────────────────────────────────────
+// ── Working Hour Heatmap ───────────────────────────────────────────
 
-const toolNames = computed(() =>
-    topTools.value.slice(0, 5).map((t) => t.tool_name),
+const dayLabels = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+
+function mapHeatmapPoint(p: DashboardEfficiencyHeatmapPoint): { day: number; hour: number; value: number } {
+    // API weekday: 0=Sunday (SQLite strftime('%w')), 6=Saturday
+    // Chart day: 0=Monday, 6=Sunday
+    const day = p.weekday === 0 ? 6 : p.weekday - 1;
+    return { day, hour: p.hour, value: p.messages };
+}
+
+const heatmapData = computed(() =>
+    store.heatmap.value.map(mapHeatmapPoint),
 );
-
-const toolSeries = computed(() => [
-    {
-        name: "调用次数",
-        data: topTools.value.slice(0, 5).map((t) => t.call_count),
-        color: "#8b5cf6",
-    },
-]);
 
 // ── Lifecycle ──────────────────────────────────────────────────────
 
@@ -541,6 +554,20 @@ onActivated(fetchIfStale);
     display: flex;
     flex-direction: column;
     gap: var(--spacing-4);
+}
+
+/* ── View Header ─────────────────────────────────────────────────── */
+
+.view-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.view-title {
+    font-size: var(--text-2xl);
+    font-weight: 600;
+    color: var(--text);
 }
 
 /* ── Metrics Row ────────────────────────────────────────────────── */
@@ -591,6 +618,23 @@ onActivated(fetchIfStale);
 
 .chart-card:hover {
     border-color: var(--primary);
+}
+
+.chart-card-header {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-1);
+}
+
+.chart-card-title {
+    font-size: var(--text-lg);
+    font-weight: 600;
+    color: var(--text);
+}
+
+.chart-card-subtitle {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
 }
 
 /* ── Shared Legend ───────────────────────────────────────────────── */

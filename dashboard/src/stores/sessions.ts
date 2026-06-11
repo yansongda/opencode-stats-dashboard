@@ -22,7 +22,7 @@ export async function fetchSessions(
   end?: number,
   params?: FetchSessionsParams,
   options?: { silent?: boolean },
-): Promise<void> {
+): Promise<boolean> {
   const silent = options?.silent ?? false
   const isSilentOnlyRefresh = options !== undefined && start === undefined && end === undefined && params === undefined
 
@@ -41,12 +41,14 @@ export async function fetchSessions(
     const res = await fetchDashboardSessions(start, end, params)
     sessions.value = res.data
     lastFetchedAt.value = Date.now()
+    return true
   } catch (err) {
     if (!silent) {
       error.value = err instanceof Error ? err.message : '加载会话数据时发生未知错误'
     } else {
       console.warn('[silent fetch] sessions failed:', err instanceof Error ? err.message : err)
     }
+    return false
   } finally {
     if (!silent) {
       loading.value = false

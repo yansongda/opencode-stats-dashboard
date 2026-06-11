@@ -65,64 +65,38 @@
       />
     </div>
 
-    <!-- Two-column: Timeline Tokens + Tool/Error Trend -->
-    <div class="chart-row resp-two-col">
-      <div class="chart-card" data-testid="timeline-tokens-section">
-        <div class="chart-card-header">
-          <span class="chart-card-title">Token 与成本趋势</span>
-          <span class="chart-card-subtitle">按时间段聚合</span>
-        </div>
-        <BarChart
-          :x-data="timelineLabels"
-          :series="timelineTokenSeries"
-          height="260px"
-          y-label="Token"
-          right-y-label="成本 ($)"
-          :value-formatter="formatTokens"
-          :right-value-formatter="formatCost"
-          :tooltip-formatter="tokenCostTooltipFormatter"
-        />
+    <!-- Timeline Tokens + Cost -->
+    <div class="chart-card" data-testid="timeline-tokens-section">
+      <div class="chart-card-header">
+        <span class="chart-card-title">Token 与成本趋势</span>
+        <span class="chart-card-subtitle">按时间段聚合</span>
       </div>
-      <div class="chart-card" data-testid="tool-error-section">
-        <div class="chart-card-header">
-          <span class="chart-card-title">工具与错误趋势</span>
-          <span class="chart-card-subtitle">按时间段聚合</span>
-        </div>
-        <BarChart
-          :x-data="timelineLabels"
-          :series="toolErrorSeries"
-          height="260px"
-        />
-      </div>
+      <LineChart
+        :x-data="timelineLabels"
+        :series="timelineTokenSeries"
+        height="260px"
+        y-label="Token"
+        right-y-label="成本 ($)"
+        :value-formatter="formatTokens"
+        :right-value-formatter="formatCost"
+        :tooltip-formatter="tokenCostTooltipFormatter"
+      />
     </div>
 
-    <!-- Two-column: Task Completion Rate + Code Changes -->
-    <div class="chart-row resp-two-col">
-      <div class="chart-card" data-testid="task-completion-section">
-        <div class="chart-card-header">
-          <span class="chart-card-title">工具完成概况</span>
-          <span class="chart-card-subtitle">工具调用成功 / 失败</span>
-        </div>
-        <PieChart
-          :data="taskCompletionData"
-          height="260px"
-          :donut="true"
-        />
+    <!-- Code Changes -->
+    <div class="chart-card" data-testid="code-changes-section">
+      <div class="chart-card-header">
+        <span class="chart-card-title">代码变更趋势</span>
+        <span class="chart-card-subtitle">新增 / 删除 / 变更文件</span>
       </div>
-      <div class="chart-card" data-testid="code-changes-section">
-        <div class="chart-card-header">
-          <span class="chart-card-title">代码变更趋势</span>
-          <span class="chart-card-subtitle">每日增删行数</span>
-        </div>
-        <LineChart
-          :x-data="timelineLabels"
-          :series="codeChangesSeries"
-          height="260px"
-          :show-area="true"
-          :smooth="true"
-          y-label="行数"
-        />
-      </div>
+      <LineChart
+        :x-data="timelineLabels"
+        :series="codeChangesSeries"
+        height="260px"
+        :show-area="true"
+        :smooth="true"
+        y-label="数量"
+      />
     </div>
     </template>
   </div>
@@ -134,15 +108,12 @@ import MetricCard from '../components/MetricCard.vue'
 import EmptyState from '../components/EmptyState.vue'
 import LoadingState from '../components/LoadingState.vue'
 import HeatmapChart from '../charts/HeatmapChart.vue'
-import BarChart from '../charts/BarChart.vue'
-import PieChart from '../charts/PieChart.vue'
 import LineChart from '../charts/LineChart.vue'
 import TimeRangePicker from '../components/TimeRangePicker.vue'
-import type { TimeRange } from '../components/TimeRangePicker.vue'
 import type { DashboardEfficiencyHeatmapPoint } from '../api/client'
 import { useEfficiencyStore } from '../stores/efficiency'
 import { formatCost, formatTokens } from '../utils/format'
-import { formatBucketLocal, getRangeMs } from '../utils/timezone'
+import { formatBucketLocal, getRangeMs, type TimeRange } from '../utils/timezone'
 
 // ── Store ───────────────────────────────────────────────────────────
 const { efficiencyData, loading, error, lastFetchedAt, fetchEfficiency } = useEfficiencyStore()
@@ -157,7 +128,7 @@ const selectedPeriod = ref<TimeRange>('7d')
 
 function fetchData(): void {
   const { start, end } = getRangeMs(selectedPeriod.value)
-  void fetchEfficiency(start, end)
+  void fetchEfficiency(start, end, { range: selectedPeriod.value })
 }
 
 // Initial load
@@ -215,7 +186,7 @@ const filesChanged = computed(() => {
 
 // ── Working Hour Heatmap ───────────────────────────────────────────
 
-const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+const dayLabels = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 
 function mapHeatmapPoint(p: DashboardEfficiencyHeatmapPoint): { day: number; hour: number; value: number } {
   // API weekday: 0=Sunday (SQLite strftime('%w')), 6=Saturday
@@ -260,25 +231,6 @@ const tokenCostTooltipFormatter = (params: unknown): string => {
   return `<div style="font-size:12px">${header ? `<div style="margin-bottom:4px">${header}</div>` : ''}${lines.join('<br>')}</div>`
 }
 
-const toolErrorSeries = computed(() => {
-  if (!efficiencyData.value) return []
-  return [
-    { name: '工具调用', data: efficiencyData.value.timeline.map(p => p.files_changed), color: '#8b5cf6' },
-    { name: '消息数', data: efficiencyData.value.timeline.map(p => p.messages), color: '#16a34a' },
-  ]
-})
-
-// ── Task Completion Rate ───────────────────────────────────────────
-
-const taskCompletionData = computed(() => {
-  if (!summary.value) return []
-  const { total_sessions, total_messages } = summary.value
-  return [
-    { name: '会话', value: total_sessions },
-    { name: '消息', value: total_messages },
-  ]
-})
-
 // ── Code Changes ───────────────────────────────────────────────────
 
 const codeChangesSeries = computed(() => {
@@ -286,6 +238,7 @@ const codeChangesSeries = computed(() => {
   return [
     { name: '新增行', data: efficiencyData.value.timeline.map(p => p.lines_added), color: '#16a34a' },
     { name: '删除行', data: efficiencyData.value.timeline.map(p => p.lines_deleted), color: '#ef4444' },
+    { name: '变更文件', data: efficiencyData.value.timeline.map(p => p.files_changed), color: '#3b82f6' },
   ]
 })
 </script>

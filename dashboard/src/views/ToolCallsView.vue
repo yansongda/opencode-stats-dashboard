@@ -42,6 +42,23 @@
       </div>
     </div>
 
+    <!-- Tool Usage Trend -->
+    <section class="section" data-testid="tools-trend">
+      <h2 class="section-title">工具使用趋势</h2>
+      <div v-if="trendDisplayLabels.length === 0" class="chart-empty">
+        暂无趋势数据
+      </div>
+      <LineChart
+        v-else
+        :x-data="trendDisplayLabels"
+        :series="trendSeries"
+        height="280px"
+        :smooth="true"
+        :show-area="true"
+        y-label="调用次数"
+      />
+    </section>
+
     <!-- Tool Ranking Table -->
     <section class="section" data-testid="tools-ranking">
       <h2 class="section-title">工具使用排行</h2>
@@ -90,23 +107,6 @@
       </div>
     </section>
 
-    <!-- Tool Usage Trend -->
-    <section class="section" data-testid="tools-trend">
-      <h2 class="section-title">工具使用趋势</h2>
-      <div v-if="trendDisplayLabels.length === 0" class="chart-empty">
-        暂无趋势数据
-      </div>
-      <LineChart
-        v-else
-        :x-data="trendDisplayLabels"
-        :series="trendSeries"
-        height="280px"
-        :smooth="true"
-        :show-area="true"
-        y-label="调用次数"
-      />
-    </section>
-
     <!-- Bottom Row: Error Distribution + Average Duration Overview -->
     <div class="bottom-row resp-two-col" data-testid="tools-charts">
       <!-- Error Distribution Pie -->
@@ -142,7 +142,10 @@
 
     <!-- Recent Errors -->
     <section class="section" data-testid="tools-recent-errors">
-      <h2 class="section-title">最近错误</h2>
+      <div class="section-header">
+        <h2 class="section-title">最近错误</h2>
+        <span class="section-subtitle">默认显示最近 20 条错误</span>
+      </div>
       <div v-if="recentErrors.length === 0" class="chart-empty">
         暂无最近错误
       </div>
@@ -178,13 +181,12 @@ import { ref, computed, watch, onMounted, onActivated } from 'vue'
 import EmptyState from '../components/EmptyState.vue'
 import LoadingState from '../components/LoadingState.vue'
 import TimeRangePicker from '../components/TimeRangePicker.vue'
-import type { TimeRange } from '../components/TimeRangePicker.vue'
 import LineChart from '../charts/LineChart.vue'
 import PieChart from '../charts/PieChart.vue'
 import BarChart from '../charts/BarChart.vue'
 import { useToolsStore } from '../stores/tools'
 import { formatNumber } from '../utils/format'
-import { formatBucketLocal, formatTimestampShort, getRangeMs } from '../utils/timezone'
+import { formatBucketLocal, formatTimestampShort, getRangeMs, type TimeRange } from '../utils/timezone'
 import type { DashboardToolItem, DashboardToolTimelinePoint } from '../api/client'
 
 // ── Store ──────────────────────────────────────────────────────────
@@ -216,7 +218,7 @@ const STALE_MS = 60_000
 
 function fetchData(): void {
   const { start, end } = getRangeMs(selectedPeriod.value)
-  void store.fetchTools(start, end)
+  void store.fetchTools(start, end, { range: selectedPeriod.value })
 }
 
 function retryFetch(): void {
@@ -450,6 +452,17 @@ function truncateId(id: string): string {
   font-size: var(--text-lg);
   font-weight: 600;
   color: var(--text);
+}
+
+.section-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+}
+
+.section-subtitle {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
 }
 
 /* ── Data Table ─────────────────────────────────────────────────────── */

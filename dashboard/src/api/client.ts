@@ -41,7 +41,6 @@ export interface DashboardOverviewSummary {
   lines_deleted: number
   total_projects: number
   total_models: number
-  active_days: number
   avg_tokens_per_session: number | null
   avg_cost_per_session: number | null
   avg_messages_per_session: number | null
@@ -86,13 +85,21 @@ export interface DashboardOverviewTopTool {
   avg_duration_ms: number | null
 }
 
+export interface DashboardOverviewProjectDistributionItem {
+  project_path: string | null
+  session_count: number
+  cost_usd: number
+}
+
 export interface DashboardOverviewData {
   summary: DashboardOverviewSummary
   trend: DashboardOverviewTrendPoint[]
+  heatmap: DashboardEfficiencyHeatmapPoint[]
   recent_sessions: DashboardOverviewRecentSession[]
   top_models: DashboardOverviewTopModel[]
   top_tools: DashboardOverviewTopTool[]
   model_message_distribution: Array<{ model: string; message_count: number; percentage: number }>
+  project_distribution: DashboardOverviewProjectDistributionItem[]
 }
 
 // -- 2. GET /api/v1/dashboard/efficiency ---------------------------------
@@ -257,6 +264,7 @@ export interface DashboardProjectActivityTrendPoint {
 export interface DashboardProjectModelUsageItem {
   project_path: string
   model: string
+  sessions: number
   messages: number
   tokens: number
   cost_usd: number
@@ -440,14 +448,6 @@ export interface DashboardSessionDetailData {
   errors: DashboardSessionError[]
 }
 
-// ── SSE types ──────────────────────────────────────────────────────────
-
-export interface LatestResponse {
-  last_event_id: string | null
-  updated_at: string | null
-  message?: string
-}
-
 // ── Time range (millisecond timestamps) ────────────────────────────────
 
 export interface DashboardTimeRange {
@@ -589,10 +589,6 @@ export function fetchDashboardSessionDetail(
 export function connectSSE(): EventSource {
   const url = buildUrl('/api/v1/dashboard/stream')
   return new EventSource(url)
-}
-
-export function fetchLatest(): Promise<LatestResponse> {
-  return getJson<LatestResponse>('/api/v1/events/latest')
 }
 
 

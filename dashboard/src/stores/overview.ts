@@ -1,13 +1,14 @@
 import { ref, type Ref } from 'vue'
 import {
   fetchDashboardOverview,
-  fetchDashboardProjects,
+  type DashboardEfficiencyHeatmapPoint,
   type DashboardOverviewSummary,
   type DashboardOverviewTrendPoint,
   type DashboardOverviewTopModel,
   type DashboardOverviewTopTool,
-  type DashboardProjectItem,
+  type DashboardOverviewProjectDistributionItem,
 } from '../api/client'
+import { getRangeMs, type TimeRange } from '../utils/timezone'
 
 export interface ModelMessageDistributionItem {
   model: string
@@ -17,26 +18,31 @@ export interface ModelMessageDistributionItem {
 
 const overview = ref<DashboardOverviewSummary | null>(null) as Ref<DashboardOverviewSummary | null>
 const trend = ref<DashboardOverviewTrendPoint[]>([]) as Ref<DashboardOverviewTrendPoint[]>
+const heatmap = ref<DashboardEfficiencyHeatmapPoint[]>([]) as Ref<DashboardEfficiencyHeatmapPoint[]>
 const topModels = ref<DashboardOverviewTopModel[]>([]) as Ref<DashboardOverviewTopModel[]>
 const topTools = ref<DashboardOverviewTopTool[]>([]) as Ref<DashboardOverviewTopTool[]>
 const modelMessageDistribution = ref<ModelMessageDistributionItem[]>([]) as Ref<ModelMessageDistributionItem[]>
-const projects = ref<DashboardProjectItem[]>([]) as Ref<DashboardProjectItem[]>
+const projects = ref<DashboardOverviewProjectDistributionItem[]>([]) as Ref<DashboardOverviewProjectDistributionItem[]>
 const loading = ref(false) as Ref<boolean>
 const error = ref<string | null>(null) as Ref<string | null>
 const lastFetchedAt = ref<number | null>(null) as Ref<number | null>
 
-const lastParams = ref<{ start?: number; end?: number } | null>(null)
+const lastParams = ref<{ start?: number; end?: number; range?: TimeRange } | null>(null)
 
 export async function fetchOverview(
   start?: number,
   end?: number,
-  options?: { silent?: boolean },
-): Promise<void> {
+  options?: { silent?: boolean; range?: TimeRange },
+): Promise<boolean> {
   const silent = options?.silent ?? false
   const isSilentOnlyRefresh = options !== undefined && start === undefined && end === undefined
 
   if (arguments.length > 0 && !isSilentOnlyRefresh) {
-    lastParams.value = { start, end }
+    lastParams.value = { start, end, range: options?.range }
+  } else if (lastParams.value?.range) {
+    const range = getRangeMs(lastParams.value.range)
+    start = range.start
+    end = range.end
   } else if (lastParams.value) {
     start = lastParams.value.start
     end = lastParams.value.end
@@ -48,47 +54,26 @@ export async function fetchOverview(
   }
 
   try {
-    const [overviewResult, projectsResult] = await Promise.allSettled([
-      fetchDashboardOverview(start, end),
-      fetchDashboardProjects(start, end),
-    ])
+    const data = await fetchDashboardOverview(start, end)
 
-    const failedMessages: string[] = []
+    overview.value = data.summary
+    trend.value = data.trend ?? []
+    heatmap.value = data.heatmap ?? []
+    topModels.value = data.top_models ?? []
+    topTools.value = data.top_tools ?? []
+    modelMessageDistribution.value = data.model_message_distribution ?? []
+    projects.value = data.project_distribution ?? []
 
-    if (overviewResult.status === 'fulfilled') {
-      const overviewData = overviewResult.value
-      overview.value = overviewData.summary
-      trend.value = overviewData.trend ?? []
-      topModels.value = overviewData.top_models ?? []
-      topTools.value = overviewData.top_tools ?? []
-      modelMessageDistribution.value = overviewData.model_message_distribution ?? []
+    lastFetchedAt.value = Date.now()
+    return true
+  } catch (err) {
+    const msg = `overview failed: ${err instanceof Error ? err.message : String(err)}`
+    if (silent) {
+      console.warn(`[silent fetch] ${msg}`)
     } else {
-      const msg = `overview failed: ${overviewResult.reason instanceof Error ? overviewResult.reason.message : String(overviewResult.reason)}`
-      if (silent) {
-        console.warn(`[silent fetch] ${msg}`)
-      } else {
-        failedMessages.push(msg)
-      }
+      error.value = msg
     }
-
-    if (projectsResult.status === 'fulfilled') {
-      projects.value = projectsResult.value.projects ?? []
-    } else {
-      const msg = `projects failed: ${projectsResult.reason instanceof Error ? projectsResult.reason.message : String(projectsResult.reason)}`
-      if (silent) {
-        console.warn(`[silent fetch] ${msg}`)
-      } else {
-        failedMessages.push(msg)
-      }
-    }
-
-    if (overviewResult.status === 'fulfilled' || projectsResult.status === 'fulfilled') {
-      lastFetchedAt.value = Date.now()
-    }
-
-    if (!silent && failedMessages.length > 0) {
-      error.value = failedMessages.join('; ')
-    }
+    return false
   } finally {
     if (!silent) {
       loading.value = false
@@ -100,6 +85,7 @@ export function useOverviewStore() {
   return {
     overview,
     trend,
+    heatmap,
     topModels,
     topTools,
     modelMessageDistribution,

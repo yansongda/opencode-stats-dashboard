@@ -1,6 +1,8 @@
 <template>
   <div class="view-container" data-testid="sessions-view">
-    <h1 class="view-title">会话列表</h1>
+    <div class="view-header resp-header">
+      <h1 class="view-title">会话列表</h1>
+    </div>
 
     <!-- Loading State (initial no-data only) -->
     <LoadingState v-if="loading && !hasExistingData" message="加载会话数据中..." test-id="sessions-loading" />
@@ -208,17 +210,27 @@
       </div>
     </div>
 
-    <!-- Session Detail Panel -->
-    <div v-if="detailLoading" class="detail-panel" data-testid="session-detail-loading">
-      <div class="detail-loading">加载中...</div>
-    </div>
-    <div v-else-if="selectedDetail" class="detail-panel" data-testid="session-detail">
+    <!-- Session Detail Drawer -->
+    <div
+      v-if="selectedSessionId || detailLoading || selectedDetail"
+      class="detail-drawer-shell"
+      data-testid="session-detail-drawer"
+    >
+      <button
+        class="detail-backdrop"
+        type="button"
+        aria-label="关闭会话详情"
+        @click="closeDetail"
+      />
+      <aside class="detail-drawer" aria-label="会话详情">
+        <div v-if="detailLoading" class="detail-loading" data-testid="session-detail-loading">加载中...</div>
+        <template v-else-if="selectedDetail">
       <div class="detail-header">
         <h2 class="detail-title">
           会话详情
           <code class="detail-session-id">{{ selectedDetail.session.session_id }}</code>
         </h2>
-        <button class="btn btn-ghost btn-sm" @click="selectedSessionId = null">关闭</button>
+        <button class="btn btn-ghost btn-sm" @click="closeDetail">关闭</button>
       </div>
 
       <!-- Basic Info -->
@@ -448,13 +460,15 @@
           </table>
         </div>
       </div>
+        </template>
+      </aside>
     </div>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, h, onMounted, onActivated } from 'vue'
+import { ref, computed, watch, h, onMounted, onActivated, onUnmounted } from 'vue'
 import EmptyState from '../components/EmptyState.vue'
 import LoadingState from '../components/LoadingState.vue'
 import { useSessionsStore } from '../stores/sessions'
@@ -490,8 +504,14 @@ function retryFetch(): void {
   void refreshIfStale(true)
 }
 
-onMounted(() => { void refreshIfStale(true) })
+onMounted(() => {
+  void refreshIfStale(true)
+  window.addEventListener('keydown', handleDetailKeydown)
+})
 onActivated(() => { void refreshIfStale(false) })
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleDetailKeydown)
+})
 
 // ── Filters ──────────────────────────────────────────────────────────
 
@@ -646,21 +666,37 @@ const selectedSessionId = ref<string | null>(null)
 const selectedDetail = ref<DashboardSessionDetailData | null>(null)
 const detailLoading = ref(false)
 
+function closeDetail(): void {
+  selectedSessionId.value = null
+  selectedDetail.value = null
+  detailLoading.value = false
+}
+
+function handleDetailKeydown(event: KeyboardEvent): void {
+  if (event.key === 'Escape' && (selectedSessionId.value || selectedDetail.value || detailLoading.value)) {
+    closeDetail()
+  }
+}
+
 async function selectSession(sessionId: string): Promise<void> {
   if (selectedSessionId.value === sessionId) {
-    selectedSessionId.value = null
-    selectedDetail.value = null
+    closeDetail()
     return
   }
   selectedSessionId.value = sessionId
+  selectedDetail.value = null
   detailLoading.value = true
   try {
     const detail = await fetchDashboardSessionDetail(sessionId)
-    selectedDetail.value = detail
+    if (selectedSessionId.value === sessionId) {
+      selectedDetail.value = detail
+    }
   } catch {
     selectedDetail.value = null
   } finally {
-    detailLoading.value = false
+    if (selectedSessionId.value === sessionId) {
+      detailLoading.value = false
+    }
   }
 }
 
@@ -725,14 +761,20 @@ const StatusBadge = {
 /* ── View Container ─────────────────────────────────────────────────── */
 
 .view-container {
-  padding: var(--spacing-6);
-  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+}
+
+.view-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .view-title {
   font-size: var(--text-2xl);
   font-weight: 600;
-  margin-bottom: var(--spacing-4);
   color: var(--text);
 }
 
@@ -997,14 +1039,35 @@ const StatusBadge = {
   gap: var(--spacing-1);
 }
 
-/* ── Detail Panel ───────────────────────────────────────────────────── */
+/* ── Detail Drawer ──────────────────────────────────────────────────── */
 
-.detail-panel {
-  margin-top: var(--spacing-4);
+.detail-drawer-shell {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+}
+
+.detail-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.detail-drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: min(960px, 90vw);
+  height: 100%;
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  overflow: hidden;
+  border-left: 1px solid var(--border);
+  box-shadow: -24px 0 48px rgba(0, 0, 0, 0.35);
+  overflow-y: auto;
+  pointer-events: auto;
 }
 
 .detail-loading {
@@ -1176,6 +1239,11 @@ const StatusBadge = {
   .pagination-bar {
     flex-direction: column;
     gap: var(--spacing-2);
+  }
+
+  .detail-drawer {
+    width: 100vw;
+    padding: var(--spacing-3);
   }
 
   .detail-grid {

@@ -96,8 +96,9 @@
     <div class="charts-row">
       <!-- Project Activity Trend -->
       <div class="chart-card" data-testid="activity-trend-chart">
-        <div class="chart-header">
-          <span class="chart-title">项目活跃度趋势</span>
+        <div class="chart-card-header">
+          <span class="chart-card-title">项目活跃度趋势</span>
+          <span class="chart-card-subtitle">仅显示消息最多的 6 个项目</span>
         </div>
         <LineChart
           :x-data="trendDateLabels"
@@ -113,35 +114,49 @@
       </div>
     </div>
 
-    <div class="charts-row">
-      <!-- Model Usage Distribution -->
-      <div class="chart-card" data-testid="model-distribution-chart">
-        <div class="chart-header">
-          <span class="chart-title">模型使用分布</span>
-        </div>
-        <BarChart
-          :x-data="modelProjectNames"
-          :series="modelSeries"
-          :loading="store.loading.value"
-          height="280px"
-          :stacked="true"
-          y-label="会话数"
-        />
+    <div class="chart-card" data-testid="model-distribution">
+      <div class="chart-card-header">
+        <h3 class="chart-card-title">模型分布</h3>
+        <span class="chart-card-subtitle">仅显示消息最多的 8 个项目 × 5 个模型</span>
       </div>
-
-      <!-- Project-Model Message Distribution -->
-      <div class="chart-card" data-testid="message-distribution-chart">
-        <div class="chart-header">
-          <span class="chart-title">项目各模型消息数量分布</span>
+      <div class="shared-legend" v-if="topModels.length > 1">
+        <button
+          v-for="model in topModels"
+          :key="model.name"
+          type="button"
+          class="legend-item"
+          :class="{ dimmed: hiddenModels.has(model.name) }"
+          @click="toggleModel(model.name)"
+        >
+          <span class="legend-dot" :style="{ background: model.color }" />
+          <span class="legend-label">{{ model.name }}</span>
+        </button>
+      </div>
+      <div class="distribution-panes">
+        <div class="chart-pane">
+          <h4 class="chart-pane-title">会话分布</h4>
+          <BarChart
+            :x-data="modelProjectNames"
+            :series="sessionSeries"
+            :loading="store.loading.value"
+            height="280px"
+            :stacked="true"
+            y-label="会话数"
+            :show-legend="false"
+          />
         </div>
-        <BarChart
-          :x-data="messageDistProjectNames"
-          :series="messageDistSeries"
-          :loading="store.loading.value"
-          height="280px"
-          :stacked="true"
-          y-label="消息数"
-        />
+        <div class="chart-pane">
+          <h4 class="chart-pane-title">消息分布</h4>
+          <BarChart
+            :x-data="modelProjectNames"
+            :series="messageSeries"
+            :loading="store.loading.value"
+            height="280px"
+            :stacked="true"
+            y-label="消息数"
+            :show-legend="false"
+          />
+        </div>
       </div>
     </div>
     </template>
@@ -155,8 +170,7 @@ import { useProjectsStore } from '../stores/projects'
 import EmptyState from '../components/EmptyState.vue'
 import LoadingState from '../components/LoadingState.vue'
 import TimeRangePicker from '../components/TimeRangePicker.vue'
-import type { TimeRange } from '../components/TimeRangePicker.vue'
-import { formatRelativeTimeFromDate, formatBucketLocal, getRangeMs } from '../utils/timezone'
+import { formatRelativeTimeFromDate, formatBucketLocal, getRangeMs, type TimeRange } from '../utils/timezone'
 import { formatNumber, formatTokens, formatCost } from '../utils/format'
 import LineChart from '../charts/LineChart.vue'
 import BarChart from '../charts/BarChart.vue'
@@ -171,7 +185,7 @@ const selectedPeriod = ref<TimeRange>('7d')
 
 function refreshWithSort(): void {
   const { start, end } = getRangeMs(selectedPeriod.value)
-  void store.fetchProjects(start, end, { sort: sortKey.value, order: sortDir.value })
+  void store.fetchProjects(start, end, { sort: sortKey.value, order: sortDir.value }, { range: selectedPeriod.value })
 }
 
 function refreshData(): void {
@@ -278,106 +292,96 @@ const trendSeries = computed(() => {
 // ── Model Distribution Chart Data (from project_model_usage) ──────
 
 const CHART_COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#ec4899']
+const MAX_MODEL_PROJECTS = 8
+const MAX_MODEL_MODELS = 5
 
-const modelProjectNames = computed(() => {
+/** Top N projects ranked by total messages (shared across both panes). */
+const rankedProjects = computed(() => {
   const usage = store.projectModelUsage.value
-  const projectMessages = new Map<string, number>()
+  const totals = new Map<string, number>()
   for (const item of usage) {
-    projectMessages.set(item.project_path, (projectMessages.get(item.project_path) ?? 0) + item.messages)
+    totals.set(item.project_path, (totals.get(item.project_path) ?? 0) + item.messages)
   }
-  return [...projectMessages.entries()]
+  return [...totals.entries()]
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 8)
-    .map(([path]) => truncatePath(path))
+    .slice(0, MAX_MODEL_PROJECTS)
+    .map(([path]) => path)
 })
 
-const modelSeries = computed(() => {
+/** Top N models ranked by total messages (shared across both panes). */
+const rankedModels = computed(() => {
+  const usage = store.projectModelUsage.value
+  const totals = new Map<string, number>()
+  for (const item of usage) {
+    totals.set(item.model, (totals.get(item.model) ?? 0) + item.messages)
+  }
+  return [...totals.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, MAX_MODEL_MODELS)
+    .map(([model]) => model)
+})
+
+/** Models with color for the shared legend. */
+const topModels = computed(() =>
+  rankedModels.value.map((name, idx) => ({
+    name,
+    color: CHART_COLORS[idx % CHART_COLORS.length],
+  })),
+)
+
+/** Truncated project names for x-axis. */
+const modelProjectNames = computed(() =>
+  rankedProjects.value.map(truncatePath),
+)
+
+/** Hidden models toggle (replaced as new Set for Vue reactivity). */
+const hiddenModels = ref<Set<string>>(new Set())
+
+function toggleModel(name: string): void {
+  const next = new Set(hiddenModels.value)
+  if (next.has(name)) {
+    next.delete(name)
+  } else {
+    next.add(name)
+  }
+  hiddenModels.value = next
+}
+
+type ModelUsageItem = {
+  project_path: string
+  model: string
+  sessions: number
+  messages: number
+}
+
+/** Build a series array from a value accessor, zeroing hidden models. */
+function buildSeries(
+  getValue: (item: ModelUsageItem) => number,
+): Array<{ name: string; data: number[]; color: string }> {
   const usage = store.projectModelUsage.value
   if (usage.length === 0) return []
+  const projects = rankedProjects.value
+  const hidden = hiddenModels.value
 
-  // Get top 8 projects by total messages
-  const projectMessages = new Map<string, number>()
-  for (const item of usage) {
-    projectMessages.set(item.project_path, (projectMessages.get(item.project_path) ?? 0) + item.messages)
-  }
-  const topProjects = [...projectMessages.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 8)
-    .map(([path]) => path)
+  return topModels.value.map((model) => ({
+    name: model.name,
+    data: hidden.has(model.name)
+      ? projects.map(() => 0)
+      : projects.map((projectPath) => {
+          const item = usage.find(
+            (u) => u.project_path === projectPath && u.model === model.name,
+          )
+          return item ? getValue(item) : 0
+        }),
+    color: model.color,
+  }))
+}
 
-  // Get top 5 models across all projects
-  const modelMessages = new Map<string, number>()
-  for (const item of usage) {
-    modelMessages.set(item.model, (modelMessages.get(item.model) ?? 0) + item.messages)
-  }
-  const topModels = [...modelMessages.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
-    .map(([model]) => model)
+/** Session-count series for 会话分布. */
+const sessionSeries = computed(() => buildSeries((item) => item.sessions))
 
-  return topModels.map((model, idx) => {
-    const data = topProjects.map((projectPath) => {
-      const item = usage.find((u) => u.project_path === projectPath && u.model === model)
-      return item?.messages ?? 0
-    })
-    return {
-      name: model,
-      data,
-      color: CHART_COLORS[idx % CHART_COLORS.length],
-    }
-  })
-})
-
-// ── Project-Model Message Distribution Chart Data ──────────────────
-
-const messageDistProjectNames = computed(() => {
-  const usage = store.projectModelUsage.value
-  const projectMessages = new Map<string, number>()
-  for (const item of usage) {
-    projectMessages.set(item.project_path, (projectMessages.get(item.project_path) ?? 0) + item.messages)
-  }
-  return [...projectMessages.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 8)
-    .map(([path]) => truncatePath(path))
-})
-
-const messageDistSeries = computed(() => {
-  const usage = store.projectModelUsage.value
-  if (usage.length === 0) return []
-
-  // Top 8 projects by total messages
-  const projectMessages = new Map<string, number>()
-  for (const item of usage) {
-    projectMessages.set(item.project_path, (projectMessages.get(item.project_path) ?? 0) + item.messages)
-  }
-  const topProjects = [...projectMessages.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 8)
-    .map(([path]) => path)
-
-  // Top 5 models by total messages
-  const modelMessages = new Map<string, number>()
-  for (const item of usage) {
-    modelMessages.set(item.model, (modelMessages.get(item.model) ?? 0) + item.messages)
-  }
-  const topModels = [...modelMessages.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
-    .map(([model]) => model)
-
-  return topModels.map((model, idx) => {
-    const data = topProjects.map((projectPath) => {
-      const item = usage.find((u) => u.project_path === projectPath && u.model === model)
-      return item?.messages ?? 0
-    })
-    return {
-      name: model,
-      data,
-      color: CHART_COLORS[idx % CHART_COLORS.length],
-    }
-  })
-})
+/** Message-count series for 消息分布. */
+const messageSeries = computed(() => buildSeries((item) => item.messages))
 
 // ── Formatters ─────────────────────────────────────────────────────
 
@@ -568,10 +572,94 @@ function formatLastActive(ts: number | null): string {
   align-items: center;
 }
 
-.chart-title {
+.chart-title,
+.section-title {
   font-size: var(--text-lg);
   font-weight: 600;
   color: var(--text);
+}
+
+.chart-card-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+}
+
+.chart-card-title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.chart-card-subtitle {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.distribution-panes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-4);
+}
+
+.chart-pane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+  min-width: 0;
+}
+
+.chart-pane-title {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* ── Shared Legend ─────────────────────────────────────────────────── */
+
+.shared-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--spacing-3);
+  padding: var(--spacing-1) 0;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  user-select: none;
+  transition: opacity 0.15s ease;
+}
+
+.legend-item.dimmed {
+  opacity: 0.35;
+}
+
+.legend-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.legend-label {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+@media (max-width: 767px) {
+  .distribution-panes {
+    grid-template-columns: 1fr;
+  }
 }
 
 </style>

@@ -49,6 +49,8 @@ const props = withDefaults(
     rightYLabel?: string
     /** Right y-axis value formatter */
     rightValueFormatter?: (value: number) => string
+    /** Show built-in legend (default true; set false for external legend) */
+    showLegend?: boolean
   }>(),
   {
     height: '300px',
@@ -62,6 +64,7 @@ const props = withDefaults(
     valueFormatter: undefined,
     rightYLabel: '',
     rightValueFormatter: undefined,
+    showLegend: true,
   },
 )
 
@@ -123,7 +126,7 @@ const chartOption = computed<EChartsOption | null>(() => {
             : {}),
       },
       legend: {
-        show: props.series.length > 1,
+        show: props.showLegend && props.series.length > 1,
         top: 0,
         textStyle: { fontSize: 12 },
       },
@@ -131,7 +134,7 @@ const chartOption = computed<EChartsOption | null>(() => {
         left: '3%',
         right: '4%',
         bottom: '3%',
-        top: props.series.length > 1 ? 40 : 20,
+        top: props.showLegend && props.series.length > 1 ? 40 : 20,
         containLabel: true,
       },
       xAxis: valueAxis,
@@ -231,7 +234,7 @@ const chartOption = computed<EChartsOption | null>(() => {
           : {}),
     },
     legend: {
-      show: props.series.length > 1,
+      show: props.showLegend && props.series.length > 1,
       top: 0,
       textStyle: { fontSize: 12 },
     },
@@ -239,7 +242,7 @@ const chartOption = computed<EChartsOption | null>(() => {
       left: '3%',
       right: rightGap,
       bottom: '3%',
-      top: props.series.length > 1 ? 40 : 20,
+      top: props.showLegend && props.series.length > 1 ? 40 : 20,
       containLabel: true,
     },
     xAxis: categoryAxis,

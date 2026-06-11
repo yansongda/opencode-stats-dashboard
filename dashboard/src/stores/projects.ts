@@ -6,6 +6,7 @@ import {
   type DashboardProjectActivityTrendPoint,
   type DashboardProjectModelUsageItem,
 } from '../api/client'
+import { getRangeMs, type TimeRange } from '../utils/timezone'
 
 const projects = ref<DashboardProjectItem[]>([]) as Ref<DashboardProjectItem[]>
 const projectsSummary = ref<DashboardProjectsSummary | null>(null) as Ref<DashboardProjectsSummary | null>
@@ -19,19 +20,25 @@ const lastParams = ref<{
   start?: number
   end?: number
   params?: { sort?: string; order?: 'asc' | 'desc' }
+  range?: TimeRange
 } | null>(null)
 
 export async function fetchProjects(
   start?: number,
   end?: number,
   params?: { sort?: string; order?: 'asc' | 'desc' },
-  options?: { silent?: boolean },
-): Promise<void> {
+  options?: { silent?: boolean; range?: TimeRange },
+): Promise<boolean> {
   const silent = options?.silent === true
   const isSilentOnlyRefresh = options !== undefined && start === undefined && end === undefined && params === undefined
 
   if (arguments.length > 0 && !isSilentOnlyRefresh) {
-    lastParams.value = { start, end, params }
+    lastParams.value = { start, end, params, range: options?.range }
+  } else if (lastParams.value?.range) {
+    const range = getRangeMs(lastParams.value.range)
+    start = range.start
+    end = range.end
+    params = lastParams.value.params
   } else if (lastParams.value) {
     start = lastParams.value.start
     end = lastParams.value.end
@@ -49,12 +56,14 @@ export async function fetchProjects(
     activityTrend.value = data.activity_trend
     projectModelUsage.value = data.project_model_usage
     lastFetchedAt.value = Date.now()
+    return true
   } catch (err) {
     if (silent) {
       console.warn('[silent fetch] projects failed:', err)
     } else {
       error.value = err instanceof Error ? err.message : '加载项目数据时发生未知错误'
     }
+    return false
   } finally {
     if (!silent) {
       loading.value = false
