@@ -49,6 +49,8 @@ const props = withDefaults(
     rightYLabel?: string
     /** Right y-axis value formatter */
     rightValueFormatter?: (value: number) => string
+    /** Force legend visibility even with a single series */
+    showLegend?: boolean
   }>(),
   {
     height: '300px',
@@ -62,12 +64,14 @@ const props = withDefaults(
     valueFormatter: undefined,
     rightYLabel: '',
     rightValueFormatter: undefined,
+    showLegend: false,
   },
 )
 
 // ── Chart Option ───────────────────────────────────────────────────
 
-const hasDualAxis = computed(() => !!props.rightYLabel)
+  const hasDualAxis = computed(() => !!props.rightYLabel)
+  const showLegend = computed(() => props.showLegend || props.series.length > 1)
 
 const chartOption = computed<EChartsOption | null>(() => {
   if (props.xData.length === 0 || props.series.length === 0) return null
@@ -144,7 +148,7 @@ const chartOption = computed<EChartsOption | null>(() => {
           : {}),
     },
     legend: {
-      show: props.series.length > 1,
+      show: showLegend.value,
       top: 0,
       textStyle: {
         fontSize: 12,
@@ -154,7 +158,7 @@ const chartOption = computed<EChartsOption | null>(() => {
       left: '3%',
       right: rightGap,
       bottom: '3%',
-      top: props.series.length > 1 ? 40 : 20,
+      top: showLegend.value ? 40 : 20,
       containLabel: true,
     },
     xAxis: {
