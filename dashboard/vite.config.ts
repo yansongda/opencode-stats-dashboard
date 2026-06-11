@@ -5,7 +5,7 @@ export default defineConfig({
   plugins: [vue()],
   build: {
     outDir: 'dist',
-    sourcemap: true,
+    sourcemap: false,
   },
   server: {
     proxy: {
