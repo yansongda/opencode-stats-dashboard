@@ -530,10 +530,13 @@ export function fetchDashboardModels(
 export function fetchDashboardProjects(
   start?: number,
   end?: number,
+  params?: { sort?: string; order?: 'asc' | 'desc' },
 ): Promise<DashboardProjectsData> {
   return getJson<DashboardDataResponse<DashboardProjectsData>>('/api/v1/dashboard/projects', {
     start,
     end,
+    sort: params?.sort,
+    order: params?.order,
   }).then((r) => r.data)
 }
 
