@@ -26,15 +26,46 @@ const MIGRATIONS = [m001];
 /** 当前最新模式版本，由迁移列表长度决定 */
 export const CURRENT_VERSION = MIGRATIONS.length;
 
+/** PRAGMA journal_mode 重试次数上限 */
+const WAL_RETRY_COUNT = 10;
+
+/** PRAGMA journal_mode 单次重试等待毫秒 */
+const WAL_RETRY_DELAY_MS = 500;
+
 /**
  * 配置 SQLite PRAGMA 以优化性能
  *
  * 配置说明：
- *  - journal_mode = WAL：启用预写日志，支持并发读取和单写入者
+ *  - busy_timeout = 5000：为 DML 操作注册 busy handler（PRAGMA 语句不走 busy handler）
+ *  - journal_mode = WAL：启用预写日志，支持并发读取和单写入者；并发启动时可能遇到
+ *    SQLITE_BUSY，因此在 busy_timeout 之上再做显式重试循环
  *  - synchronous = NORMAL：在 WAL 模式下提供良好的持久性保证
  */
 export function configurePragmas(db: Database): void {
-  db.run("PRAGMA journal_mode = WAL");
+  db.run("PRAGMA busy_timeout = 5000");
+
+  for (let attempt = 0; attempt <= WAL_RETRY_COUNT; attempt++) {
+    try {
+      db.run("PRAGMA journal_mode = WAL");
+      break;
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      const isBusy =
+        (e as { code?: string }).code === "SQLITE_BUSY" ||
+        msg.includes("SQLITE_BUSY") ||
+        msg.includes("database is locked");
+      if (!isBusy || attempt === WAL_RETRY_COUNT) {
+        throw e;
+      }
+      Atomics.wait(
+        new Int32Array(new SharedArrayBuffer(4)),
+        0,
+        0,
+        WAL_RETRY_DELAY_MS,
+      );
+    }
+  }
+
   db.run("PRAGMA synchronous = NORMAL");
 }
 
@@ -92,8 +123,25 @@ export function runMigrations(db: Database): number {
         continue;
       }
       migration.up(db);
-      db.run("INSERT INTO schema_migrations (version) VALUES (?)", [version]);
-      appliedCount++;
+      // INSERT OR IGNORE 保证并发进程同时执行同一迁移时不会冲突；
+      // 外层 try/catch 作为防御性兜底，仅容忍主键冲突，其余错误继续抛出。
+      let inserted = false;
+      try {
+        const result = db.run(
+          "INSERT OR IGNORE INTO schema_migrations (version) VALUES (?)",
+          [version],
+        );
+        inserted = result.changes > 0;
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        const isPkConflict =
+          (e as { code?: string }).code === "SQLITE_CONSTRAINT_PRIMARYKEY" ||
+          msg.includes("UNIQUE constraint failed: schema_migrations");
+        if (!isPkConflict) {
+          throw e;
+        }
+      }
+      if (inserted) appliedCount++;
     }
   });
 
