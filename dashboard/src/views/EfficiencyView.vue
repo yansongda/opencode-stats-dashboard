@@ -95,7 +95,8 @@
         height="260px"
         :show-area="true"
         :smooth="true"
-        y-label="数量"
+        y-label="行数"
+        right-y-label="变更文件"
       />
     </div>
     </template>
@@ -238,7 +239,7 @@ const codeChangesSeries = computed(() => {
   return [
     { name: '新增行', data: efficiencyData.value.timeline.map(p => p.lines_added), color: '#16a34a' },
     { name: '删除行', data: efficiencyData.value.timeline.map(p => p.lines_deleted), color: '#ef4444' },
-    { name: '变更文件', data: efficiencyData.value.timeline.map(p => p.files_changed), color: '#3b82f6' },
+    { name: '变更文件', data: efficiencyData.value.timeline.map(p => p.files_changed), color: '#3b82f6', yAxisIndex: 1 },
   ]
 })
 </script>
