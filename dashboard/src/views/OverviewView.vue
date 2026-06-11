@@ -264,6 +264,7 @@ import BarChart from "../charts/BarChart.vue";
 import { useOverviewStore } from "../stores/overview";
 import type { DashboardProjectItem } from "../api/client";
 import { formatTokens, formatCost, formatNumber } from "../utils/format";
+import { formatBucketLocal } from "../utils/timezone";
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -371,7 +372,7 @@ const avgProjectMessages = computed(() =>
     divideOrNull(overview.value?.total_messages, overview.value?.total_projects),
 );
 
-const trendDates = computed(() => trendData.value.map((d) => d.date));
+const trendDates = computed(() => trendData.value.map((d) => formatBucketLocal(d.date)));
 
 const trendSeries = computed(() => [
     {

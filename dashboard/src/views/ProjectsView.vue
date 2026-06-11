@@ -55,6 +55,14 @@
             </th>
             <th
               class="col-number sortable"
+              :class="{ sorted: sortKey === 'message_count' }"
+              @click="toggleSort('message_count')"
+            >
+              消息数
+              <span class="sort-indicator">{{ sortIndicator('message_count') }}</span>
+            </th>
+            <th
+              class="col-number sortable"
               :class="{ sorted: sortKey === 'total_tokens' }"
               @click="toggleSort('total_tokens')"
             >
@@ -79,6 +87,7 @@
               <span class="project-path">{{ truncatePath(project.project_path) }}</span>
             </td>
             <td class="col-number">{{ formatNumber(project.session_count) }}</td>
+            <td class="col-number">{{ formatNumber(project.message_count) }}</td>
             <td class="col-number">{{ formatTokens(project.total_tokens) }}</td>
             <td class="col-number">{{ formatCost(project.cost_usd) }}</td>
             <td class="col-model">
@@ -88,7 +97,7 @@
             <td class="col-date">{{ formatLastActive(project.last_event_at_ms) }}</td>
           </tr>
           <tr v-if="store.projects.value.length === 0 && !store.loading.value">
-            <td colspan="6" class="empty-state">暂无项目数据</td>
+            <td colspan="7" class="empty-state">暂无项目数据</td>
           </tr>
         </tbody>
       </table>
@@ -102,13 +111,15 @@
           <span class="chart-title">项目活跃度趋势</span>
         </div>
         <LineChart
-          :x-data="trendDates"
+          :x-data="trendDateLabels"
           :series="trendSeries"
           :loading="store.loading.value"
           height="280px"
-          y-label="会话数"
+          y-label="消息数"
+          :value-formatter="formatNumber"
           :smooth="true"
           :show-area="true"
+          :show-legend="true"
         />
       </div>
     </div>
@@ -129,18 +140,18 @@
         />
       </div>
 
-      <!-- Tool Usage Distribution -->
-      <div class="chart-card" data-testid="tool-distribution-chart">
+      <!-- Project-Model Message Distribution -->
+      <div class="chart-card" data-testid="message-distribution-chart">
         <div class="chart-header">
-          <span class="chart-title">工具使用分布</span>
+          <span class="chart-title">项目各模型消息数量分布</span>
         </div>
         <BarChart
-          :x-data="toolNames"
-          :series="toolSeries"
+          :x-data="messageDistProjectNames"
+          :series="messageDistSeries"
           :loading="store.loading.value"
           height="280px"
-          y-label="调用次数"
-          :horizontal="true"
+          :stacked="true"
+          y-label="消息数"
         />
       </div>
     </div>
@@ -151,10 +162,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onActivated } from 'vue'
 import { useProjectsStore } from '../stores/projects'
-import { fetchDashboardTools, type DashboardToolItem } from '../api/client'
+
 import EmptyState from '../components/EmptyState.vue'
 import LoadingState from '../components/LoadingState.vue'
-import { formatRelativeTimeFromDate } from '../utils/timezone'
+import { formatRelativeTimeFromDate, formatBucketLocal } from '../utils/timezone'
 import { formatNumber, formatTokens, formatCost } from '../utils/format'
 import LineChart from '../charts/LineChart.vue'
 import BarChart from '../charts/BarChart.vue'
@@ -162,7 +173,6 @@ import BarChart from '../charts/BarChart.vue'
 // ── Store ──────────────────────────────────────────────────────────
 
 const store = useProjectsStore()
-const toolCalls = ref<DashboardToolItem[]>([])
 
 // ── Period ─────────────────────────────────────────────────────────
 
@@ -184,26 +194,18 @@ function getDateRange(period: Period): { start?: number; end?: number } {
   return { start: now - days * msPerDay, end: now }
 }
 
+function refreshWithSort(): void {
+  const { start, end } = getDateRange(selectedPeriod.value)
+  void store.fetchProjects(start, end, { sort: sortKey.value, order: sortDir.value })
+}
+
 function selectPeriod(period: Period): void {
   selectedPeriod.value = period
-  const { start, end } = getDateRange(period)
-  void store.fetchProjects(start, end)
-  void fetchTools(start, end)
+  refreshWithSort()
 }
 
 function refreshData(): void {
-  const { start, end } = getDateRange(selectedPeriod.value)
-  void store.fetchProjects(start, end)
-  void fetchTools(start, end)
-}
-
-async function fetchTools(start?: number, end?: number): Promise<void> {
-  try {
-    const data = await fetchDashboardTools(start, end)
-    toolCalls.value = data.tools
-  } catch {
-    // Tool calls fetch failure is non-critical
-  }
+  refreshWithSort()
 }
 
 // ── Lifecycle ──────────────────────────────────────────────────────
@@ -211,23 +213,19 @@ async function fetchTools(start?: number, end?: number): Promise<void> {
 const STALE_MS = 60_000
 
 onMounted(() => {
-  const { start, end } = getDateRange(selectedPeriod.value)
-  void store.fetchProjects(start, end)
-  void fetchTools(start, end)
+  refreshWithSort()
 })
 
 onActivated(() => {
   const last = store.lastFetchedAt.value
   if (last === null || Date.now() - last > STALE_MS) {
-    const { start, end } = getDateRange(selectedPeriod.value)
-    void store.fetchProjects(start, end)
-    void fetchTools(start, end)
+    refreshWithSort()
   }
 })
 
 // ── Sorting ────────────────────────────────────────────────────────
 
-type SortKey = 'project_path' | 'session_count' | 'total_tokens' | 'cost_usd'
+type SortKey = 'project_path' | 'session_count' | 'message_count' | 'total_tokens' | 'cost_usd'
 const sortKey = ref<SortKey>('cost_usd')
 const sortDir = ref<'asc' | 'desc'>('desc')
 
@@ -238,6 +236,7 @@ function toggleSort(key: SortKey): void {
     sortKey.value = key
     sortDir.value = key === 'project_path' ? 'asc' : 'desc'
   }
+  refreshWithSort()
 }
 
 function sortIndicator(key: SortKey): string {
@@ -261,7 +260,7 @@ const sortedProjects = computed(() => {
   return list
 })
 
-// ── Trend Chart Data (per-project activity trend) ──────────────────
+// ── Trend Chart Data (aggregate activity trend) ────────────────────
 
 const trendDates = computed(() => {
   const dates = new Set<string>()
@@ -271,33 +270,37 @@ const trendDates = computed(() => {
   return [...dates].sort()
 })
 
+const trendDateLabels = computed(() => trendDates.value.map(formatBucketLocal))
+
+const MAX_TREND_PROJECTS = 6
+
 const trendSeries = computed(() => {
   const usage = store.activityTrend.value
   if (usage.length === 0) return []
 
-  // Get top 5 projects by total sessions in the trend data
-  const projectSessions = new Map<string, number>()
+  // Rank projects by total messages over the period
+  const projectMessages = new Map<string, number>()
   for (const point of usage) {
-    projectSessions.set(point.project_path, (projectSessions.get(point.project_path) ?? 0) + point.sessions)
+    projectMessages.set(point.project_path, (projectMessages.get(point.project_path) ?? 0) + point.messages)
   }
-  const top5 = [...projectSessions.entries()]
+  const topProjects = [...projectMessages.entries()]
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
+    .slice(0, MAX_TREND_PROJECTS)
     .map(([path]) => path)
 
-  const projectColors = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6']
+  // Build a lookup: projectPath -> date -> messages
+  const lookup = new Map<string, Map<string, number>>()
+  for (const point of usage) {
+    if (!topProjects.includes(point.project_path)) continue
+    if (!lookup.has(point.project_path)) lookup.set(point.project_path, new Map())
+    lookup.get(point.project_path)!.set(point.date, point.messages)
+  }
 
-  return top5.map((projectPath, idx) => {
-    const data = trendDates.value.map((date) => {
-      const point = usage.find((p) => p.project_path === projectPath && p.date === date)
-      return point?.sessions ?? 0
-    })
-    return {
-      name: truncatePath(projectPath),
-      data,
-      color: projectColors[idx % projectColors.length],
-    }
-  })
+  return topProjects.map((projectPath, idx) => ({
+    name: truncatePath(projectPath),
+    data: trendDates.value.map((date) => lookup.get(projectPath)?.get(date) ?? 0),
+    color: CHART_COLORS[idx % CHART_COLORS.length],
+  }))
 })
 
 // ── Model Distribution Chart Data (from project_model_usage) ──────
@@ -353,19 +356,55 @@ const modelSeries = computed(() => {
   })
 })
 
-// ── Tool Distribution Chart Data ──────────────────────────────────
+// ── Project-Model Message Distribution Chart Data ──────────────────
 
-const toolNames = computed(() => toolCalls.value.slice(0, 10).map((t) => t.tool_name))
+const messageDistProjectNames = computed(() => {
+  const usage = store.projectModelUsage.value
+  const projectMessages = new Map<string, number>()
+  for (const item of usage) {
+    projectMessages.set(item.project_path, (projectMessages.get(item.project_path) ?? 0) + item.messages)
+  }
+  return [...projectMessages.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([path]) => truncatePath(path))
+})
 
-const toolSeries = computed(() => {
-  if (toolCalls.value.length === 0) return []
-  return [
-    {
-      name: '调用次数',
-      data: toolCalls.value.slice(0, 10).map((t) => t.call_count),
-      color: '#3b82f6',
-    },
-  ]
+const messageDistSeries = computed(() => {
+  const usage = store.projectModelUsage.value
+  if (usage.length === 0) return []
+
+  // Top 8 projects by total messages
+  const projectMessages = new Map<string, number>()
+  for (const item of usage) {
+    projectMessages.set(item.project_path, (projectMessages.get(item.project_path) ?? 0) + item.messages)
+  }
+  const topProjects = [...projectMessages.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([path]) => path)
+
+  // Top 5 models by total messages
+  const modelMessages = new Map<string, number>()
+  for (const item of usage) {
+    modelMessages.set(item.model, (modelMessages.get(item.model) ?? 0) + item.messages)
+  }
+  const topModels = [...modelMessages.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([model]) => model)
+
+  return topModels.map((model, idx) => {
+    const data = topProjects.map((projectPath) => {
+      const item = usage.find((u) => u.project_path === projectPath && u.model === model)
+      return item?.messages ?? 0
+    })
+    return {
+      name: model,
+      data,
+      color: CHART_COLORS[idx % CHART_COLORS.length],
+    }
+  })
 })
 
 // ── Formatters ─────────────────────────────────────────────────────

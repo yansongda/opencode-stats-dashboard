@@ -65,6 +65,11 @@
       <span class="summary-deleted">{{ deletedCount }} 已删除</span>
     </div>
 
+    <!-- Truncation Hint -->
+    <div v-if="allSessions.length === 500" class="summary-bar">
+      显示最近 500 条会话（可能还有更多，使用筛选缩小范围）
+    </div>
+
     <!-- Data Table -->
     <div class="table-wrapper resp-table-wrapper">
       <table class="data-table" data-testid="sessions-table">
@@ -102,6 +107,14 @@
             >
               Token
               <span class="sort-indicator">{{ sortIndicator('total_tokens') }}</span>
+            </th>
+            <th
+              class="col-msg-count sortable"
+              :class="{ sorted: sortKey === 'message_count' }"
+              @click="toggleSort('message_count')"
+            >
+              消息数
+              <span class="sort-indicator">{{ sortIndicator('message_count') }}</span>
             </th>
             <th
               class="col-cost sortable"
@@ -147,6 +160,7 @@
             </td>
             <td class="col-model">{{ session.primary_model ?? '—' }}</td>
             <td class="col-tokens">{{ formatTokens(session.total_tokens) }}</td>
+            <td class="col-msg-count">{{ formatNumber(session.message_count) }}</td>
             <td class="col-cost">{{ formatCost(session.total_cost_usd) }}</td>
             <td class="col-status">
               <StatusBadge :status="session.status" />
@@ -154,7 +168,7 @@
             <td class="col-date">{{ formatTimestamp(session.last_event_at_ms) }}</td>
           </tr>
           <tr v-if="paginatedSessions.length === 0">
-            <td colspan="8" class="empty-state">没有匹配当前过滤条件的会话</td>
+            <td colspan="9" class="empty-state">没有匹配当前过滤条件的会话</td>
           </tr>
         </tbody>
       </table>
@@ -468,7 +482,7 @@ async function refreshIfStale(force = false): Promise<void> {
   if (!force && store.lastFetchedAt.value != null && Date.now() - store.lastFetchedAt.value <= 60_000) {
     return
   }
-  await store.fetchSessions(undefined, undefined, { limit: 100 })
+  await store.fetchSessions(undefined, undefined, { limit: 500 })
 }
 
 function retryFetch(): void {
@@ -489,7 +503,7 @@ const dateTo = ref('')
 
 // ── Sorting ──────────────────────────────────────────────────────────
 
-type SortKey = 'session_id' | 'project_path' | 'primary_model' | 'total_tokens' | 'total_cost_usd' | 'last_event_at_ms'
+type SortKey = 'session_id' | 'project_path' | 'primary_model' | 'total_tokens' | 'message_count' | 'total_cost_usd' | 'last_event_at_ms'
 const sortKey = ref<SortKey>('last_event_at_ms')
 const sortDir = ref<'asc' | 'desc'>('desc')
 
@@ -498,7 +512,7 @@ function toggleSort(key: SortKey): void {
     sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc'
   } else {
     sortKey.value = key
-    sortDir.value = key === 'total_tokens' || key === 'total_cost_usd' ? 'desc' : 'asc'
+    sortDir.value = key === 'total_tokens' || key === 'total_cost_usd' || key === 'message_count' ? 'desc' : 'asc'
   }
 }
 
@@ -923,6 +937,7 @@ const StatusBadge = {
 }
 
 .col-tokens,
+.col-msg-count,
 .col-cost {
   text-align: center;
   white-space: nowrap;

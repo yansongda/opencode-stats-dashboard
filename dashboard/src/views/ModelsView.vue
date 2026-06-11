@@ -44,6 +44,9 @@
             <th class="col-sortable col-right" @click="toggleSort('session_count')">
               会话数 <span class="sort-arrow">{{ sortIndicator('session_count') }}</span>
             </th>
+            <th class="col-sortable col-right" @click="toggleSort('message_count')">
+              消息数 <span class="sort-arrow">{{ sortIndicator('message_count') }}</span>
+            </th>
             <th class="col-sortable col-right" @click="toggleSort('total_tokens')">
               Token <span class="sort-arrow">{{ sortIndicator('total_tokens') }}</span>
             </th>
@@ -60,11 +63,12 @@
         </thead>
         <tbody>
           <tr v-if="sortedModels.length === 0">
-            <td colspan="6" class="empty-row">暂无数据</td>
+            <td colspan="7" class="empty-row">暂无数据</td>
           </tr>
           <tr v-for="m in sortedModels" :key="m.model" :data-testid="`model-row-${m.model}`">
             <td class="col-monospace">{{ m.model }}</td>
             <td class="col-right">{{ formatNumber(m.session_count) }}</td>
+            <td class="col-right">{{ formatNumber(m.message_count) }}</td>
             <td class="col-right">{{ formatTokens(m.total_tokens) }}</td>
             <td class="col-right">{{ formatCost(m.cost_usd) }}</td>
             <td class="col-right">{{ formatCost(m.avg_cost_per_message ?? 0) }}</td>
@@ -78,7 +82,7 @@
       </table>
     </div>
 
-    <!-- Charts Grid -->
+    <!-- Charts Row 1: Token + Message/Session side by side -->
     <div class="charts-grid resp-two-col">
       <!-- Token Breakdown (Stacked Bar) -->
       <div class="chart-card" data-testid="token-breakdown-chart">
@@ -93,20 +97,34 @@
         />
       </div>
 
-      <!-- Cost Comparison (Bar) -->
-      <div class="chart-card" data-testid="cost-trend-chart">
-        <h3 class="chart-title">成本对比</h3>
+      <!-- Message/Session Comparison (Dual-Axis Bar) -->
+      <div class="chart-card" data-testid="message-session-chart">
+        <h3 class="chart-title">消息会话数对比</h3>
         <BarChart
-          :x-data="costChartLabels"
-          :series="costChartSeries"
+          :x-data="messageSessionChartLabels"
+          :series="messageSessionChartSeries"
           height="280px"
-          y-label="USD"
-          :value-formatter="formatCost"
+          y-label="会话数"
+          right-y-label="消息数"
+          :value-formatter="formatNumber"
+          :right-value-formatter="formatNumber"
         />
       </div>
     </div>
 
-    <!-- Cost-Performance Scatter -->
+    <!-- Charts Row 2: Cost Comparison (full width) -->
+    <div class="chart-card chart-card-full" data-testid="cost-trend-chart">
+      <h3 class="chart-title">成本对比</h3>
+      <BarChart
+        :x-data="costChartLabels"
+        :series="costChartSeries"
+        height="280px"
+        y-label="USD"
+        :value-formatter="formatCost"
+      />
+    </div>
+
+    <!-- Charts Row 3: Cost-Performance Scatter (full width) -->
     <div class="chart-card chart-card-full" data-testid="cost-performance-chart">
       <h3 class="chart-title">性价比分析</h3>
       <ScatterChart
@@ -146,7 +164,7 @@ const periods = [
   { value: 'all' as Period, label: '全部' },
 ]
 
-const selectedPeriod = ref<Period>('all')
+const selectedPeriod = ref<Period>('7d')
 
 function getDateRange(p: Period): { start?: number; end?: number } {
   if (p === 'all') return {}
@@ -157,7 +175,7 @@ function getDateRange(p: Period): { start?: number; end?: number } {
 
 function fetchCurrentPeriod(): void {
   const { start, end } = getDateRange(selectedPeriod.value)
-  store.fetchModels(start, end)
+  void store.fetchModels(start, end)
 }
 
 function selectPeriod(p: Period): void {
@@ -250,6 +268,34 @@ const costChartSeries = computed(() => [
     color: CHART_COLORS[0],
   },
 ])
+
+// ── Chart Data: Message/Session Comparison ────────────────────────────
+const messageSessionChartLabels = computed(() =>
+  [...store.models.value]
+    .sort((a, b) => b.session_count - a.session_count)
+    .slice(0, 8)
+    .map((m) => truncateModel(m.model)),
+)
+
+const messageSessionChartSeries = computed(() => {
+  const top8 = [...store.models.value]
+    .sort((a, b) => b.session_count - a.session_count)
+    .slice(0, 8)
+  return [
+    {
+      name: '会话数',
+      data: top8.map((m) => m.session_count),
+      color: '#3b82f6',
+      yAxisIndex: 0,
+    },
+    {
+      name: '消息数',
+      data: top8.map((m) => m.message_count),
+      color: '#10b981',
+      yAxisIndex: 1,
+    },
+  ]
+})
 
 // ── Chart Data: Scatter (Cost vs Output) ───────────────────────────────
 const scatterData = computed(() =>

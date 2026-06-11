@@ -87,7 +87,9 @@
           :series="timelineTokenSeries"
           height="260px"
           y-label="Token"
+          right-y-label="成本 ($)"
           :value-formatter="formatTokens"
+          :right-value-formatter="formatCost"
           :tooltip-formatter="tokenCostTooltipFormatter"
         />
       </div>
@@ -148,6 +150,7 @@ import LineChart from '../charts/LineChart.vue'
 import type { DashboardEfficiencyHeatmapPoint } from '../api/client'
 import { useEfficiencyStore } from '../stores/efficiency'
 import { formatCost, formatTokens } from '../utils/format'
+import { formatBucketLocal } from '../utils/timezone'
 
 // ── Store ───────────────────────────────────────────────────────────
 const { efficiencyData, loading, error, lastFetchedAt, fetchEfficiency } = useEfficiencyStore()
@@ -254,14 +257,14 @@ const heatmapData = computed(() => {
 
 const timelineLabels = computed(() => {
   if (!efficiencyData.value) return []
-  return efficiencyData.value.timeline.map(p => p.bucket)
+  return efficiencyData.value.timeline.map(p => formatBucketLocal(p.bucket))
 })
 
 const timelineTokenSeries = computed(() => {
   if (!efficiencyData.value) return []
   return [
     { name: 'Token', data: efficiencyData.value.timeline.map(p => p.tokens), color: '#3b82f6' },
-    { name: '成本 ($)', data: efficiencyData.value.timeline.map((p) => Number((p.cost_usd ?? 0).toFixed(4))), color: '#f59e0b' },
+    { name: '成本 ($)', data: efficiencyData.value.timeline.map((p) => Number((p.cost_usd ?? 0).toFixed(4))), color: '#f59e0b', yAxisIndex: 1 },
   ]
 })
 

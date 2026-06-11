@@ -104,12 +104,12 @@
     <!-- Tool Usage Trend -->
     <section class="section" data-testid="tools-trend">
       <h2 class="section-title">工具使用趋势</h2>
-      <div v-if="trendLabels.length === 0" class="chart-empty">
+      <div v-if="trendDisplayLabels.length === 0" class="chart-empty">
         暂无趋势数据
       </div>
       <LineChart
         v-else
-        :x-data="trendLabels"
+        :x-data="trendDisplayLabels"
         :series="trendSeries"
         height="280px"
         :smooth="true"
@@ -193,6 +193,7 @@ import PieChart from '../charts/PieChart.vue'
 import BarChart from '../charts/BarChart.vue'
 import { useToolsStore } from '../stores/tools'
 import { formatNumber } from '../utils/format'
+import { formatBucketLocal } from '../utils/timezone'
 import type { DashboardToolItem, DashboardToolTimelinePoint } from '../api/client'
 
 // ── Store ──────────────────────────────────────────────────────────
@@ -303,6 +304,8 @@ const trendLabels = computed(() => {
   const dates = new Set(store.toolTimeline.value.map((p: DashboardToolTimelinePoint) => p.date))
   return [...dates].sort()
 })
+
+const trendDisplayLabels = computed(() => trendLabels.value.map(formatBucketLocal))
 
 const trendSeries = computed(() => {
   const labels = trendLabels.value
