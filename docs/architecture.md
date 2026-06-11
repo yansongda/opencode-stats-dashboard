@@ -23,7 +23,7 @@
 | 目标 | 实现手段 |
 |------|----------|
 | 事件溯源: 所有状态可追溯、可重放 | 追加式事件表, 投影表从事件派生 |
-| 幂等写入 | `INSERT OR IGNORE` + 内存 `processedEvents` 集合 |
+| 幂等写入 | DB 层保障: `INSERT OR IGNORE` (events) + `ON CONFLICT DO UPDATE` (messages) |
 | 错误隔离 | `processEvent` 四阶段独立 try/catch |
 | 事务安全 | 投影处理器在 `db.transaction()` 内执行, 失败自动回滚 |
 | 隐私保护 | `FORBIDDEN_METADATA_KEYS` 禁止敏感字段进入元数据 |
@@ -129,11 +129,9 @@ events 表                  +--------+--------+
 路由事件到匹配的处理器, 在事务中执行。
 
 **核心流程:**
-1. 内存幂等检查 (`processedEvents: Set<string>`, 上限 10,000 条)
-2. 超过上限时 `clear()` 整个集合 (依赖 EventStore 层的 `INSERT OR IGNORE` 作为持久层幂等保障)
-3. 按 `event_type` 查找 `handles` 数组包含该类型的处理器
-4. 在 `db.transaction()` 中依次调用匹配的处理器
-5. 事务成功后标记 `event_id` 为已处理
+1. 按 `event_type` 查找 `handles` 数组包含该类型的处理器
+2. 在 `db.transaction()` 中依次调用匹配的处理器
+3. 幂等性由 DB 层保障: EventStore `INSERT OR IGNORE` 防止重复事件写入, messages 投影 `ON CONFLICT DO UPDATE` 实现安全 upsert
 
 **TransactionContext**: 处理器通过 `run()`, `query()`, `get()` 三个方法操作数据库, 所有操作共享同一事务。处理器抛异常则整个事务回滚。
 
@@ -248,7 +246,7 @@ SDK "message.part.updated"  -->  [ToolExecutePendingEvent]  (根据状态分发)
 | 处理器 | handles (事件类型) | 核心行为 |
 |--------|-------------------|----------|
 | `sessions` | 全部 10 种 | `session.created` 插入; 其余更新 `last_event_at_ms` 和 `duration_ms`; `message.*`/`tool.*` 事件通过 `ensureSessionExists()` 保证会话行存在 |
-| `messages` | `message.updated.user`, `message.updated.assistant` | INSERT OR REPLACE, 每条事件一行; assistant 消息记录 token/费用, user 消息记录 diff 统计 |
+| `messages` | `message.updated.user`, `message.updated.assistant` | `ON CONFLICT(message_id) DO UPDATE SET`, 每条消息一行; assistant 消息记录 token/费用, user 消息记录 diff 统计 |
 | `tool-calls` | `tool.execute.pending/running/completed/failed` | `pending` 插入 running 状态行; `completed`/`failed` 通过 `upsertToolCall()` 更新; `running` 当前为 no-op |
 
 ### 迁移系统
@@ -262,7 +260,7 @@ SDK "message.part.updated"  -->  [ToolExecutePendingEvent]  (根据状态分发)
 ## 关键不变量
 
 1. **事件不可变**: 写入 events 表后不修改、不删除
-2. **幂等双重保障**: 内存 `processedEvents` Set (上限 10,000) + 持久层 `INSERT OR IGNORE`
+2. **幂等保障**: DB 层 `INSERT OR IGNORE` (events 表) + `ON CONFLICT DO UPDATE` (messages 投影), 无内存去重集合
 3. **事务原子性**: 单个事件的所有投影操作在同一事务中, 任一失败则全部回滚
 4. **错误隔离**: `processEvent` 中 convert/store/project/broadcast 四阶段独立 try/catch, 互不阻断
 5. **会话存在性**: `ensureSessionExists()` 保证 message/tool 事件到达时目标会话行已存在
@@ -290,7 +288,6 @@ SDK "message.part.updated"  -->  [ToolExecutePendingEvent]  (根据状态分发)
 
 - 转换器支持 1:N 映射 (一个 SDK 事件产生多个 StatsEvent), 新增转换器时考虑是否需要拆分
 - 投影处理器在事务中运行, 不应执行耗时操作或外部调用
-- `processedEvents` Set 在达到 10,000 条时整体清空, 依赖持久层幂等保障
 
 ---
 
@@ -324,5 +321,8 @@ bun test tests/events/
 
 ## 已知注意事项
 
-1. **`processedEvents` 清空策略**: 达到 10,000 条时整体 `clear()`, 短窗口内可能有重复投影, 依赖持久层幂等保障正确性
-2. **`tool.execute.running` 当前为 no-op**: tool-calls 处理器声明处理此事件但不执行任何操作
+1. **`tool.execute.running` 当前为 no-op**: tool-calls 处理器声明处理此事件但不执行任何操作
+
+---
+
+> 多实例并发支持详见 [multi-instance.md](./multi-instance.md)

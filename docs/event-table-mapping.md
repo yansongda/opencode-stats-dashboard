@@ -72,7 +72,7 @@
 
 ### messages 表
 
-每条消息一行明细记录，使用 `INSERT OR REPLACE` 实现更新。
+每条消息一行明细记录，使用 `INSERT ... ON CONFLICT(message_id) DO UPDATE SET` 实现安全 UPSERT。冲突时不可变字段（`message_id`, `event_id`, `session_id`, `project_path`, `role`, `agent`, `model`, `created_at_ms`, `created_at`）保留原值，仅更新可变指标字段；且仅当新事件 `created_at_ms >=` 已有记录时才执行更新。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
@@ -131,8 +131,8 @@
 | `session.updated` | INSERT OR IGNORE | UPDATE | - | - |
 | `session.deleted` | INSERT OR IGNORE | UPDATE | - | - |
 | `session.error` | INSERT OR IGNORE | UPDATE | - | - |
-| `message.updated.user` | INSERT OR IGNORE | UPDATE | INSERT OR REPLACE | - |
-| `message.updated.assistant` | INSERT OR IGNORE | UPDATE | INSERT OR REPLACE | - |
+| `message.updated.user` | INSERT OR IGNORE | UPDATE | UPSERT | - |
+| `message.updated.assistant` | INSERT OR IGNORE | UPDATE | UPSERT | - |
 | `tool.execute.pending` | INSERT OR IGNORE | UPDATE | - | INSERT OR IGNORE |
 | `tool.execute.running` | INSERT OR IGNORE | UPDATE | - | (no-op) |
 | `tool.execute.completed` | INSERT OR IGNORE | UPDATE | - | upsert |
@@ -158,9 +158,9 @@
 
 ### messages 表写入逻辑
 
-**message.updated.user**: `INSERT OR REPLACE` 写入一行。`model=null`（用户消息没有模型）, `role='user'`, 所有 token 字段和 `cost_usd` 为 0, `lines_added/lines_deleted/files_changed` 从 event 获取, `created_at_ms` 从 event 获取, `completed_at_ms/duration_ms/finish_reason/has_error/error_type` 为 null/0。
+**message.updated.user**: `INSERT ... ON CONFLICT(message_id) DO UPDATE SET` 写入一行。首次插入时 `model=null`（用户消息没有模型）, `role='user'`, 所有 token 字段和 `cost_usd` 为 0, `lines_added/lines_deleted/files_changed` 从 event 获取, `created_at_ms` 从 event 获取, `completed_at_ms/duration_ms/finish_reason/has_error/error_type` 为 null/0。冲突时不可变字段保留原值，仅更新 token、费用、代码变更统计和完成状态等可变字段；`WHERE excluded.created_at_ms >= messages.created_at_ms` 防止过期事件覆盖新数据。
 
-**message.updated.assistant**: 如果 `event.model` 为空则跳过。`INSERT OR REPLACE` 写入一行。`role='assistant'`, token 字段从 `event.tokens` 获取, `total_tokens = input + output + reasoning + cache.read + cache.write`, `cost_usd` 从 event 获取, `lines_added/lines_deleted/files_changed` 为 0, `completed_at_ms/duration_ms/finish_reason/has_error/error_type` 从 event 获取。
+**message.updated.assistant**: 如果 `event.model` 为空则跳过。`INSERT ... ON CONFLICT(message_id) DO UPDATE SET` 写入一行。首次插入时 `role='assistant'`, token 字段从 `event.tokens` 获取, `total_tokens = input + output + reasoning + cache.read + cache.write`, `cost_usd` 从 event 获取, `lines_added/lines_deleted/files_changed` 为 0, `completed_at_ms/duration_ms/finish_reason/has_error/error_type` 从 event 获取。冲突时同样仅更新可变字段，不可变字段（含首次写入的 `model`）保留原值。
 
 ### tool_calls 表写入逻辑
 
