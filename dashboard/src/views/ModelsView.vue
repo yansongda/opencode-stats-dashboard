@@ -3,18 +3,7 @@
     <!-- Header -->
     <div class="view-header resp-header">
       <h1 class="view-title">模型对比</h1>
-      <div class="period-tabs">
-        <button
-          v-for="p in periods"
-          :key="p.value"
-          class="period-btn"
-          :class="{ active: selectedPeriod === p.value }"
-          data-testid="period-btn"
-          @click="selectPeriod(p.value)"
-        >
-          {{ p.label }}
-        </button>
-      </div>
+      <TimeRangePicker v-model="selectedPeriod" />
     </div>
 
     <!-- Loading State (initial no-data only) -->
@@ -141,14 +130,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, onActivated } from 'vue'
+import { computed, ref, watch, onMounted, onActivated } from 'vue'
 import { useModelsStore } from '../stores/models'
 import EmptyState from '../components/EmptyState.vue'
 import LoadingState from '../components/LoadingState.vue'
 import BarChart from '../charts/BarChart.vue'
 import ScatterChart from '../charts/ScatterChart.vue'
+import TimeRangePicker, { type TimeRange } from '../components/TimeRangePicker.vue'
 import type { DashboardModelItem } from '../api/client'
 import { formatNumber, formatTokens, formatCost } from '../utils/format'
+import { getRangeMs, formatBucketLocal } from '../utils/timezone'
 
 // ── Store ──────────────────────────────────────────────────────────────
 const store = useModelsStore()
@@ -156,36 +147,18 @@ const store = useModelsStore()
 const STALE_MS = 60_000
 
 // ── Time Range ─────────────────────────────────────────────────────────
-type Period = '7d' | '30d' | 'all'
-
-const periods = [
-  { value: '7d' as Period, label: '7天' },
-  { value: '30d' as Period, label: '30天' },
-  { value: 'all' as Period, label: '全部' },
-]
-
-const selectedPeriod = ref<Period>('7d')
-
-function getDateRange(p: Period): { start?: number; end?: number } {
-  if (p === 'all') return {}
-  const now = Date.now()
-  const days = p === '7d' ? 6 : 29
-  return { start: now - days * 86_400_000, end: now }
-}
+const selectedPeriod = ref<TimeRange>('7d')
 
 function fetchCurrentPeriod(): void {
-  const { start, end } = getDateRange(selectedPeriod.value)
+  const { start, end } = getRangeMs(selectedPeriod.value)
   void store.fetchModels(start, end)
-}
-
-function selectPeriod(p: Period): void {
-  selectedPeriod.value = p
-  fetchCurrentPeriod()
 }
 
 function retry(): void {
   fetchCurrentPeriod()
 }
+
+watch(selectedPeriod, () => fetchCurrentPeriod())
 
 onMounted(() => {
   if (store.models.value.length === 0) fetchCurrentPeriod()
@@ -256,18 +229,32 @@ const tokenChartSeries = computed(() => [
   },
 ])
 
-// ── Chart Data: Cost Comparison ────────────────────────────────────────
-const costChartLabels = computed(() =>
-  store.models.value.map((m) => truncateModel(m.model)),
-)
+// ── Chart Data: Cost Trend ─────────────────────────────────────────────
+const costTrendDates = computed(() => {
+  const dates = new Set<string>()
+  for (const p of store.modelsCostTrend.value) dates.add(p.date)
+  return [...dates].sort()
+})
 
-const costChartSeries = computed(() => [
-  {
-    name: '总成本',
-    data: store.models.value.map((m) => m.cost_usd),
-    color: CHART_COLORS[0],
-  },
-])
+const costChartLabels = computed(() => costTrendDates.value.map(formatBucketLocal))
+
+const costTrendModels = computed(() => {
+  const models = new Set<string>()
+  for (const p of store.modelsCostTrend.value) models.add(p.model)
+  return [...models]
+})
+
+const costChartSeries = computed(() => {
+  const dateSet = costTrendDates.value
+  return costTrendModels.value.map((model, i) => ({
+    name: truncateModel(model),
+    data: dateSet.map((d) => {
+      const pt = store.modelsCostTrend.value.find((p) => p.date === d && p.model === model)
+      return pt?.cost_usd ?? 0
+    }),
+    color: CHART_COLORS[i % CHART_COLORS.length],
+  }))
+})
 
 // ── Chart Data: Message/Session Comparison ────────────────────────────
 const messageSessionChartLabels = computed(() =>
@@ -346,35 +333,6 @@ function errorRateClass(m: DashboardModelItem): string {
   font-size: var(--text-2xl);
   font-weight: 600;
   color: var(--text);
-}
-
-/* ── Period Tabs ────────────────────────────────────────────────────── */
-.period-tabs {
-  display: flex;
-  gap: var(--spacing-1);
-}
-
-.period-btn {
-  font-size: var(--text-xs);
-  padding: var(--spacing-1) var(--spacing-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  background-color: transparent;
-  color: var(--text-muted);
-  transition: all 0.15s ease;
-  line-height: 1.4;
-}
-
-.period-btn:hover {
-  color: var(--text);
-  border-color: var(--text-muted);
-}
-
-.period-btn.active {
-  background-color: var(--primary);
-  border-color: var(--primary);
-  color: white;
 }
 
 /* ── Data Table ─────────────────────────────────────────────────────── */

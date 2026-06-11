@@ -25,10 +25,12 @@ import type {
 } from "@defs/api";
 import type { Context } from "hono";
 import {
+  getTzOffsetMinutes,
   parseSortOrder,
   parseTimeRange,
+  parseTimezone,
   safeRate,
-  sqlDailyBucketExpr,
+  sqlDailyBucketExprWithOffset,
   toNum,
 } from "./helpers";
 
@@ -108,6 +110,13 @@ export function createDashboardToolsHandler(
     const recentErrorLimit = rawLimit
       ? Math.min(Math.max(1, Math.floor(Number(rawLimit) || 20)), 100)
       : 20;
+
+    // ── Parse timezone ─────────────────────────────────────────────
+    const tzResult = parseTimezone(c.req.query("tz"));
+    if (!tzResult.ok) {
+      return c.json({ error: tzResult.error }, 400);
+    }
+    const offsetMin = getTzOffsetMinutes(tzResult.tz);
 
     // ── 1. Per-tool aggregation ──────────────────────────────────────
     const toolRows = db
@@ -200,7 +209,7 @@ export function createDashboardToolsHandler(
     };
 
     // ── 3. Timeline (daily × tool_name) ──────────────────────────────
-    const dateExpr = sqlDailyBucketExpr("started_at_ms");
+    const dateExpr = sqlDailyBucketExprWithOffset("started_at_ms", offsetMin);
 
     const timelineRows = db
       .query(

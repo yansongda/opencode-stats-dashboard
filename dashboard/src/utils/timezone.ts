@@ -1,59 +1,5 @@
-const TIMEZONE_KEY = 'opencode-stats-timezone'
-
-export function getStoredTimezone(): string | null {
-  return localStorage.getItem(TIMEZONE_KEY)
-}
-
-export function setStoredTimezone(tz: string): void {
-  localStorage.setItem(TIMEZONE_KEY, tz)
-}
-
 export function getBrowserTimezone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone
-}
-
-export function getActiveTimezone(): string {
-  return getStoredTimezone() ?? getBrowserTimezone()
-}
-
-export function formatInTimezone(
-  utcDateStr: string | null,
-  options: Intl.DateTimeFormatOptions = {}
-): string {
-  if (!utcDateStr) return '—'
-
-  const date = new Date(utcDateStr.replace(' ', 'T') + 'Z')
-  if (isNaN(date.getTime())) return '—'
-
-  const tz = getActiveTimezone()
-
-  const defaultOptions: Intl.DateTimeFormatOptions = {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-    timeZone: tz,
-    ...options
-  }
-
-  return new Intl.DateTimeFormat('zh-CN', defaultOptions).format(date)
-}
-
-export function formatRelativeTime(utcDateStr: string | number | null): string {
-  if (!utcDateStr) return '—'
-
-  let date: Date
-  if (typeof utcDateStr === 'number') {
-    date = new Date(utcDateStr)
-  } else {
-    date = new Date(utcDateStr.replace(' ', 'T') + 'Z')
-  }
-  if (isNaN(date.getTime())) return '—'
-
-  return formatRelativeTimeFromDate(date)
 }
 
 export function formatRelativeTimeFromDate(date: Date): string {
@@ -69,72 +15,116 @@ export function formatRelativeTimeFromDate(date: Date): string {
   if (diffHour < 24) return `${diffHour} 小时前`
   if (diffDay < 7) return `${diffDay} 天前`
 
-  return formatInTimezone(date.toISOString(), {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
+  return new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    timeZone: getBrowserTimezone(),
+  }).format(date)
+}
+
+function getOffsetMs(tz: string, utcMs: number): number {
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
   })
+  const parts = dtf.formatToParts(new Date(utcMs))
+  const get = (type: string) => Number(parts.find(p => p.type === type)!.value)
+  const localMs = Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'), get('second'))
+  const utcSec = Math.trunc(utcMs / 1000) * 1000
+  return localMs - utcSec
+}
+
+function todayLocalRangeMs(tz: string): { start: number; end: number } {
+  const now = Date.now()
+  const offset = getOffsetMs(tz, now)
+  const localMs = now + offset
+  const dayMs = 86_400_000
+  const localDayStart = Math.floor(localMs / dayMs) * dayMs
+  return {
+    start: localDayStart - offset,
+    end: localDayStart + dayMs - offset - 1,
+  }
+}
+
+export function formatTimestamp(
+  ms: number | null | undefined,
+  opts?: { withSeconds?: boolean },
+): string {
+  if (ms == null || isNaN(ms)) return '—'
+  const fmtOpts: Intl.DateTimeFormatOptions = {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit',
+    hourCycle: 'h23',
+    timeZone: getBrowserTimezone(),
+  }
+  if (opts?.withSeconds) fmtOpts.second = '2-digit'
+  return new Intl.DateTimeFormat('zh-CN', fmtOpts).format(ms)
+}
+
+export function formatTimestampShort(ms: number | null | undefined): string {
+  if (ms == null || isNaN(ms)) return '—'
+  return new Intl.DateTimeFormat('zh-CN', {
+    month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit',
+    hourCycle: 'h23',
+    timeZone: getBrowserTimezone(),
+  }).format(ms)
+}
+
+export function getTodayRange(): { start: number; end: number } {
+  return todayLocalRangeMs(getBrowserTimezone())
+}
+
+export function getRangeMs(range: '1d' | '7d' | '30d' | 'all'): Record<string, number> {
+  const now = Date.now()
+  if (range === '1d') {
+    const r = getTodayRange()
+    return { start: r.start, end: r.end }
+  }
+  if (range === '7d') return { start: now - 7 * 86_400_000, end: now }
+  if (range === '30d') return { start: now - 30 * 86_400_000, end: now }
+  return {}
+}
+
+export function parseLocalDateInput(
+  yyyyMmDd: string,
+  edge: 'start' | 'end',
+): number {
+  const tz = getBrowserTimezone()
+  const [y, m, d] = yyyyMmDd.split('-').map(Number)
+  const utcNoon = Date.UTC(y, m - 1, d, 12, 0, 0)
+  const offset = getOffsetMs(tz, utcNoon)
+  const localMidnight = Date.UTC(y, m - 1, d, 0, 0, 0) - offset
+  return edge === 'start' ? localMidnight : localMidnight + 86_400_000 - 1
 }
 
 /**
- * Convert a UTC bucket string from the backend to a local-timezone display label.
+ * Convert a backend bucket string to a compact display label.
+ *
+ * Pure string formatting — the bucket strings are already in the timezone
+ * the backend chose; this function only trims the year when it matches
+ * the current year.
  *
  * Handles two formats:
- * - Daily:  "YYYY-MM-DD"           → "MM-DD" (or "YYYY-MM-DD" if year differs)
- * - Hourly: "YYYY-MM-DD HH:00"    → "MM-DD HH:00" (or "YYYY-MM-DD HH:00" if year differs)
- *
- * Parses the string as UTC and reformats using the browser's local timezone.
+ * - Daily:  "YYYY-MM-DD"        → "MM/DD" (or "YYYY MM/DD" if year differs)
+ * - Hourly: "YYYY-MM-DD HH:00"  → "MM/DD HH:00" (or "YYYY MM/DD HH:00" if year differs)
  */
 export function formatBucketLocal(bucket: string): string {
-  // Hourly format: "YYYY-MM-DD HH:00" (space-separated, has ":00")
-  const hourlyMatch = bucket.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):00$/)
-  if (hourlyMatch) {
-    const [, y, m, d, h] = hourlyMatch
-    const utcDate = new Date(Date.UTC(Number(y), Number(m) - 1, Number(d), Number(h)))
-    const localY = utcDate.getFullYear()
-    const localM = String(utcDate.getMonth() + 1).padStart(2, '0')
-    const localD = String(utcDate.getDate()).padStart(2, '0')
-    const localH = String(utcDate.getHours()).padStart(2, '0')
-    const currentYear = new Date().getFullYear()
-    if (localY !== currentYear) {
-      return `${localY}-${localM}-${localD} ${localH}:00`
-    }
-    return `${localM}-${localD} ${localH}:00`
+  const hourly = bucket.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):00$/)
+  if (hourly) {
+    const [, y, m, d, h] = hourly
+    const currentYear = String(new Date().getFullYear())
+    if (y !== currentYear) return `${y} ${m}/${d} ${h}:00`
+    return `${m}/${d} ${h}:00`
   }
 
-  // Daily format: "YYYY-MM-DD"
-  const dailyMatch = bucket.match(/^(\d{4})-(\d{2})-(\d{2})$/)
-  if (dailyMatch) {
-    const [, y, m, d] = dailyMatch
-    const utcDate = new Date(Date.UTC(Number(y), Number(m) - 1, Number(d)))
-    const localY = utcDate.getFullYear()
-    const localM = String(utcDate.getMonth() + 1).padStart(2, '0')
-    const localD = String(utcDate.getDate()).padStart(2, '0')
-    const currentYear = new Date().getFullYear()
-    if (localY !== currentYear) {
-      return `${localY}-${localM}-${localD}`
-    }
-    return `${localM}-${localD}`
+  const daily = bucket.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (daily) {
+    const [, y, m, d] = daily
+    const currentYear = String(new Date().getFullYear())
+    if (y !== currentYear) return `${y} ${m}/${d}`
+    return `${m}/${d}`
   }
 
-  // Unrecognized format, return as-is
   return bucket
 }
-
-export const COMMON_TIMEZONES = [
-  'UTC',
-  'Asia/Shanghai',
-  'Asia/Tokyo',
-  'Asia/Seoul',
-  'Asia/Singapore',
-  'Asia/Kolkata',
-  'Europe/London',
-  'Europe/Paris',
-  'Europe/Berlin',
-  'America/New_York',
-  'America/Chicago',
-  'America/Denver',
-  'America/Los_Angeles',
-  'Pacific/Auckland',
-  'Australia/Sydney',
-]

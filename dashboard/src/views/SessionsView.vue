@@ -464,6 +464,7 @@ import {
   type DashboardSessionDetailData,
 } from '../api/client'
 import { formatNumber, formatCost, formatTokens } from '../utils/format'
+import { parseLocalDateInput, formatTimestamp } from '../utils/timezone'
 
 // ── Store ──────────────────────────────────────────────────────────────
 
@@ -570,14 +571,14 @@ const filteredSessions = computed<DashboardSessionListItem[]>(() => {
 
   // Date range filter (based on last_event_at_ms, which is ms timestamp)
   if (dateFrom.value) {
-    const from = new Date(dateFrom.value).getTime()
+    const from = parseLocalDateInput(dateFrom.value, 'start')
     list = list.filter((s) => {
       if (s.last_event_at_ms == null) return false
       return s.last_event_at_ms >= from
     })
   }
   if (dateTo.value) {
-    const to = new Date(dateTo.value).getTime() + 86400000 // end of day
+    const to = parseLocalDateInput(dateTo.value, 'end')
     list = list.filter((s) => {
       if (s.last_event_at_ms == null) return false
       return s.last_event_at_ms <= to
@@ -684,19 +685,6 @@ function truncateProject(path: string): string {
 function truncateSessionId(id: string): string {
   if (id.length <= 16) return id
   return id.slice(0, 12) + '…'
-}
-
-function formatTimestamp(ms: number | null): string {
-  if (ms == null) return '—'
-  const date = new Date(ms)
-  return new Intl.DateTimeFormat('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).format(date)
 }
 
 function formatDuration(ms: number | null): string {

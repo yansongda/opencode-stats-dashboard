@@ -17,12 +17,14 @@ import type {
 } from "@defs/api";
 import type { Context } from "hono";
 import {
+  getTzOffsetMinutes,
   parsePagination,
   parseSortOrder,
   parseTimeRange,
+  parseTimezone,
   safeDivide,
   safeRate,
-  sqlDailyBucketExpr,
+  sqlDailyBucketExprWithOffset,
   toNum,
 } from "./helpers";
 
@@ -152,7 +154,7 @@ function queryAssociatedToolCounts(
 /**
  * Query daily cost trend for a set of models.
  *
- * Groups by date (UTC day bucket from created_at_ms) and model.
+ * Groups by date (offset-adjusted day bucket from created_at_ms) and model.
  * Returns tokens, cost_usd, and message count per bucket.
  */
 function queryCostTrend(
@@ -160,6 +162,7 @@ function queryCostTrend(
   start: number,
   end: number,
   models: string[],
+  offsetMin: number,
 ): DashboardModelCostTrendPoint[] {
   if (models.length === 0) return [];
 
@@ -167,7 +170,7 @@ function queryCostTrend(
   const rows = db
     .query(
       `SELECT
-        ${sqlDailyBucketExpr("m.created_at_ms")} as date,
+        ${sqlDailyBucketExprWithOffset("m.created_at_ms", offsetMin)} as date,
         m.model,
         COALESCE(SUM(m.total_tokens), 0) as tokens,
         COALESCE(SUM(m.cost_usd), 0) as cost_usd,
@@ -304,6 +307,13 @@ export function createModelsDashboardHandler(db: Database) {
       return c.json({ error: timeRange.error }, 400);
     }
 
+    const tzResult = parseTimezone(c.req.query("tz"));
+    if (!tzResult.ok) {
+      return c.json({ error: tzResult.error }, 400);
+    }
+
+    const offsetMin = getTzOffsetMinutes(tzResult.tz, Date.now());
+
     const { field, order } = parseSortOrder(
       "models",
       c.req.query("sort"),
@@ -354,6 +364,7 @@ export function createModelsDashboardHandler(db: Database) {
       timeRange.start,
       timeRange.end,
       displayedModels,
+      offsetMin,
     );
 
     // 8. Assemble and return

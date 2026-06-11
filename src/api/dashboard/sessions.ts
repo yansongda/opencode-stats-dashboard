@@ -23,6 +23,7 @@ import {
   parsePagination,
   parseSortOrder,
   parseTimeRange,
+  parseTimezone,
   toNum,
 } from "@api/dashboard/helpers";
 import type {
@@ -316,6 +317,13 @@ export function createDashboardSessionsHandler(
     const timeRange = parseTimeRange(c.req.query("start"), c.req.query("end"));
     if (!timeRange.ok) {
       return c.json({ error: timeRange.error }, 400);
+    }
+
+    // Validate tz for API consistency — sessions endpoint does not bucket by
+    // date/time, but the frontend sends tz uniformly to all dashboard routes.
+    const timezone = parseTimezone(c.req.query("tz"));
+    if (!timezone.ok) {
+      return c.json({ error: timezone.error }, 400);
     }
 
     const pagination = parsePagination(

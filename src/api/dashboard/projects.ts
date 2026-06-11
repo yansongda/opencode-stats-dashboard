@@ -18,11 +18,13 @@
 import type { Database } from "bun:sqlite";
 import {
   buildWhereConditions,
+  getTzOffsetMinutes,
   parsePagination,
   parseSortOrder,
   parseTimeRange,
+  parseTimezone,
   safeDivide,
-  sqlDailyBucketExpr,
+  sqlDailyBucketExprWithOffset,
   toNum,
 } from "@api/dashboard/helpers";
 import type {
@@ -102,6 +104,15 @@ export function createProjectsDashboardHandler(db: Database) {
       c.req.query("sort"),
       c.req.query("order"),
     );
+
+    const tzResult = parseTimezone(c.req.query("tz"));
+    if (!tzResult.ok) {
+      return c.json({ error: tzResult.error }, 400);
+    }
+    const { tz } = tzResult;
+
+    const now = Date.now();
+    const offsetMin = getTzOffsetMinutes(tz, now);
 
     // ── Time range WHERE fragments ──────────────────────────────────
 
@@ -345,7 +356,10 @@ export function createProjectsDashboardHandler(db: Database) {
 
     // ── 7. Activity trend (per project + date) ──────────────────────
 
-    const dailyBucket = sqlDailyBucketExpr("m.created_at_ms");
+    const dailyBucket = sqlDailyBucketExprWithOffset(
+      "m.created_at_ms",
+      offsetMin,
+    );
 
     const trendRows = db
       .query(
@@ -383,7 +397,7 @@ export function createProjectsDashboardHandler(db: Database) {
     const sessTrendRows = db
       .query(
         `SELECT
-           ${sqlDailyBucketExpr("s.first_event_at_ms")} AS bucket,
+           ${sqlDailyBucketExprWithOffset("s.first_event_at_ms", offsetMin)} AS bucket,
            COALESCE(s.project_path, '') AS project_path,
            COUNT(*) AS sessions
          FROM sessions s

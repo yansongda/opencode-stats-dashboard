@@ -2,18 +2,7 @@
   <div class="view-container" data-testid="projects-view">
     <div class="view-header resp-header">
       <h1 class="view-title">项目对比</h1>
-      <div class="period-tabs">
-        <button
-          v-for="p in periods"
-          :key="p.value"
-          class="period-btn"
-          :class="{ active: selectedPeriod === p.value }"
-          data-testid="period-btn"
-          @click="selectPeriod(p.value)"
-        >
-          {{ p.label }}
-        </button>
-      </div>
+      <TimeRangePicker v-model="selectedPeriod" />
     </div>
 
     <!-- Loading State (initial no-data only) -->
@@ -160,12 +149,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onActivated } from 'vue'
+import { ref, computed, watch, onMounted, onActivated } from 'vue'
 import { useProjectsStore } from '../stores/projects'
 
 import EmptyState from '../components/EmptyState.vue'
 import LoadingState from '../components/LoadingState.vue'
-import { formatRelativeTimeFromDate, formatBucketLocal } from '../utils/timezone'
+import TimeRangePicker from '../components/TimeRangePicker.vue'
+import type { TimeRange } from '../components/TimeRangePicker.vue'
+import { formatRelativeTimeFromDate, formatBucketLocal, getRangeMs } from '../utils/timezone'
 import { formatNumber, formatTokens, formatCost } from '../utils/format'
 import LineChart from '../charts/LineChart.vue'
 import BarChart from '../charts/BarChart.vue'
@@ -176,37 +167,18 @@ const store = useProjectsStore()
 
 // ── Period ─────────────────────────────────────────────────────────
 
-type Period = '7d' | '30d' | 'all'
-
-const periods: Array<{ value: Period; label: string }> = [
-  { value: '7d', label: '7天' },
-  { value: '30d', label: '30天' },
-  { value: 'all', label: '全部' },
-]
-
-const selectedPeriod = ref<Period>('7d')
-
-function getDateRange(period: Period): { start?: number; end?: number } {
-  if (period === 'all') return {}
-  const now = Date.now()
-  const msPerDay = 86_400_000
-  const days = period === '7d' ? 6 : 29
-  return { start: now - days * msPerDay, end: now }
-}
+const selectedPeriod = ref<TimeRange>('7d')
 
 function refreshWithSort(): void {
-  const { start, end } = getDateRange(selectedPeriod.value)
+  const { start, end } = getRangeMs(selectedPeriod.value)
   void store.fetchProjects(start, end, { sort: sortKey.value, order: sortDir.value })
-}
-
-function selectPeriod(period: Period): void {
-  selectedPeriod.value = period
-  refreshWithSort()
 }
 
 function refreshData(): void {
   refreshWithSort()
 }
+
+watch(selectedPeriod, () => { refreshWithSort() })
 
 // ── Lifecycle ──────────────────────────────────────────────────────
 
@@ -442,34 +414,6 @@ function formatLastActive(ts: number | null): string {
   font-weight: 600;
   color: var(--text);
   margin: 0;
-}
-
-.period-tabs {
-  display: flex;
-  gap: var(--spacing-1);
-}
-
-.period-btn {
-  font-size: var(--text-xs);
-  padding: var(--spacing-1) var(--spacing-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  background-color: transparent;
-  color: var(--text-muted);
-  transition: all 0.15s ease;
-  line-height: 1.4;
-}
-
-.period-btn:hover {
-  color: var(--text);
-  border-color: var(--text-muted);
-}
-
-.period-btn.active {
-  background-color: var(--primary);
-  border-color: var(--primary);
-  color: white;
 }
 
 /* ── Data Table ─────────────────────────────────────────────────────── */

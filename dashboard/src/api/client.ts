@@ -1,3 +1,5 @@
+import { getBrowserTimezone } from '../utils/timezone'
+
 // ── Dashboard API Types (matching backend src/types/api.ts contracts) ───
 
 // -- Wrapper types -------------------------------------------------------
@@ -504,6 +506,7 @@ export function fetchDashboardOverview(
   return getJson<DashboardDataResponse<DashboardOverviewData>>('/api/v1/dashboard/overview', {
     start,
     end,
+    tz: getBrowserTimezone(),
   }).then((r) => r.data)
 }
 
@@ -514,6 +517,7 @@ export function fetchDashboardEfficiency(
   return getJson<DashboardDataResponse<DashboardEfficiencyData>>('/api/v1/dashboard/efficiency', {
     start,
     end,
+    tz: getBrowserTimezone(),
   }).then((r) => r.data)
 }
 
@@ -524,6 +528,7 @@ export function fetchDashboardModels(
   return getJson<DashboardDataResponse<DashboardModelsData>>('/api/v1/dashboard/models', {
     start,
     end,
+    tz: getBrowserTimezone(),
   }).then((r) => r.data)
 }
 
@@ -537,6 +542,7 @@ export function fetchDashboardProjects(
     end,
     sort: params?.sort,
     order: params?.order,
+    tz: getBrowserTimezone(),
   }).then((r) => r.data)
 }
 
@@ -547,6 +553,7 @@ export function fetchDashboardTools(
   return getJson<DashboardDataResponse<DashboardToolsData>>('/api/v1/dashboard/tools', {
     start,
     end,
+    tz: getBrowserTimezone(),
   }).then((r) => r.data)
 }
 
@@ -561,6 +568,7 @@ export function fetchDashboardSessions(
     limit: params?.limit,
     offset: params?.offset,
     status: params?.status,
+    tz: getBrowserTimezone(),
   })
 }
 
@@ -569,6 +577,7 @@ export function fetchDashboardSessionDetail(
 ): Promise<DashboardSessionDetailData> {
   return getJson<DashboardDataResponse<DashboardSessionDetailData>>(
     `/api/v1/dashboard/sessions/${sessionId}`,
+    { tz: getBrowserTimezone() },
   ).then((r) => r.data)
 }
 

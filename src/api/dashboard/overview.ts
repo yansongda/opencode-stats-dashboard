@@ -19,9 +19,11 @@ import type {
 } from "@defs/api";
 import type { Context } from "hono";
 import {
+  getTzOffsetMinutes,
   parseTimeRange,
+  parseTimezone,
   safeDivide,
-  sqlDailyBucketExpr,
+  sqlDailyBucketExprWithOffset,
   toNum,
 } from "./helpers";
 
@@ -205,12 +207,13 @@ function queryTrend(
   db: Database,
   start: number,
   end: number,
+  offsetMin: number,
 ): DashboardOverviewTrendPoint[] {
   // Sessions trend — count distinct sessions per day
   const sessionRows = db
     .query(
       `SELECT
-         ${sqlDailyBucketExpr("created_at_ms")} as date,
+         ${sqlDailyBucketExprWithOffset("created_at_ms", offsetMin)} as date,
          COUNT(DISTINCT session_id) as sessions
        FROM messages
        WHERE created_at_ms >= ? AND created_at_ms <= ?
@@ -223,7 +226,7 @@ function queryTrend(
   const msgRows = db
     .query(
       `SELECT
-         ${sqlDailyBucketExpr("created_at_ms")} as date,
+         ${sqlDailyBucketExprWithOffset("created_at_ms", offsetMin)} as date,
          COUNT(*) as messages,
          COALESCE(SUM(total_tokens), 0) as tokens,
          COALESCE(SUM(cost_usd), 0) as cost_usd
@@ -238,7 +241,7 @@ function queryTrend(
   const toolRows = db
     .query(
       `SELECT
-         ${sqlDailyBucketExpr("started_at_ms")} as date,
+         ${sqlDailyBucketExprWithOffset("started_at_ms", offsetMin)} as date,
          COUNT(*) as tool_calls
        FROM tool_calls
        WHERE started_at_ms >= ? AND started_at_ms <= ?
@@ -251,7 +254,7 @@ function queryTrend(
   const errorRows = db
     .query(
       `SELECT
-         ${sqlDailyBucketExpr("created_at_ms")} as date,
+         ${sqlDailyBucketExprWithOffset("created_at_ms", offsetMin)} as date,
          COUNT(*) as errors
        FROM events
        WHERE event_type = 'session.error'
@@ -564,7 +567,14 @@ export function createOverviewDashboardHandler(db: Database) {
       return c.json({ error: timeRange.error }, 400);
     }
 
+    const timezone = parseTimezone(c.req.query("tz"));
+    if (!timezone.ok) {
+      return c.json({ error: timezone.error }, 400);
+    }
+
     const { start, end } = timeRange;
+    const now = Date.now();
+    const offsetMin = getTzOffsetMinutes(timezone.tz, now);
 
     // 2. Query aggregations from real tables
     const sessionAgg = querySessionAgg(db, start, end);
@@ -583,7 +593,7 @@ export function createOverviewDashboardHandler(db: Database) {
     );
 
     // 4. Query daily trend
-    const trend = queryTrend(db, start, end);
+    const trend = queryTrend(db, start, end, offsetMin);
 
     // 5. Query recent sessions
     const recentSessions = queryRecentSessions(db, start, end);

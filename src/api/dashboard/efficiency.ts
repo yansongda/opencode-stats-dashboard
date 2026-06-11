@@ -19,10 +19,14 @@ import type {
 } from "@defs/api";
 import type { Context } from "hono";
 import {
+  getTzOffsetMinutes,
   parseTimeRange,
+  parseTimezone,
   safeDivide,
-  sqlDailyBucketExpr,
-  sqlHourlyBucketExpr,
+  sqlDailyBucketExprWithOffset,
+  sqlHourlyBucketExprWithOffset,
+  sqlHourWithOffset,
+  sqlWeekdayWithOffset,
   toNum,
 } from "./helpers";
 
@@ -40,10 +44,11 @@ function parseBucket(raw: string | undefined): BucketGranularity {
 function bucketExpr(
   granularity: BucketGranularity,
   column = "created_at_ms",
+  offsetMin = 0,
 ): string {
   return granularity === "hour"
-    ? sqlHourlyBucketExpr(column)
-    : sqlDailyBucketExpr(column);
+    ? sqlHourlyBucketExprWithOffset(column, offsetMin)
+    : sqlDailyBucketExprWithOffset(column, offsetMin);
 }
 
 // ============================================================================
@@ -163,9 +168,10 @@ function queryTimeline(
   start: number,
   end: number,
   granularity: BucketGranularity,
+  offsetMin = 0,
 ): DashboardEfficiencyTimelinePoint[] {
-  const msgBucket = bucketExpr(granularity);
-  const sessBucket = bucketExpr(granularity, "first_event_at_ms");
+  const msgBucket = bucketExpr(granularity, "created_at_ms", offsetMin);
+  const sessBucket = bucketExpr(granularity, "first_event_at_ms", offsetMin);
 
   // Message aggregates per bucket
   const msgRows = db
@@ -249,13 +255,22 @@ function queryHeatmap(
   db: Database,
   start: number,
   end: number,
+  offsetMin = 0,
 ): DashboardEfficiencyHeatmapPoint[] {
+  // Fixed-offset approximation for non-hour offsets (e.g. Asia/Kolkata +5:30):
+  // weekday/hour are extracted from the shifted timestamp, which may produce
+  // slightly inaccurate results for the ~30-min boundary around DST transitions.
+  // DST-aware aggregation is intentionally out of scope.
+
+  const weekdayCol = sqlWeekdayWithOffset("created_at_ms", offsetMin);
+  const hourCol = sqlHourWithOffset("created_at_ms", offsetMin);
+
   // Messages: weekday × hour aggregation from real created_at_ms
   const msgRows = db
     .query(
       `SELECT
-        CAST(strftime('%w', created_at_ms / 1000, 'unixepoch') AS INTEGER) as weekday,
-        CAST(strftime('%H', created_at_ms / 1000, 'unixepoch') AS INTEGER) as hour,
+        ${weekdayCol} as weekday,
+        ${hourCol} as hour,
         COUNT(*) as messages,
         COALESCE(SUM(total_tokens), 0) as tokens,
         COALESCE(SUM(cost_usd), 0) as cost_usd
@@ -266,11 +281,19 @@ function queryHeatmap(
     .all(start, end) as HeatmapMsgRow[];
 
   // Tool calls: weekday × hour from started_at_ms (fallback to completed_at_ms)
+  const toolWeekday = sqlWeekdayWithOffset(
+    "COALESCE(started_at_ms, completed_at_ms)",
+    offsetMin,
+  );
+  const toolHour = sqlHourWithOffset(
+    "COALESCE(started_at_ms, completed_at_ms)",
+    offsetMin,
+  );
   const toolRows = db
     .query(
       `SELECT
-        CAST(strftime('%w', COALESCE(started_at_ms, completed_at_ms) / 1000, 'unixepoch') AS INTEGER) as weekday,
-        CAST(strftime('%H', COALESCE(started_at_ms, completed_at_ms) / 1000, 'unixepoch') AS INTEGER) as hour,
+        ${toolWeekday} as weekday,
+        ${toolHour} as hour,
         COUNT(*) as tool_calls,
         SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as errors
       FROM tool_calls
@@ -282,11 +305,13 @@ function queryHeatmap(
     .all(start, end) as HeatmapToolRow[];
 
   // Session errors from events table (real created_at_ms)
+  const errWeekday = sqlWeekdayWithOffset("created_at_ms", offsetMin);
+  const errHour = sqlHourWithOffset("created_at_ms", offsetMin);
   const errorRows = db
     .query(
       `SELECT
-        CAST(strftime('%w', created_at_ms / 1000, 'unixepoch') AS INTEGER) as weekday,
-        CAST(strftime('%H', created_at_ms / 1000, 'unixepoch') AS INTEGER) as hour,
+        ${errWeekday} as weekday,
+        ${errHour} as hour,
         COUNT(*) as errors
       FROM events
       WHERE event_type = 'session.error'
@@ -417,12 +442,24 @@ export function createEfficiencyHandler(db: Database) {
       return c.json({ error: range.error }, 400);
     }
 
+    const tzResult = parseTimezone(c.req.query("tz"));
+    if (!tzResult.ok) {
+      return c.json({ error: tzResult.error }, 400);
+    }
+
+    const offsetMin = getTzOffsetMinutes(tzResult.tz);
     const granularity = parseBucket(c.req.query("bucket"));
 
     const data: DashboardEfficiencyData = {
       summary: querySummary(db, range.start, range.end),
-      timeline: queryTimeline(db, range.start, range.end, granularity),
-      heatmap: queryHeatmap(db, range.start, range.end),
+      timeline: queryTimeline(
+        db,
+        range.start,
+        range.end,
+        granularity,
+        offsetMin,
+      ),
+      heatmap: queryHeatmap(db, range.start, range.end, offsetMin),
       model_efficiency: queryModelEfficiency(db, range.start, range.end),
     };
 

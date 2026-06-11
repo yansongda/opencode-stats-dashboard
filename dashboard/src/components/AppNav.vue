@@ -44,6 +44,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import type { RealtimeMode } from '../composables/useSSE'
+import { formatTimestamp } from '../utils/timezone'
 
 const props = defineProps<{
   realtimeMode: RealtimeMode
@@ -83,14 +84,10 @@ const statusLabel = computed(() => {
   }
 })
 
-function pad2(n: number): string {
-  return n < 10 ? `0${n}` : `${n}`
-}
-
 const formattedUpdatedAt = computed<string | null>(() => {
   const d = props.lastDataUpdatedAt
   if (!d) return null
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`
+  return formatTimestamp(d.getTime(), { withSeconds: true })
 })
 </script>
 

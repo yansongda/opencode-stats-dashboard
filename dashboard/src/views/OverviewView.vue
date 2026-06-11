@@ -79,18 +79,7 @@
             <div class="trend-section" data-testid="trend-section">
                 <div class="section-header">
                     <h3 class="section-title">使用趋势</h3>
-                    <div class="period-tabs">
-                        <button
-                            v-for="p in periods"
-                            :key="p.value"
-                            class="period-btn"
-                            :class="{ active: selectedPeriod === p.value }"
-                            data-testid="period-btn"
-                            @click="selectPeriod(p.value)"
-                        >
-                            {{ p.label }}
-                        </button>
-                    </div>
+                    <TimeRangePicker v-model="selectedPeriod" />
                 </div>
                 <LineChart
                     :x-data="trendDates"
@@ -254,21 +243,19 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, onActivated } from "vue";
+import { computed, ref, watch, onMounted, onActivated } from "vue";
 import MetricCard from "../components/MetricCard.vue";
 import EmptyState from "../components/EmptyState.vue";
 import LoadingState from "../components/LoadingState.vue";
 import LineChart from "../charts/LineChart.vue";
 import PieChart from "../charts/PieChart.vue";
 import BarChart from "../charts/BarChart.vue";
+import TimeRangePicker from "../components/TimeRangePicker.vue";
+import type { TimeRange } from "../components/TimeRangePicker.vue";
 import { useOverviewStore } from "../stores/overview";
 import type { DashboardProjectItem } from "../api/client";
 import { formatTokens, formatCost, formatNumber } from "../utils/format";
-import { formatBucketLocal } from "../utils/timezone";
-
-// ── Types ──────────────────────────────────────────────────────────
-
-type Period = "7d" | "30d" | "all";
+import { formatBucketLocal, getRangeMs } from "../utils/timezone";
 
 // ── ECharts default palette (matches PieChart.vue) ─────────────────
 
@@ -300,32 +287,16 @@ function divideOrNull(
     return numerator / denominator;
 }
 
-const selectedPeriod = ref<Period>("7d");
+const selectedPeriod = ref<TimeRange>("7d");
 const STALE_MS = 60_000;
 
-const periods: Array<{ value: Period; label: string }> = [
-    { value: "7d", label: "7 天" },
-    { value: "30d", label: "30 天" },
-    { value: "all", label: "全部" },
-];
-
-function getDateRangeMs(period: Period): { start?: number; end?: number } {
-    if (period === "all") return {};
-    const now = Date.now();
-    const msPerDay = 86_400_000;
-    const days = period === "7d" ? 6 : 29;
-    return { start: now - days * msPerDay, end: now };
-}
-
-function selectPeriod(period: Period): void {
-    selectedPeriod.value = period;
-    const { start, end } = getDateRangeMs(period);
+function doFetch(): void {
+    const { start, end } = getRangeMs(selectedPeriod.value);
     void store.fetchOverview(start, end);
 }
 
 function retryFetch(): void {
-    const { start, end } = getDateRangeMs(selectedPeriod.value);
-    void store.fetchOverview(start, end);
+    doFetch();
 }
 
 function fetchIfStale(): void {
@@ -333,10 +304,11 @@ function fetchIfStale(): void {
         !store.lastFetchedAt.value ||
         Date.now() - store.lastFetchedAt.value > STALE_MS
     ) {
-        const { start, end } = getDateRangeMs(selectedPeriod.value);
-        void store.fetchOverview(start, end);
+        doFetch();
     }
 }
+
+watch(selectedPeriod, () => doFetch());
 
 // ── Derived Data ───────────────────────────────────────────────────
 
@@ -590,34 +562,6 @@ onActivated(fetchIfStale);
     font-size: var(--text-lg);
     font-weight: 600;
     color: var(--text);
-}
-
-.period-tabs {
-    display: flex;
-    gap: var(--spacing-1);
-}
-
-.period-btn {
-    font-size: var(--text-xs);
-    padding: 3px var(--spacing-2);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    background-color: var(--surface);
-    color: var(--text-muted);
-    transition: all 0.15s ease;
-    line-height: 1.4;
-}
-
-.period-btn:hover {
-    color: var(--text);
-    border-color: var(--primary);
-}
-
-.period-btn.active {
-    background-color: var(--primary);
-    color: white;
-    border-color: var(--primary);
 }
 
 /* ── Trend Section ──────────────────────────────────────────────── */

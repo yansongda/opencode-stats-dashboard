@@ -3,18 +3,7 @@
     <!-- Header -->
     <div class="view-header resp-header">
       <h1 class="view-title">工具统计</h1>
-      <div class="period-tabs">
-        <button
-          v-for="p in periods"
-          :key="p.value"
-          class="period-btn"
-          :class="{ active: selectedPeriod === p.value }"
-          :data-testid="`period-${p.value}`"
-          @click="selectPeriod(p.value)"
-        >
-          {{ p.label }}
-        </button>
-      </div>
+      <TimeRangePicker v-model="selectedPeriod" />
     </div>
 
     <!-- Loading State (initial no-data only) -->
@@ -174,7 +163,7 @@
               <td class="col-monospace">{{ truncateId(err.session_id) }}</td>
               <td class="col-error-msg">{{ err.error_message }}</td>
               <td class="col-right">{{ formatDuration(err.duration_ms ?? 0) }}</td>
-              <td class="col-right">{{ formatTimestamp(err.completed_at_ms ?? err.started_at_ms) }}</td>
+              <td class="col-right">{{ formatTimestampShort(err.completed_at_ms ?? err.started_at_ms) }}</td>
             </tr>
           </tbody>
         </table>
@@ -185,43 +174,24 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onActivated } from 'vue'
+import { ref, computed, watch, onMounted, onActivated } from 'vue'
 import EmptyState from '../components/EmptyState.vue'
 import LoadingState from '../components/LoadingState.vue'
+import TimeRangePicker from '../components/TimeRangePicker.vue'
+import type { TimeRange } from '../components/TimeRangePicker.vue'
 import LineChart from '../charts/LineChart.vue'
 import PieChart from '../charts/PieChart.vue'
 import BarChart from '../charts/BarChart.vue'
 import { useToolsStore } from '../stores/tools'
 import { formatNumber } from '../utils/format'
-import { formatBucketLocal } from '../utils/timezone'
+import { formatBucketLocal, formatTimestampShort, getRangeMs } from '../utils/timezone'
 import type { DashboardToolItem, DashboardToolTimelinePoint } from '../api/client'
 
 // ── Store ──────────────────────────────────────────────────────────
 
 const store = useToolsStore()
 
-type Period = '7d' | '30d' | 'all'
-
-const periods = [
-  { value: '7d' as const, label: '7天' },
-  { value: '30d' as const, label: '30天' },
-  { value: 'all' as const, label: '全部' },
-]
-
-const selectedPeriod = ref<Period>('7d')
-
-function periodToRange(period: Period): { start?: number; end?: number } {
-  if (period === 'all') return {}
-  const now = Date.now()
-  const days = period === '7d' ? 7 : 30
-  return { start: now - days * 86_400_000, end: now }
-}
-
-function selectPeriod(period: Period): void {
-  selectedPeriod.value = period
-  const { start, end } = periodToRange(period)
-  void store.fetchTools(start, end)
-}
+const selectedPeriod = ref<TimeRange>('7d')
 
 // ── Data from Store ────────────────────────────────────────────────
 
@@ -244,23 +214,27 @@ const recentErrors = computed(() => store.toolRecentErrors.value)
 
 const STALE_MS = 60_000
 
-function retryFetch(): void {
-  const { start, end } = periodToRange(selectedPeriod.value)
+function fetchData(): void {
+  const { start, end } = getRangeMs(selectedPeriod.value)
   void store.fetchTools(start, end)
 }
 
+function retryFetch(): void {
+  fetchData()
+}
+
 onMounted(() => {
-  const { start, end } = periodToRange(selectedPeriod.value)
-  void store.fetchTools(start, end)
+  fetchData()
 })
 
 onActivated(() => {
   if (store.lastFetchedAt.value != null && Date.now() - store.lastFetchedAt.value < STALE_MS) {
     return
   }
-  const { start, end } = periodToRange(selectedPeriod.value)
-  void store.fetchTools(start, end)
+  fetchData()
 })
+
+watch(selectedPeriod, () => { fetchData() })
 
 // ── Sorting ──────────────────────────────────────────────────────────
 
@@ -403,17 +377,6 @@ function rateClass(errorRate: number): string {
   return 'rate-bad'
 }
 
-function formatTimestamp(ms: number | null): string {
-  if (ms == null) return '—'
-  return new Intl.DateTimeFormat('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).format(new Date(ms))
-}
-
 function truncateId(id: string): string {
   if (id.length <= 12) return id
   return id.slice(0, 8) + '…'
@@ -439,33 +402,6 @@ function truncateId(id: string): string {
   font-size: var(--text-2xl);
   font-weight: 600;
   color: var(--text);
-}
-
-.period-tabs {
-  display: flex;
-  gap: var(--spacing-1);
-}
-
-.period-btn {
-  font-size: var(--text-sm);
-  padding: var(--spacing-1) var(--spacing-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  background-color: var(--surface);
-  color: var(--text-muted);
-  transition: all 0.15s ease;
-}
-
-.period-btn:hover {
-  color: var(--text);
-  border-color: var(--text-muted);
-}
-
-.period-btn.active {
-  background-color: var(--primary);
-  border-color: var(--primary);
-  color: #fff;
 }
 
 /* ── Metrics Grid ─────────────────────────────────────────────────── */

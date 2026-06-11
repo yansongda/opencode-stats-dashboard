@@ -17,7 +17,7 @@
  */
 
 import type { Database } from "bun:sqlite";
-import { toNum } from "@api/dashboard/helpers";
+import { parseTimezone, toNum } from "@api/dashboard/helpers";
 import type {
   DashboardDataResponse,
   DashboardSessionDetailData,
@@ -471,6 +471,13 @@ export function createDashboardSessionDetailHandler(
     const id = c.req.param("id");
     if (id === undefined || id === "") {
       return c.json({ error: "Missing session id" }, 400);
+    }
+
+    // Validate tz for API consistency — session detail does not bucket by
+    // date/time, but the frontend sends tz uniformly to all dashboard routes.
+    const timezone = parseTimezone(c.req.query("tz"));
+    if (!timezone.ok) {
+      return c.json({ error: timezone.error }, 400);
     }
 
     // -- Fetch session row -----------------------------------------------------

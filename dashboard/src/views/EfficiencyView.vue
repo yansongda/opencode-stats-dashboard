@@ -3,17 +3,7 @@
     <!-- Header -->
     <div class="view-header resp-header">
       <h1 class="view-title">效率分析</h1>
-      <div class="period-tabs">
-        <button
-          v-for="p in periods"
-          :key="p.value"
-          class="period-btn"
-          :class="{ active: selectedPeriod === p.value }"
-          @click="selectedPeriod = p.value"
-        >
-          {{ p.label }}
-        </button>
-      </div>
+      <TimeRangePicker v-model="selectedPeriod" />
     </div>
 
     <!-- Loading State (initial no-data load only) -->
@@ -147,10 +137,12 @@ import HeatmapChart from '../charts/HeatmapChart.vue'
 import BarChart from '../charts/BarChart.vue'
 import PieChart from '../charts/PieChart.vue'
 import LineChart from '../charts/LineChart.vue'
+import TimeRangePicker from '../components/TimeRangePicker.vue'
+import type { TimeRange } from '../components/TimeRangePicker.vue'
 import type { DashboardEfficiencyHeatmapPoint } from '../api/client'
 import { useEfficiencyStore } from '../stores/efficiency'
 import { formatCost, formatTokens } from '../utils/format'
-import { formatBucketLocal } from '../utils/timezone'
+import { formatBucketLocal, getRangeMs } from '../utils/timezone'
 
 // ── Store ───────────────────────────────────────────────────────────
 const { efficiencyData, loading, error, lastFetchedAt, fetchEfficiency } = useEfficiencyStore()
@@ -159,28 +151,12 @@ const { efficiencyData, loading, error, lastFetchedAt, fetchEfficiency } = useEf
 
 const STALE_THRESHOLD_MS = 60_000
 
-type Period = '7d' | '30d' | 'all'
-
-const periods = [
-  { value: '7d' as Period, label: '7天' },
-  { value: '30d' as Period, label: '30天' },
-  { value: 'all' as Period, label: '全部' },
-]
-
-const selectedPeriod = ref<Period>('7d')
+const selectedPeriod = ref<TimeRange>('7d')
 
 // ── Data Fetching ──────────────────────────────────────────────────
 
-function getDateRangeMs(period: Period): { start?: number; end?: number } {
-  if (period === 'all') return {}
-  const now = Date.now()
-  const msPerDay = 86_400_000
-  const days = period === '7d' ? 6 : 29
-  return { start: now - days * msPerDay, end: now }
-}
-
 function fetchData(): void {
-  const { start, end } = getDateRangeMs(selectedPeriod.value)
+  const { start, end } = getRangeMs(selectedPeriod.value)
   void fetchEfficiency(start, end)
 }
 
@@ -333,34 +309,6 @@ const codeChangesSeries = computed(() => {
   font-size: var(--text-2xl);
   font-weight: 600;
   color: var(--text);
-}
-
-.period-tabs {
-  display: flex;
-  gap: var(--spacing-1);
-}
-
-.period-btn {
-  font-size: var(--text-xs);
-  padding: 4px var(--spacing-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  background-color: var(--surface);
-  color: var(--text-muted);
-  transition: all 0.15s ease;
-  line-height: 1.4;
-}
-
-.period-btn:hover {
-  color: var(--text);
-  border-color: var(--primary);
-}
-
-.period-btn.active {
-  background-color: var(--primary);
-  color: white;
-  border-color: var(--primary);
 }
 
 /* ── Metrics Grid ─────────────────────────────────────────────────── */

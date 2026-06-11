@@ -124,6 +124,7 @@ src/
 - **预编译语句** — EventStore 在 `queryCache` Map 中缓存 SQL 语句
 - **事务安全** — 投影处理器在 `db.transaction()` 内运行；失败 = 回滚
 - **隐私保护** — `src/types/events.ts` 中的 `FORBIDDEN_METADATA_KEYS` 列出了绝不能出现在元数据中的字段（`tool_input`, `tool_output`, `message_body`, `raw_input`, `raw_output`）
+- **时区转换边界** — 时区转换仅发生在 API 边界（`parseTimezone` + SQL offset）和前端展示层（`formatTimestamp`、`formatBucketLocal`）；`*_ms` 语义不变，存储/投影/SSE 全链路保持 UTC
 
 ## 仪表盘（独立包）
 
@@ -132,6 +133,18 @@ src/
 - 开发: `cd dashboard && bun run dev`（代理 `/api` 到 `http://127.0.0.1:11133`）
 - 构建输出: `dashboard/dist/`（由主应用作为静态文件提供）
 - 类型检查: `cd dashboard && bun run type-check`
+
+## Dashboard API 时区契约
+
+所有 `/api/v1/dashboard/*` 端点接受可选的 `tz` 查询参数，值为 IANA 时区字符串（如 `America/New_York`、`Asia/Shanghai`）。
+
+- **默认值**: `tz` 缺失或为空时默认 `"UTC"`，向后兼容。
+- **校验**: 无效时区或长度超过 50 字符返回 HTTP 400，响应体 `{ error: "..." }`。
+- **桶化方式**: 后端使用 fixed-offset SQL 辅助函数（`sqlDailyBucketExprWithOffset`、`sqlHourWithOffset` 等）进行日期/小时分桶，不处理 DST 转换。
+- **DST 限制**: DST 边界附近的数据可能被错误归桶约一小时；非 DST 时区（如 `Asia/Shanghai`、`Asia/Kolkata`）不受影响。
+- **`*_ms` 字段**: 所有 `*_ms` 列保持 UTC 毫秒 epoch 值，语义不可改变。
+- **SSE**: SSE 端点和帧格式不变，不携带 `tz` 参数。
+- **存储层**: 数据库、事件、投影、SSE 全链路保持 UTC，无时区转换。
 
 ## 插件集成
 
