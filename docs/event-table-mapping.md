@@ -41,7 +41,7 @@
 
 ## 数据库 Schema 概览
 
-当前迁移实际创建 4 张业务表: `events`, `sessions`, `messages`, `tool_calls`。迁移文件注释中提到的 snapshots 表未在当前 schema 中创建。
+当前迁移创建 4 张业务表: `events`, `sessions`, `messages`, `tool_calls`。
 
 ### events 表
 
@@ -158,7 +158,7 @@
 
 ### messages 表写入逻辑
 
-**message.updated.user**: `INSERT OR REPLACE` 写入一行。当前投影代码写入 `model=null`（注意这与 schema 中 `model TEXT NOT NULL` 不一致）, `role='user'`, 所有 token 字段和 `cost_usd` 为 0, `lines_added/lines_deleted/files_changed` 从 event 获取, `created_at_ms` 从 event 获取, `completed_at_ms/duration_ms/finish_reason/has_error/error_type` 为 null/0。
+**message.updated.user**: `INSERT OR REPLACE` 写入一行。`model=null`（用户消息没有模型）, `role='user'`, 所有 token 字段和 `cost_usd` 为 0, `lines_added/lines_deleted/files_changed` 从 event 获取, `created_at_ms` 从 event 获取, `completed_at_ms/duration_ms/finish_reason/has_error/error_type` 为 null/0。
 
 **message.updated.assistant**: 如果 `event.model` 为空则跳过。`INSERT OR REPLACE` 写入一行。`role='assistant'`, token 字段从 `event.tokens` 获取, `total_tokens = input + output + reasoning + cache.read + cache.write`, `cost_usd` 从 event 获取, `lines_added/lines_deleted/files_changed` 为 0, `completed_at_ms/duration_ms/finish_reason/has_error/error_type` 从 event 获取。
 

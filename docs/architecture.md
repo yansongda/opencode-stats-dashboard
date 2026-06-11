@@ -326,4 +326,3 @@ bun test tests/events/
 
 1. **`processedEvents` 清空策略**: 达到 10,000 条时整体 `clear()`, 短窗口内可能有重复投影, 依赖持久层幂等保障正确性
 2. **`tool.execute.running` 当前为 no-op**: tool-calls 处理器声明处理此事件但不执行任何操作
-3. **迁移注释与实际不符**: `001_initial.ts` 注释提及 "5 core tables" 和 `snapshots` 表, 但实际只创建了 4 张表 (events, sessions, messages, tool_calls)

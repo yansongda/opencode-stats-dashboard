@@ -64,23 +64,24 @@ src/
 ├── db/               # SQLite schema + 迁移（schema.ts, migrations/001_initial.ts）
 ├── event/            # 事件转换器（SDK Event → StatsEvent）
 │   ├── converter.ts  # 注册表：映射 event.type → 转换函数
+│   ├── utils.ts      # 工具函数（createBaseEvent, defaultTokens, normalizeTokens）
 │   └── converters/   # 每种事件类型一个文件（session-created.ts 等）
 ├── projection/       # 投影处理器（事件 → 聚合统计表）
 │   ├── engine.ts     # ProjectionEngine：在事务中将事件路由到处理器
-│   ├── sessions.ts   # projection_sessions 处理器
-│   ├── daily.ts      # projection_daily_model_usage 处理器（按日期+项目+模型）
-│   └── tool-calls.ts # projection_tool_calls 处理器
-├── snapshot/         # 快照管理器（状态序列化）
+│   ├── sessions.ts   # sessions 投影处理器
+│   ├── messages.ts   # messages 投影处理器
+│   ├── tool-calls.ts # tool_calls 投影处理器
+│   └── utils.ts      # 投影工具函数（totalTokens）
 ├── sse/              # SSE 广播器（实时推送到仪表盘）
 ├── store/            # EventStore（追加式事件持久化）
-└── types/            # TypeScript 类型（events.ts, projections.ts, api.ts, sse.ts）
+└── types/            # TypeScript 类型（events.ts, projections.ts, api.ts, stream.ts）
 ```
 
 **数据流**: 插件钩子 → `event/converter.ts` → `store/event.ts`（持久化）→ `projection/engine.ts`（路由到处理器）→ `sse/broadcaster.ts`（推送更新）
 
-## 事件类型（共 8 种）
+## 事件类型（共 10 种）
 
-`session.created`, `session.deleted`, `session.error`, `session.diff`, `message.updated`, `tool.completed`, `tool.failed`, `file.edited`
+`session.created`, `session.updated`, `session.deleted`, `session.error`, `message.updated.user`, `message.updated.assistant`, `tool.execute.pending`, `tool.execute.running`, `tool.execute.completed`, `tool.execute.failed`
 
 `src/event/converters/` 中的每个转换器导出 `eventType`（字符串）和 `convert`（函数）。新增事件类型需要：转换器文件 + 在 `converter.ts` 中注册 + 更新相关投影处理器的 `handles` 数组。
 
@@ -150,10 +151,13 @@ src/
 
 这是一个 OpenCode 插件（`@opencode-ai/plugin`）。默认导出是 `StatsPlugin`，它：
 1. 接收 `PluginInput`，包含 `client.app.log` 用于结构化日志
-2. 返回 `Hooks` 对象，包含 `event`, `tool.execute.after`, `dispose`
+2. 返回 `Hooks` 对象，包含 `event` 和 `dispose`
 3. 跨调用维护单例 `StatsPluginInstance`
 4. 直接使用 `Bun.serve()`（不是 Hono 内置的 serve）
 
 ## 设计文档
 
-详细规范位于 `docs/superpowers/specs/`。代码注释中的引用（如 "§3.1"）指向该文档的章节。
+详细规范位于 `docs/` 目录：
+- `architecture.md`：核心架构和数据流
+- `event-table-mapping.md`：事件与数据表映射关系
+- `dashboard-page-metrics-api-mapping.md`：Dashboard API 端点规范

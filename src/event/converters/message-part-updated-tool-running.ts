@@ -1,4 +1,3 @@
-// src/event/converters/message-part-updated-tool-running.ts
 import type { StatsEvent } from "@defs/events";
 import { createBaseEvent } from "@event/utils";
 import type { EventMessagePartUpdated } from "@opencode-ai/sdk";

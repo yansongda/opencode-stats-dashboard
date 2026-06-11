@@ -1,4 +1,3 @@
-// src/event/converters/message-updated-assistant.ts
 import type { StatsEvent } from "@defs/events";
 import { createBaseEvent, defaultTokens } from "@event/utils";
 import type { EventMessageUpdated } from "@opencode-ai/sdk";
