@@ -11,7 +11,7 @@
  */
 
 import { Database } from "bun:sqlite";
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import {
@@ -31,6 +31,15 @@ import { SSEBroadcaster } from "@sse/broadcaster";
 import { EventStore } from "@store/event";
 import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
+import { createLogger, type Logger } from "@/logger";
+import { LeaderManager } from "./server/leader";
+
+/** 插件启动配置，由 resolveConfig() 计算 */
+interface PluginConfig {
+  dbDir: string;
+  dbPath: string;
+  port: number;
+}
 
 /** 构建 Hono 应用。纯函数：接收依赖，返回应用 */
 function createApp({
@@ -42,7 +51,7 @@ function createApp({
   db: Database;
   broadcaster: SSEBroadcaster;
   dashboardDist: string;
-  logger: (level: "info" | "error", msg: string, err?: unknown) => void;
+  logger: Logger;
 }): Hono {
   const app = new Hono();
 
@@ -84,14 +93,26 @@ function createApp({
  * 首次调用时懒加载构造，后续调用复用同一实例。
  */
 class StatsPluginInstance {
-  private readonly db: Database;
-  private readonly eventStore: EventStore;
-  private readonly projectionEngine: ProjectionEngine;
-  private readonly broadcaster: SSEBroadcaster;
-  private server: ReturnType<typeof Bun.serve> | null;
-  private readonly logFile: string;
+  private readonly config!: PluginConfig;
+  private db!: Database;
+  private eventStore!: EventStore;
+  private projectionEngine!: ProjectionEngine;
+  private broadcaster!: SSEBroadcaster;
+  private leader!: LeaderManager;
+  private logFile!: string;
+  private log!: Logger;
 
   constructor() {
+    this.config = this.resolveConfig();
+    this.initLog();
+    this.initDb();
+    this.initProjection();
+    this.initHttp();
+  }
+
+  // ── Config ───────────────────────────────────────────────────────────
+
+  private resolveConfig(): PluginConfig {
     const defaultDir = join(
       homedir(),
       ".local",
@@ -101,25 +122,35 @@ class StatsPluginInstance {
     const dbDir = process.env.STATS_DB_DIR ?? defaultDir;
     const dbPath = process.env.STATS_DB_PATH ?? join(dbDir, "stats.db");
     const port = Number(process.env.STATS_PORT ?? 11133);
+    return { dbDir, dbPath, port };
+  }
 
-    this.logFile = join(dbDir, "stats.log");
-    mkdirSync(dbDir, { recursive: true });
+  // ── Initialization phases ────────────────────────────────────────────
 
-    this.log("info", `Initializing — db=${dbPath}, port=${port}`);
+  private initLog(): void {
+    this.logFile = join(this.config.dbDir, "stats.log");
+    mkdirSync(this.config.dbDir, { recursive: true });
+    this.log = createLogger(this.logFile);
+    this.log("info", "[stats-engine] initLog initialized");
+  }
 
-    this.db = new Database(dbPath);
+  private initDb(): void {
+    this.log("info", `Initializing — db=${this.config.dbPath}`);
+    this.db = new Database(this.config.dbPath);
     configurePragmas(this.db);
     const applied = runMigrations(this.db);
     this.log("info", `Database ready — applied ${applied} migration(s)`);
-
     this.eventStore = new EventStore(this.db);
+    this.log("info", "[stats-engine] initDb initialized");
+  }
+
+  private initProjection(): void {
     this.projectionEngine = new ProjectionEngine(this.db);
     this.broadcaster = new SSEBroadcaster({
       onError: (error, clientId) => {
         this.log("error", `SSE client ${clientId}: ${error.message}`, error);
       },
     });
-
     this.projectionEngine.registerHandler(
       "sessions",
       createSessionProjectionHandler(),
@@ -130,40 +161,30 @@ class StatsPluginInstance {
       "info",
       `Registered ${this.projectionEngine.getHandlerNames().length} projection handlers`,
     );
+    this.log("info", "[stats-engine] initProjection initialized");
+  }
 
-    // import.meta.dir 在运行 src/index.ts 时指向 src/
+  private initHttp(): void {
     const projectRoot = resolve(import.meta.dir, "..");
     const dashboardDist = join(projectRoot, "dashboard", "dist");
     this.log(
       "info",
       `Dashboard dist path: ${dashboardDist} (exists: ${existsSync(dashboardDist)})`,
     );
-
     const app = createApp({
       db: this.db,
       broadcaster: this.broadcaster,
       dashboardDist,
-      logger: this.log.bind(this),
+      logger: this.log,
     });
-
-    this.server = Bun.serve({ port, idleTimeout: 0, fetch: app.fetch });
-    this.log("info", `HTTP server listening on port ${this.server.port}`);
-  }
-
-  log(level: "info" | "error", msg: string, err?: unknown): void {
-    const detail =
-      err === undefined
-        ? msg
-        : err instanceof Error
-          ? `${msg} — ${err.name}: ${err.message}`
-          : `${msg} — ${String(err)}`;
-
-    try {
-      appendFileSync(
-        this.logFile,
-        `[${new Date().toISOString()}] [${level}] ${detail}\n`,
-      );
-    } catch {}
+    this.leader = new LeaderManager({
+      port: this.config.port,
+      fetch: app.fetch,
+      log: this.log,
+    });
+    this.leader.start();
+    const role = this.leader.getRole();
+    this.log("info", `[stats-engine] initHttp initialized role=${role}`);
   }
 
   /** 用 try/catch 包装同步代码块，带结构化错误日志 */
@@ -174,6 +195,8 @@ class StatsPluginInstance {
       this.log("error", desc, err);
     }
   }
+
+  // ── Event processing ─────────────────────────────────────────────────
 
   /**
    * 统一的事件处理入口：转换 → 持久化 → 投影 → 广播
@@ -218,20 +241,18 @@ class StatsPluginInstance {
     });
   }
 
-  /** 释放所有拥有的资源。可安全多次调用。 */
+  // ── Disposal ─────────────────────────────────────────────────────────
+
+  /** 释放所有拥有的资源。leader 和 follower 均安全调用，可多次调用。 */
   dispose(): void {
-    if (!this.server) return;
+    const role = this.leader.getRole();
+    this.log("info", `[stats-engine] shutdown role=${role}`);
     try {
       this.broadcaster.dispose();
     } catch (err) {
       this.log("error", "broadcaster.dispose failed", err);
     }
-    try {
-      this.server.stop();
-    } catch (err) {
-      this.log("error", "server.stop failed", err);
-    }
-    this.server = null;
+    this.leader.stop();
     try {
       this.db.close();
     } catch (err) {
