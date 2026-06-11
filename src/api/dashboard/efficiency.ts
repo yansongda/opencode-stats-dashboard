@@ -15,7 +15,7 @@ import type {
   DashboardEfficiencyTimelinePoint,
 } from "@defs/api";
 import type { Context } from "hono";
-import { queryHeatmap } from "./heatmap";
+import { queryHeatmap } from "./components/heatmap";
 import {
   getTzOffsetMinutes,
   parseTimeRange,

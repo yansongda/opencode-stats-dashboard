@@ -29,6 +29,7 @@ import type {
   DashboardSessionListItem,
 } from "@defs/api";
 import type { Context } from "hono";
+import { queryPrimaryModelByKey } from "./components/primary-model";
 
 // ============================================================================
 // Sort field mapping
@@ -83,36 +84,6 @@ function queryMessageAggregates(
     });
   }
   return map;
-}
-
-function queryPrimaryModels(
-  db: Database,
-  sessionIds: string[],
-): Map<string, string | null> {
-  if (sessionIds.length === 0) return new Map();
-
-  const placeholders = sessionIds.map(() => "?").join(",");
-  const rows = db
-    .query(
-      `SELECT
-         session_id,
-         model,
-         SUM(total_tokens) as model_tokens
-       FROM messages
-       WHERE session_id IN (${placeholders}) AND model IS NOT NULL AND model != ''
-       GROUP BY session_id, model
-       ORDER BY session_id, model_tokens DESC`,
-    )
-    .all(...sessionIds) as Array<Record<string, unknown>>;
-
-  const primaryMap = new Map<string, string>();
-  for (const row of rows) {
-    const sid = String(row.session_id);
-    if (!primaryMap.has(sid)) {
-      primaryMap.set(sid, String(row.model));
-    }
-  }
-  return primaryMap;
 }
 
 // ============================================================================
@@ -204,7 +175,7 @@ export function createDashboardSessionsHandler(
     const sessionIds = rows.map((r) => String(r.session_id));
 
     const msgAgg = queryMessageAggregates(db, sessionIds);
-    const primaryModels = queryPrimaryModels(db, sessionIds);
+    const primaryModels = queryPrimaryModelByKey(db, "session_id", sessionIds);
 
     let items: DashboardSessionListItem[] = rows.map((row) =>
       buildSessionListItem(row, msgAgg, primaryModels),

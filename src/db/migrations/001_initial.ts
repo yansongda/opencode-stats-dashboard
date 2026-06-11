@@ -88,4 +88,50 @@ export function up(db: Database): void {
       updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP   -- 更新时间
     )
   `);
+
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_sessions_last_event_ms ON sessions (last_event_at_ms)`,
+  );
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_sessions_first_event_ms ON sessions (first_event_at_ms)`,
+  );
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_sessions_status_last_event_ms ON sessions (status, last_event_at_ms)`,
+  );
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_sessions_project_last_event_ms ON sessions (project_path, last_event_at_ms)`,
+  );
+
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_messages_created_at_ms ON messages (created_at_ms)`,
+  );
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_messages_session_created_at_ms ON messages (session_id, created_at_ms)`,
+  );
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_messages_role_created_model ON messages (role, created_at_ms, model)`,
+  );
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_messages_session_model ON messages (session_id, model)`,
+  );
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_messages_session_error ON messages (session_id) WHERE has_error = 1`,
+  );
+
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_tool_calls_started_at_ms ON tool_calls (started_at_ms)`,
+  );
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_tool_calls_session_started_at_ms ON tool_calls (session_id, started_at_ms)`,
+  );
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_tool_calls_error_started_at_ms ON tool_calls (started_at_ms, completed_at_ms) WHERE status = 'error'`,
+  );
+
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_events_session_error ON events (session_id, created_at_ms) WHERE event_type = 'session.error'`,
+  );
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_events_error_created_at_ms ON events (created_at_ms) WHERE event_type = 'session.error'`,
+  );
 }

@@ -16,7 +16,7 @@ import type {
   DashboardOverviewTrendPoint,
 } from "@defs/api";
 import type { Context } from "hono";
-import { queryHeatmap } from "./heatmap";
+import { queryHeatmap } from "./components/heatmap";
 import {
   getTzOffsetMinutes,
   parseTimeRange,
@@ -209,8 +209,8 @@ function queryModelMessageDistribution(
          model,
          COUNT(*) as message_count
        FROM messages
-       WHERE role = 'assistant'
-         AND model IS NOT NULL
+       WHERE model IS NOT NULL
+         AND role = 'assistant'
          AND created_at_ms >= ? AND created_at_ms <= ?
        GROUP BY model
        ORDER BY message_count DESC`,

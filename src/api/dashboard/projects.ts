@@ -26,6 +26,7 @@ import type {
   DashboardProjectsData,
 } from "@defs/api";
 import type { Context } from "hono";
+import { queryPrimaryModelByProjectWhere } from "./components/primary-model";
 
 // ============================================================================
 // Internal Helpers
@@ -134,30 +135,12 @@ export function createProjectsDashboardHandler(db: Database) {
 
     // ── 3. Primary model per project ────────────────────────────────
 
-    const primaryModelRows = db
-      .query(
-        `SELECT
-           m.project_path,
-           m.model,
-           SUM(m.total_tokens) AS model_tokens
-         FROM messages m
-         WHERE m.model IS NOT NULL AND m.model != ''${msgWhere}
-         GROUP BY m.project_path, m.model`,
-      )
-      .all(...msgWhereParams) as Array<Record<string, unknown>>;
-
-    const primaryModelMap = new Map<string, string | null>();
-    const primaryCountMap = new Map<string, number>();
-    for (const row of primaryModelRows) {
-      const pp = normalizeProject(row.project_path as string | null);
-      const model = row.model as string;
-      const modelTokens = toNum(row.model_tokens);
-      const existing = primaryCountMap.get(pp) ?? 0;
-      if (modelTokens > existing) {
-        primaryModelMap.set(pp, model);
-        primaryCountMap.set(pp, modelTokens);
-      }
-    }
+    const primaryModelMap = queryPrimaryModelByProjectWhere(
+      db,
+      msgWhere,
+      msgWhereParams,
+      normalizeProject,
+    );
 
     // ── 4. Merge into project items ─────────────────────────────────
 

@@ -23,6 +23,7 @@ import type {
   DashboardSessionToolCall,
 } from "@defs/api";
 import type { Context } from "hono";
+import { queryPrimaryModelForSession } from "./components/primary-model";
 
 // ============================================================================
 // Internal query result types (private)
@@ -131,23 +132,6 @@ function queryMessageAggregates(
     lines_deleted: toNum(row?.lines_deleted),
     files_changed: toNum(row?.files_changed),
   };
-}
-
-function queryPrimaryModel(db: Database, sessionId: string): string | null {
-  const rows = db
-    .query(
-      `SELECT
-         model,
-         SUM(total_tokens) as model_tokens
-       FROM messages
-       WHERE session_id = ? AND model IS NOT NULL AND model != ''
-       GROUP BY model
-       ORDER BY model_tokens DESC`,
-    )
-    .all(sessionId) as Array<Record<string, unknown>>;
-
-  const top = rows[0];
-  return top != null ? String(top.model) : null;
 }
 
 function queryToolAggregates(
@@ -423,7 +407,7 @@ export function createDashboardSessionDetailHandler(
     }
 
     const msgAgg = queryMessageAggregates(db, id);
-    const primaryModel = queryPrimaryModel(db, id);
+    const primaryModel = queryPrimaryModelForSession(db, id);
     const toolAgg = queryToolAggregates(db, id);
     const errCount = queryErrorCount(db, id);
 
