@@ -207,7 +207,6 @@ const toolsData = computed(() => {
     total_tool_calls: summary?.total_tool_calls ?? 0,
     failed_tool_calls: summary?.failed_tool_calls ?? 0,
     error_rate: summary?.tool_error_rate ?? 0,
-    total_tools: summary?.total_tools ?? 0,
   }
 })
 const recentErrors = computed(() => store.toolRecentErrors.value)

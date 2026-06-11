@@ -5,7 +5,6 @@ import {
   type DashboardOverviewSummary,
   type DashboardOverviewTrendPoint,
   type DashboardOverviewTopModel,
-  type DashboardOverviewTopTool,
   type DashboardOverviewProjectDistributionItem,
 } from '../api/client'
 import { getRangeMs, type TimeRange } from '../utils/timezone'
@@ -20,7 +19,6 @@ const overview = ref<DashboardOverviewSummary | null>(null) as Ref<DashboardOver
 const trend = ref<DashboardOverviewTrendPoint[]>([]) as Ref<DashboardOverviewTrendPoint[]>
 const heatmap = ref<DashboardEfficiencyHeatmapPoint[]>([]) as Ref<DashboardEfficiencyHeatmapPoint[]>
 const topModels = ref<DashboardOverviewTopModel[]>([]) as Ref<DashboardOverviewTopModel[]>
-const topTools = ref<DashboardOverviewTopTool[]>([]) as Ref<DashboardOverviewTopTool[]>
 const modelMessageDistribution = ref<ModelMessageDistributionItem[]>([]) as Ref<ModelMessageDistributionItem[]>
 const projects = ref<DashboardOverviewProjectDistributionItem[]>([]) as Ref<DashboardOverviewProjectDistributionItem[]>
 const loading = ref(false) as Ref<boolean>
@@ -60,7 +58,6 @@ export async function fetchOverview(
     trend.value = data.trend ?? []
     heatmap.value = data.heatmap ?? []
     topModels.value = data.top_models ?? []
-    topTools.value = data.top_tools ?? []
     modelMessageDistribution.value = data.model_message_distribution ?? []
     projects.value = data.project_distribution ?? []
 
@@ -87,7 +84,6 @@ export function useOverviewStore() {
     trend,
     heatmap,
     topModels,
-    topTools,
     modelMessageDistribution,
     projects,
     loading,

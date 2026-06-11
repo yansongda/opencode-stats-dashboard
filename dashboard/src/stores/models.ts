@@ -2,13 +2,11 @@ import { ref, type Ref } from 'vue'
 import {
   fetchDashboardModels,
   type DashboardModelItem,
-  type DashboardModelsSummary,
   type DashboardModelCostTrendPoint,
 } from '../api/client'
 import { getRangeMs, type TimeRange } from '../utils/timezone'
 
 const models = ref<DashboardModelItem[]>([]) as Ref<DashboardModelItem[]>
-const modelsSummary = ref<DashboardModelsSummary | null>(null) as Ref<DashboardModelsSummary | null>
 const modelsCostTrend = ref<DashboardModelCostTrendPoint[]>([]) as Ref<DashboardModelCostTrendPoint[]>
 const loading = ref(false) as Ref<boolean>
 const error = ref<string | null>(null) as Ref<string | null>
@@ -42,7 +40,6 @@ export async function fetchModels(
   try {
     const data = await fetchDashboardModels(start, end)
     models.value = data.models
-    modelsSummary.value = data.summary
     modelsCostTrend.value = data.cost_trend
     lastFetchedAt.value = Date.now()
     return true
@@ -63,7 +60,6 @@ export async function fetchModels(
 export function useModelsStore() {
   return {
     models,
-    modelsSummary,
     modelsCostTrend,
     loading,
     error,

@@ -38,8 +38,8 @@ export async function fetchSessions(
     error.value = null
   }
   try {
-    const res = await fetchDashboardSessions(start, end, params)
-    sessions.value = res.data
+    const data = await fetchDashboardSessions(start, end, params)
+    sessions.value = data
     lastFetchedAt.value = Date.now()
     return true
   } catch (err) {

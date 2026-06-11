@@ -8,11 +8,6 @@
  *   - tool_calls (from tool_calls table)
  *   - errors (from events, tool_calls, and messages)
  *
- * Privacy constraints:
- *   - Never returns private message/tool/raw payload fields
- *   - Never exposes stored event payloads wholesale
- *   - Errors are extracted as metadata only
- *
  * Design doc: §7 (session detail contract).
  */
 
@@ -35,22 +30,11 @@ import type { Context } from "hono";
 
 interface MessageRow {
   message_id: string;
-  event_id: string;
   role: string;
   model: string | null;
-  agent: string | null;
-  input_tokens: number;
-  output_tokens: number;
-  reasoning_tokens: number;
-  cache_read: number;
-  cache_write: number;
   total_tokens: number;
   cost_usd: number;
-  lines_added: number;
-  lines_deleted: number;
   files_changed: number;
-  created_at_ms: number;
-  completed_at_ms: number | null;
   duration_ms: number | null;
   has_error: number;
   error_type: string | null;
@@ -62,8 +46,6 @@ interface ToolCallRow {
   status: string | null;
   title: string | null;
   error_message: string | null;
-  started_at_ms: number | null;
-  completed_at_ms: number | null;
   duration_ms: number | null;
 }
 
@@ -73,8 +55,6 @@ interface ModelUsageRow {
   input_tokens: number;
   output_tokens: number;
   reasoning_tokens: number;
-  cache_read: number;
-  cache_write: number;
   total_tokens: number;
   cost_usd: number;
 }
@@ -153,10 +133,7 @@ function queryMessageAggregates(
   };
 }
 
-function queryPrimaryModel(
-  db: Database,
-  sessionId: string,
-): { primary_model: string | null; model_count: number } {
+function queryPrimaryModel(db: Database, sessionId: string): string | null {
   const rows = db
     .query(
       `SELECT
@@ -170,10 +147,7 @@ function queryPrimaryModel(
     .all(sessionId) as Array<Record<string, unknown>>;
 
   const top = rows[0];
-  return {
-    primary_model: top != null ? String(top.model) : null,
-    model_count: rows.length,
-  };
+  return top != null ? String(top.model) : null;
 }
 
 function queryToolAggregates(
@@ -215,11 +189,9 @@ function queryMessages(
   const rows = db
     .query(
       `SELECT
-         message_id, event_id, role, model, agent,
-         input_tokens, output_tokens, reasoning_tokens,
-         cache_read, cache_write, total_tokens, cost_usd,
-         lines_added, lines_deleted, files_changed,
-         created_at_ms, completed_at_ms, duration_ms,
+         message_id, role, model,
+         total_tokens, cost_usd,
+         files_changed, duration_ms,
          has_error, error_type
        FROM messages
        WHERE session_id = ?
@@ -230,23 +202,11 @@ function queryMessages(
   return rows.map(
     (r): DashboardSessionMessageMetadata => ({
       message_id: r.message_id,
-      event_id: r.event_id,
       role: r.role as "user" | "assistant",
       model: r.model ?? null,
-      agent: r.agent ?? null,
-      input_tokens: toNum(r.input_tokens),
-      output_tokens: toNum(r.output_tokens),
-      reasoning_tokens: toNum(r.reasoning_tokens),
-      cache_read: toNum(r.cache_read),
-      cache_write: toNum(r.cache_write),
       total_tokens: toNum(r.total_tokens),
       cost_usd: toNum(r.cost_usd),
-      lines_added: toNum(r.lines_added),
-      lines_deleted: toNum(r.lines_deleted),
       files_changed: toNum(r.files_changed),
-      created_at_ms: toNum(r.created_at_ms),
-      completed_at_ms:
-        r.completed_at_ms != null ? Number(r.completed_at_ms) : null,
       duration_ms: r.duration_ms != null ? Number(r.duration_ms) : null,
       has_error: toNum(r.has_error),
       error_type: r.error_type ?? null,
@@ -266,8 +226,6 @@ function queryModelUsage(
          SUM(input_tokens) as input_tokens,
          SUM(output_tokens) as output_tokens,
          SUM(reasoning_tokens) as reasoning_tokens,
-         SUM(cache_read) as cache_read,
-         SUM(cache_write) as cache_write,
          SUM(total_tokens) as total_tokens,
          SUM(cost_usd) as cost_usd
        FROM messages
@@ -284,8 +242,6 @@ function queryModelUsage(
       input_tokens: toNum(r.input_tokens),
       output_tokens: toNum(r.output_tokens),
       reasoning_tokens: toNum(r.reasoning_tokens),
-      cache_read: toNum(r.cache_read),
-      cache_write: toNum(r.cache_write),
       total_tokens: toNum(r.total_tokens),
       cost_usd: toNum(r.cost_usd),
     }),
@@ -300,7 +256,7 @@ function queryToolCalls(
     .query(
       `SELECT
          call_id, tool_name, status, title, error_message,
-         started_at_ms, completed_at_ms, duration_ms
+         duration_ms
        FROM tool_calls
        WHERE session_id = ?
        ORDER BY started_at_ms ASC`,
@@ -314,9 +270,6 @@ function queryToolCalls(
       status: r.status ?? null,
       title: r.title ?? null,
       error_message: r.error_message ?? null,
-      started_at_ms: r.started_at_ms != null ? Number(r.started_at_ms) : null,
-      completed_at_ms:
-        r.completed_at_ms != null ? Number(r.completed_at_ms) : null,
       duration_ms: r.duration_ms != null ? Number(r.duration_ms) : null,
     }),
   );
@@ -337,7 +290,6 @@ function queryErrors(db: Database, sessionId: string): DashboardSessionError[] {
   const fallbackMessage = "Session error";
 
   for (const row of sessionErrors) {
-    let errorType: string | undefined;
     let message = fallbackMessage;
 
     try {
@@ -345,7 +297,6 @@ function queryErrors(db: Database, sessionId: string): DashboardSessionError[] {
         error_type?: string;
         error_message?: string;
       };
-      errorType = parsed.error_type;
       const trimmed = parsed.error_message?.trim();
       message = trimmed || parsed.error_type || fallbackMessage;
     } catch {
@@ -357,7 +308,6 @@ function queryErrors(db: Database, sessionId: string): DashboardSessionError[] {
       event_type: String(row.event_type),
       created_at_ms: toNum(row.created_at_ms),
       message,
-      ...(errorType != null ? { error_type: errorType } : {}),
     });
   }
 
@@ -398,7 +348,6 @@ function queryErrors(db: Database, sessionId: string): DashboardSessionError[] {
     });
   }
 
-  // Sort all errors by timestamp
   errors.sort((a, b) => a.created_at_ms - b.created_at_ms);
 
   return errors;
@@ -411,7 +360,7 @@ function queryErrors(db: Database, sessionId: string): DashboardSessionError[] {
 function buildSummary(
   session: Record<string, unknown>,
   msgAgg: ReturnType<typeof queryMessageAggregates>,
-  modelInfo: ReturnType<typeof queryPrimaryModel>,
+  primaryModel: string | null,
   toolAgg: ReturnType<typeof queryToolAggregates>,
   errCount: number,
 ): DashboardSessionDetailSummary {
@@ -436,8 +385,7 @@ function buildSummary(
     files_changed: msgAgg.files_changed,
     lines_added: msgAgg.lines_added,
     lines_deleted: msgAgg.lines_deleted,
-    primary_model: modelInfo.primary_model,
-    model_count: modelInfo.model_count,
+    primary_model: primaryModel,
     first_event_at_ms:
       session.first_event_at_ms != null
         ? Number(session.first_event_at_ms)
@@ -455,15 +403,6 @@ function buildSummary(
 // Exported handler factory
 // ============================================================================
 
-/**
- * Create a Hono handler for GET /api/v1/dashboard/sessions/:id.
- *
- * Returns a function that accepts a Hono Context and returns:
- *   - 200 with `{ data: DashboardSessionDetailData }` on success
- *   - 404 with `{ error: "Session not found" }` when session does not exist
- *
- * @param db - Bun SQLite database instance.
- */
 export function createDashboardSessionDetailHandler(
   db: Database,
 ): (c: Context) => Response {
@@ -473,28 +412,23 @@ export function createDashboardSessionDetailHandler(
       return c.json({ error: "Missing session id" }, 400);
     }
 
-    // Validate tz for API consistency — session detail does not bucket by
-    // date/time, but the frontend sends tz uniformly to all dashboard routes.
     const timezone = parseTimezone(c.req.query("tz"));
     if (!timezone.ok) {
       return c.json({ error: timezone.error }, 400);
     }
 
-    // -- Fetch session row -----------------------------------------------------
     const session = querySession(db, id);
     if (!session) {
       return c.json({ error: "Session not found" }, 404);
     }
 
-    // -- Aggregate from related tables ----------------------------------------
     const msgAgg = queryMessageAggregates(db, id);
-    const modelInfo = queryPrimaryModel(db, id);
+    const primaryModel = queryPrimaryModel(db, id);
     const toolAgg = queryToolAggregates(db, id);
     const errCount = queryErrorCount(db, id);
 
-    // -- Build response -------------------------------------------------------
     const data: DashboardSessionDetailData = {
-      session: buildSummary(session, msgAgg, modelInfo, toolAgg, errCount),
+      session: buildSummary(session, msgAgg, primaryModel, toolAgg, errCount),
       messages: queryMessages(db, id),
       model_usage: queryModelUsage(db, id),
       tool_calls: queryToolCalls(db, id),

@@ -2,14 +2,12 @@ import { ref, type Ref } from 'vue'
 import {
   fetchDashboardProjects,
   type DashboardProjectItem,
-  type DashboardProjectsSummary,
   type DashboardProjectActivityTrendPoint,
   type DashboardProjectModelUsageItem,
 } from '../api/client'
 import { getRangeMs, type TimeRange } from '../utils/timezone'
 
 const projects = ref<DashboardProjectItem[]>([]) as Ref<DashboardProjectItem[]>
-const projectsSummary = ref<DashboardProjectsSummary | null>(null) as Ref<DashboardProjectsSummary | null>
 const activityTrend = ref<DashboardProjectActivityTrendPoint[]>([]) as Ref<DashboardProjectActivityTrendPoint[]>
 const projectModelUsage = ref<DashboardProjectModelUsageItem[]>([]) as Ref<DashboardProjectModelUsageItem[]>
 const loading = ref(false) as Ref<boolean>
@@ -52,7 +50,6 @@ export async function fetchProjects(
   try {
     const data = await fetchDashboardProjects(start, end, params)
     projects.value = data.projects
-    projectsSummary.value = data.summary
     activityTrend.value = data.activity_trend
     projectModelUsage.value = data.project_model_usage
     lastFetchedAt.value = Date.now()
@@ -74,7 +71,6 @@ export async function fetchProjects(
 export function useProjectsStore() {
   return {
     projects,
-    projectsSummary,
     activityTrend,
     projectModelUsage,
     loading,
