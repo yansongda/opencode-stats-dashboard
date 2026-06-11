@@ -12,12 +12,12 @@ import type { Database } from "bun:sqlite";
 import type {
   DashboardDataResponse,
   DashboardEfficiencyData,
-  DashboardEfficiencyHeatmapPoint,
   DashboardEfficiencyModelItem,
   DashboardEfficiencySummary,
   DashboardEfficiencyTimelinePoint,
 } from "@defs/api";
 import type { Context } from "hono";
+import { queryHeatmap } from "./heatmap";
 import {
   getTzOffsetMinutes,
   parseTimeRange,
@@ -25,8 +25,6 @@ import {
   safeDivide,
   sqlDailyBucketExprWithOffset,
   sqlHourlyBucketExprWithOffset,
-  sqlHourWithOffset,
-  sqlWeekdayWithOffset,
   toNum,
 } from "./helpers";
 
@@ -224,156 +222,6 @@ function queryTimeline(
     files_changed: toNum(row.files_changed),
     avg_session_duration_ms: durationMap.get(row.bucket) ?? null,
   }));
-}
-
-// ============================================================================
-// Heatmap Query
-// ============================================================================
-
-interface HeatmapMsgRow {
-  weekday: number;
-  hour: number;
-  messages: number;
-  tokens: number;
-  cost_usd: number;
-}
-
-interface HeatmapToolRow {
-  weekday: number;
-  hour: number;
-  tool_calls: number;
-  errors: number;
-}
-
-interface HeatmapErrorRow {
-  weekday: number;
-  hour: number;
-  errors: number;
-}
-
-function queryHeatmap(
-  db: Database,
-  start: number,
-  end: number,
-  offsetMin = 0,
-): DashboardEfficiencyHeatmapPoint[] {
-  // Fixed-offset approximation for non-hour offsets (e.g. Asia/Kolkata +5:30):
-  // weekday/hour are extracted from the shifted timestamp, which may produce
-  // slightly inaccurate results for the ~30-min boundary around DST transitions.
-  // DST-aware aggregation is intentionally out of scope.
-
-  const weekdayCol = sqlWeekdayWithOffset("created_at_ms", offsetMin);
-  const hourCol = sqlHourWithOffset("created_at_ms", offsetMin);
-
-  // Messages: weekday × hour aggregation from real created_at_ms
-  const msgRows = db
-    .query(
-      `SELECT
-        ${weekdayCol} as weekday,
-        ${hourCol} as hour,
-        COUNT(*) as messages,
-        COALESCE(SUM(total_tokens), 0) as tokens,
-        COALESCE(SUM(cost_usd), 0) as cost_usd
-      FROM messages
-      WHERE created_at_ms >= ? AND created_at_ms <= ?
-      GROUP BY weekday, hour`,
-    )
-    .all(start, end) as HeatmapMsgRow[];
-
-  // Tool calls: weekday × hour from started_at_ms (fallback to completed_at_ms)
-  const toolWeekday = sqlWeekdayWithOffset(
-    "COALESCE(started_at_ms, completed_at_ms)",
-    offsetMin,
-  );
-  const toolHour = sqlHourWithOffset(
-    "COALESCE(started_at_ms, completed_at_ms)",
-    offsetMin,
-  );
-  const toolRows = db
-    .query(
-      `SELECT
-        ${toolWeekday} as weekday,
-        ${toolHour} as hour,
-        COUNT(*) as tool_calls,
-        SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as errors
-      FROM tool_calls
-      WHERE COALESCE(started_at_ms, completed_at_ms) IS NOT NULL
-        AND COALESCE(started_at_ms, completed_at_ms) >= ?
-        AND COALESCE(started_at_ms, completed_at_ms) <= ?
-      GROUP BY weekday, hour`,
-    )
-    .all(start, end) as HeatmapToolRow[];
-
-  // Session errors from events table (real created_at_ms)
-  const errWeekday = sqlWeekdayWithOffset("created_at_ms", offsetMin);
-  const errHour = sqlHourWithOffset("created_at_ms", offsetMin);
-  const errorRows = db
-    .query(
-      `SELECT
-        ${errWeekday} as weekday,
-        ${errHour} as hour,
-        COUNT(*) as errors
-      FROM events
-      WHERE event_type = 'session.error'
-        AND created_at_ms >= ? AND created_at_ms <= ?
-      GROUP BY weekday, hour`,
-    )
-    .all(start, end) as HeatmapErrorRow[];
-
-  // Merge by (weekday, hour) key
-  const map = new Map<string, DashboardEfficiencyHeatmapPoint>();
-
-  for (const row of msgRows) {
-    const key = `${row.weekday}:${row.hour}`;
-    map.set(key, {
-      weekday: row.weekday,
-      hour: row.hour,
-      messages: toNum(row.messages),
-      tokens: toNum(row.tokens),
-      cost_usd: toNum(row.cost_usd),
-      tool_calls: 0,
-      errors: 0,
-    });
-  }
-
-  for (const row of toolRows) {
-    const key = `${row.weekday}:${row.hour}`;
-    const existing = map.get(key);
-    if (existing) {
-      existing.tool_calls = toNum(row.tool_calls);
-      existing.errors += toNum(row.errors);
-    } else {
-      map.set(key, {
-        weekday: row.weekday,
-        hour: row.hour,
-        messages: 0,
-        tokens: 0,
-        cost_usd: 0,
-        tool_calls: toNum(row.tool_calls),
-        errors: toNum(row.errors),
-      });
-    }
-  }
-
-  for (const row of errorRows) {
-    const key = `${row.weekday}:${row.hour}`;
-    const existing = map.get(key);
-    if (existing) {
-      existing.errors += toNum(row.errors);
-    } else {
-      map.set(key, {
-        weekday: row.weekday,
-        hour: row.hour,
-        messages: 0,
-        tokens: 0,
-        cost_usd: 0,
-        tool_calls: 0,
-        errors: toNum(row.errors),
-      });
-    }
-  }
-
-  return Array.from(map.values());
 }
 
 // ============================================================================

@@ -11,6 +11,7 @@
 import type { Database } from "bun:sqlite";
 import type {
   DashboardOverviewData,
+  DashboardOverviewProjectDistributionItem,
   DashboardOverviewRecentSession,
   DashboardOverviewSummary,
   DashboardOverviewTopModel,
@@ -18,6 +19,7 @@ import type {
   DashboardOverviewTrendPoint,
 } from "@defs/api";
 import type { Context } from "hono";
+import { queryHeatmap } from "./heatmap";
 import {
   getTzOffsetMinutes,
   parseTimeRange,
@@ -55,7 +57,6 @@ interface MessageAggRow {
   lines_deleted: number;
   total_projects: number;
   total_models: number;
-  active_days: number;
 }
 
 interface ToolAggRow {
@@ -122,8 +123,7 @@ function queryMessageAgg(
          COALESCE(SUM(lines_added), 0) as lines_added,
          COALESCE(SUM(lines_deleted), 0) as lines_deleted,
          COUNT(DISTINCT project_path) as total_projects,
-         COUNT(DISTINCT CASE WHEN model IS NOT NULL THEN model END) as total_models,
-         COUNT(DISTINCT date(created_at_ms / 1000, 'unixepoch')) as active_days
+         COUNT(DISTINCT CASE WHEN model IS NOT NULL THEN model END) as total_models
        FROM messages
        WHERE created_at_ms >= ? AND created_at_ms <= ?`,
     )
@@ -145,7 +145,6 @@ function queryMessageAgg(
     lines_deleted: toNum(row?.lines_deleted),
     total_projects: toNum(row?.total_projects),
     total_models: toNum(row?.total_models),
-    active_days: toNum(row?.active_days),
   };
 }
 
@@ -515,7 +514,6 @@ function buildSummary(
     lines_deleted: msgAgg.lines_deleted,
     total_projects: msgAgg.total_projects,
     total_models: msgAgg.total_models,
-    active_days: msgAgg.active_days,
     avg_tokens_per_session: safeDivide(
       msgAgg.total_tokens,
       sessionAgg.total_sessions,
@@ -534,6 +532,35 @@ function buildSummary(
     first_event_at_ms: sessionAgg.first_event_at_ms,
     last_event_at_ms: sessionAgg.last_event_at_ms,
   };
+}
+
+// ============================================================================
+// Project distribution query (private)
+// ============================================================================
+
+function queryProjectDistribution(
+  db: Database,
+  start: number,
+  end: number,
+): DashboardOverviewProjectDistributionItem[] {
+  const rows = db
+    .query(
+      `SELECT
+         project_path,
+         COUNT(DISTINCT session_id) as session_count,
+         COALESCE(SUM(cost_usd), 0) as cost_usd
+       FROM messages
+       WHERE created_at_ms >= ? AND created_at_ms <= ?
+       GROUP BY project_path
+       ORDER BY cost_usd DESC`,
+    )
+    .all(start, end) as Array<Record<string, unknown>>;
+
+  return rows.map((row) => ({
+    project_path: (row.project_path as string | null) ?? null,
+    session_count: toNum(row.session_count),
+    cost_usd: toNum(row.cost_usd),
+  }));
 }
 
 // ============================================================================
@@ -592,8 +619,9 @@ export function createOverviewDashboardHandler(db: Database) {
       activeProjectCount,
     );
 
-    // 4. Query daily trend
+    // 4. Query daily trend and heatmap
     const trend = queryTrend(db, start, end, offsetMin);
+    const heatmap = queryHeatmap(db, start, end, offsetMin);
 
     // 5. Query recent sessions
     const recentSessions = queryRecentSessions(db, start, end);
@@ -609,14 +637,19 @@ export function createOverviewDashboardHandler(db: Database) {
       end,
     );
 
-    // 8. Assemble and return
+    // 8. Query project distribution
+    const projectDistribution = queryProjectDistribution(db, start, end);
+
+    // 9. Assemble and return
     const data: DashboardOverviewData = {
       summary,
       trend,
+      heatmap,
       recent_sessions: recentSessions,
       top_models: topModels,
       top_tools: topTools,
       model_message_distribution: modelMessageDistribution,
+      project_distribution: projectDistribution,
     };
 
     return c.json({ data });
