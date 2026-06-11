@@ -6,8 +6,10 @@
  * 核心功能：
  *  - 按事件类型路由到匹配的处理器
  *  - 使用事务确保原子性
- *  - 跳过已处理的事件（幂等性）
  *  - 支持批量处理
+ *
+ * 幂等性由 DB 层保证：EventStore 使用 INSERT OR IGNORE，
+ * messages 投影使用 UPSERT；事件 ID 为本地 UUID，无跨进程冲突风险。
  */
 
 import type { Database } from "bun:sqlite";
@@ -53,10 +55,6 @@ interface HandlerEntry {
 export class ProjectionEngine {
   private readonly db: Database;
   private readonly handlers = new Map<string, HandlerEntry>();
-  private readonly processedEvents = new Set<string>();
-
-  /** 内存中保留的最大事件 ID 数量（用于幂等性检查） */
-  private static readonly MAX_PROCESSED = 10_000;
 
   constructor(db: Database) {
     this.db = db;
@@ -88,25 +86,12 @@ export class ProjectionEngine {
   /**
    * 处理单个事件
    *
-   * 流程：
-   *  1. 幂等性检查 — 跳过已处理的事件
-   *  2. 查找匹配的处理器
-   *  3. 在事务中执行处理器
-   *  4. 成功后标记为已处理
+   * 幂等性由 DB 层保证（INSERT OR IGNORE / UPSERT），
+   * 不维护内存中的已处理集合。
    *
-   * 如果处理器抛出异常，事务回滚，事件不会被标记为已处理（可重试）。
+   * 如果处理器抛出异常，事务回滚（可重试）。
    */
   processEvent(event: StatsEvent): void {
-    // 超过容量时清空集合，依赖 EventStore 的 INSERT OR IGNORE 实现真正的幂等性
-    if (this.processedEvents.size >= ProjectionEngine.MAX_PROCESSED) {
-      this.processedEvents.clear();
-    }
-
-    // 幂等性检查
-    if (this.processedEvents.has(event.event_id)) {
-      return;
-    }
-
     // 查找匹配的处理器
     const matching = this.findMatchingHandlers(event.event_type);
     if (matching.length === 0) {
@@ -121,37 +106,20 @@ export class ProjectionEngine {
     });
 
     txn();
-    // 成功提交后才标记为已处理，失败的事件可以重试
-    this.processedEvents.add(event.event_id);
   }
 
   /**
    * 批量处理多个事件
    *
-   * 流程：
-   *  1. 过滤已处理的事件（幂等性）
-   *  2. 在单个事务中处理所有事件
-   *  3. 成功后标记所有事件为已处理
+   * 幂等性由 DB 层保证，直接处理所有传入事件。
    */
   processEvents(events: StatsEvent[]): void {
     if (events.length === 0) return;
 
-    // 过滤已处理的事件
-    const unprocessed = events.filter(
-      (event) => !this.processedEvents.has(event.event_id),
-    );
-
-    if (unprocessed.length === 0) return;
-
-    // 超过容量时清空集合
-    if (this.processedEvents.size >= ProjectionEngine.MAX_PROCESSED) {
-      this.processedEvents.clear();
-    }
-
     // 在单个事务中处理所有事件
     const txn = this.db.transaction(() => {
       const ctx = createTransactionContext(this.db);
-      for (const event of unprocessed) {
+      for (const event of events) {
         const matching = this.findMatchingHandlers(event.event_type);
         for (const entry of matching) {
           entry.handler.handle(event, ctx);
@@ -160,10 +128,6 @@ export class ProjectionEngine {
     });
 
     txn();
-    // 成功提交后标记为已处理
-    for (const event of unprocessed) {
-      this.processedEvents.add(event.event_id);
-    }
   }
 
   // =========================================================================
