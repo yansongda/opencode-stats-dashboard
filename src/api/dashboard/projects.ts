@@ -424,9 +424,10 @@ export function createProjectsDashboardHandler(db: Database) {
         `SELECT
            m.project_path,
            m.model,
-           COUNT(*)            AS messages,
-           SUM(m.total_tokens) AS tokens,
-           SUM(m.cost_usd)     AS cost_usd
+           COUNT(*)                     AS messages,
+           COUNT(DISTINCT m.session_id) AS sessions,
+           SUM(m.total_tokens)          AS tokens,
+           SUM(m.cost_usd)              AS cost_usd
          FROM messages m
          WHERE m.model IS NOT NULL AND m.model != ''${msgWhere}
          GROUP BY m.project_path, m.model`,
@@ -437,6 +438,7 @@ export function createProjectsDashboardHandler(db: Database) {
       modelUsageRows.map((row) => ({
         project_path: normalizeProject(row.project_path as string | null),
         model: row.model as string,
+        sessions: toNum(row.sessions),
         messages: toNum(row.messages),
         tokens: toNum(row.tokens),
         cost_usd: toNum(row.cost_usd),
