@@ -47,14 +47,9 @@ function createTransactionContext(db: Database): TransactionContext {
 // 投影引擎
 // ---------------------------------------------------------------------------
 
-interface HandlerEntry {
-  name: string;
-  handler: ProjectionHandler;
-}
-
 export class ProjectionEngine {
   private readonly db: Database;
-  private readonly handlers = new Map<string, HandlerEntry>();
+  private readonly handlers = new Set<ProjectionHandler>();
 
   constructor(db: Database) {
     this.db = db;
@@ -64,19 +59,15 @@ export class ProjectionEngine {
   // 处理器注册
   // =========================================================================
 
-  registerHandler(name: string, handler: ProjectionHandler): void {
-    if (this.handlers.has(name)) {
-      throw new Error(`Handler "${name}" is already registered`);
+  registerHandler(handler: ProjectionHandler): void {
+    if (this.handlers.has(handler)) {
+      throw new Error("Handler is already registered");
     }
-    this.handlers.set(name, { name, handler });
+    this.handlers.add(handler);
   }
 
-  hasHandler(name: string): boolean {
-    return this.handlers.has(name);
-  }
-
-  getHandlerNames(): string[] {
-    return [...this.handlers.keys()];
+  get size(): number {
+    return this.handlers.size;
   }
 
   // =========================================================================
@@ -92,17 +83,9 @@ export class ProjectionEngine {
    * 如果处理器抛出异常，事务回滚（可重试）。
    */
   processEvent(event: StatsEvent): void {
-    // 查找匹配的处理器
-    const matching = this.findMatchingHandlers(event.event_type);
-    if (matching.length === 0) {
-      return;
-    }
-
     const txn = this.db.transaction(() => {
       const ctx = createTransactionContext(this.db);
-      for (const entry of matching) {
-        entry.handler.handle(event, ctx);
-      }
+      this.applyEvent(event, ctx);
     });
 
     txn();
@@ -120,10 +103,7 @@ export class ProjectionEngine {
     const txn = this.db.transaction(() => {
       const ctx = createTransactionContext(this.db);
       for (const event of events) {
-        const matching = this.findMatchingHandlers(event.event_type);
-        for (const entry of matching) {
-          entry.handler.handle(event, ctx);
-        }
+        this.applyEvent(event, ctx);
       }
     });
 
@@ -134,11 +114,24 @@ export class ProjectionEngine {
   // 内部方法
   // =========================================================================
 
-  private findMatchingHandlers(eventType: StatsEventType): HandlerEntry[] {
-    const result: HandlerEntry[] = [];
-    for (const entry of this.handlers.values()) {
-      if (entry.handler.handles.includes(eventType)) {
-        result.push(entry);
+  /**
+   * 将单个事件应用到匹配的处理器（必须在事务内调用）
+   */
+  private applyEvent(event: StatsEvent, ctx: TransactionContext): void {
+    const matching = this.findMatchingHandlers(event.event_type);
+    if (matching.length === 0) {
+      return;
+    }
+    for (const handler of matching) {
+      handler.handle(event, ctx);
+    }
+  }
+
+  private findMatchingHandlers(eventType: StatsEventType): ProjectionHandler[] {
+    const result: ProjectionHandler[] = [];
+    for (const handler of this.handlers) {
+      if (handler.handles.includes(eventType)) {
+        result.push(handler);
       }
     }
     return result;

@@ -160,7 +160,7 @@ function handleToolExecute(
 }
 
 // ---------------------------------------------------------------------------
-// 处理器工厂
+// 处理器导出
 // ---------------------------------------------------------------------------
 
 const HANDLED_EVENTS: StatsEventType[] = [
@@ -176,46 +176,44 @@ const HANDLED_EVENTS: StatsEventType[] = [
   "tool.execute.failed",
 ];
 
-export function createSessionProjectionHandler(): ProjectionHandler {
-  return {
-    handles: HANDLED_EVENTS,
+export const sessionHandler: ProjectionHandler = {
+  handles: HANDLED_EVENTS,
 
-    handle(event: StatsEvent, txn: TransactionContext): void {
-      switch (event.event_type) {
-        case "session.created":
-          handleSessionCreated(event, txn);
-          break;
+  handle(event: StatsEvent, txn: TransactionContext): void {
+    switch (event.event_type) {
+      case "session.created":
+        handleSessionCreated(event, txn);
+        break;
 
-        case "session.updated":
-          handleSessionUpdated(event, txn);
-          break;
+      case "session.updated":
+        handleSessionUpdated(event, txn);
+        break;
 
-        case "session.deleted":
-          handleSessionDeleted(event, txn);
-          break;
+      case "session.deleted":
+        handleSessionDeleted(event, txn);
+        break;
 
-        case "session.error":
-          handleSessionError(event, txn);
-          break;
+      case "session.error":
+        handleSessionError(event, txn);
+        break;
 
-        case "message.updated.user":
-          handleMessageUpdatedUser(event, txn);
-          break;
+      case "message.updated.user":
+        handleMessageUpdatedUser(event, txn);
+        break;
 
-        case "message.updated.assistant":
-          handleMessageUpdatedAssistant(event, txn);
-          break;
+      case "message.updated.assistant":
+        handleMessageUpdatedAssistant(event, txn);
+        break;
 
-        case "tool.execute.pending":
-        case "tool.execute.running":
-        case "tool.execute.completed":
-        case "tool.execute.failed":
-          handleToolExecute(event, txn);
-          break;
+      case "tool.execute.pending":
+      case "tool.execute.running":
+      case "tool.execute.completed":
+      case "tool.execute.failed":
+        handleToolExecute(event, txn);
+        break;
 
-        default:
-          break;
-      }
-    },
-  };
-}
+      default:
+        break;
+    }
+  },
+};

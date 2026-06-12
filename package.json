@@ -33,6 +33,9 @@
   "engines": {
     "bun": ">=1.0.0"
   },
+  "workspaces": [
+    "dashboard"
+  ],
   "scripts": {
     "test": "bun test --pass-with-no-tests",
     "test:watch": "bun test --watch --pass-with-no-tests",

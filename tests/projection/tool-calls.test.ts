@@ -7,7 +7,7 @@ import { toolCompleted, toolFailed, toolPending, toolRunning } from "../helpers/
 function createEngine() {
   const db = createTestDb();
   const engine = new ProjectionEngine(db);
-  engine.registerHandler("tools", toolCallHandler);
+  engine.registerHandler(toolCallHandler);
   return { db, engine };
 }
 

@@ -65,11 +65,7 @@
       <span class="summary-active">{{ activeCount }} 活跃</span>
       <span class="summary-sep">|</span>
       <span class="summary-deleted">{{ deletedCount }} 已删除</span>
-    </div>
-
-    <!-- Truncation Hint -->
-    <div v-if="allSessions.length === 500" class="summary-bar">
-      显示最近 500 条会话（可能还有更多，使用筛选缩小范围）
+      <span v-if="allSessions.length === 500" class="summary-truncated">显示最近 500 条，可使用筛选缩小范围</span>
     </div>
 
     <!-- Data Table -->
@@ -850,6 +846,11 @@ const StatusBadge = {
 
 .summary-sep {
   opacity: 0.4;
+}
+
+.summary-truncated {
+  margin-left: auto;
+  color: var(--text-muted);
 }
 
 /* ── Data Table ─────────────────────────────────────────────────────── */

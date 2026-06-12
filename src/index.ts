@@ -25,7 +25,7 @@ import type { Hooks, Plugin, PluginInput } from "@opencode-ai/plugin";
 import type { Event } from "@opencode-ai/sdk";
 import { ProjectionEngine } from "@projection/engine";
 import { messagesHandler } from "@projection/messages";
-import { createSessionProjectionHandler } from "@projection/sessions";
+import { sessionHandler } from "@projection/sessions";
 import { toolCallHandler } from "@projection/tool-calls";
 import { SSEBroadcaster } from "@sse/broadcaster";
 import { EventStore } from "@store/event";
@@ -151,15 +151,12 @@ class StatsPluginInstance {
         this.log("error", `SSE client ${clientId}: ${error.message}`, error);
       },
     });
-    this.projectionEngine.registerHandler(
-      "sessions",
-      createSessionProjectionHandler(),
-    );
-    this.projectionEngine.registerHandler("messages", messagesHandler);
-    this.projectionEngine.registerHandler("tool-calls", toolCallHandler);
+    this.projectionEngine.registerHandler(sessionHandler);
+    this.projectionEngine.registerHandler(messagesHandler);
+    this.projectionEngine.registerHandler(toolCallHandler);
     this.log(
       "info",
-      `Registered ${this.projectionEngine.getHandlerNames().length} projection handlers`,
+      `Registered ${this.projectionEngine.size} projection handlers`,
     );
     this.log("info", "[stats-engine] initProjection initialized");
   }

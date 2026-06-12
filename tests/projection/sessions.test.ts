@@ -1,19 +1,19 @@
 import { describe, expect, it } from "bun:test";
 import { ProjectionEngine } from "../../src/projection/engine";
-import { createSessionProjectionHandler } from "../../src/projection/sessions";
+import { sessionHandler } from "../../src/projection/sessions";
 import { createTestDb } from "../helpers/db";
 import { assistantMessage, sessionCreated, sessionDeleted, sessionError, sessionUpdated, toolCompleted, userMessage } from "../helpers/stats-events";
 
 function createEngine() {
   const db = createTestDb();
   const engine = new ProjectionEngine(db);
-  engine.registerHandler("sessions", createSessionProjectionHandler());
+  engine.registerHandler(sessionHandler);
   return { db, engine };
 }
 
 describe("session projection handler", () => {
   it("declares all supported event types", () => {
-    expect(createSessionProjectionHandler().handles).toEqual([
+    expect(sessionHandler.handles).toEqual([
       "session.created",
       "session.updated",
       "session.deleted",

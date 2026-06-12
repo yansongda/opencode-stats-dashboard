@@ -7,7 +7,7 @@ import { assistantMessage, userMessage } from "../helpers/stats-events";
 function createEngine() {
   const db = createTestDb();
   const engine = new ProjectionEngine(db);
-  engine.registerHandler("messages", messagesHandler);
+  engine.registerHandler(messagesHandler);
   return { db, engine };
 }
 

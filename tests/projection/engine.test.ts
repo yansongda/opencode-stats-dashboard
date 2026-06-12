@@ -6,21 +6,20 @@ import { createTestDb } from "../helpers/db";
 import { sessionCreated, sessionUpdated } from "../helpers/stats-events";
 
 describe("ProjectionEngine", () => {
-  it("registers handlers and rejects duplicate names", () => {
+  it("registers handlers and rejects duplicate references", () => {
     const engine = new ProjectionEngine(createTestDb());
     const handler: ProjectionHandler = { handles: ["session.created"], handle: () => {} };
 
-    engine.registerHandler("sessions", handler);
+    engine.registerHandler(handler);
 
-    expect(engine.hasHandler("sessions")).toBe(true);
-    expect(engine.getHandlerNames()).toEqual(["sessions"]);
-    expect(() => engine.registerHandler("sessions", handler)).toThrow('Handler "sessions" is already registered');
+    expect(engine.size).toBe(1);
+    expect(() => engine.registerHandler(handler)).toThrow("Handler is already registered");
   });
 
   it("routes events only to matching handlers", () => {
     const engine = new ProjectionEngine(createTestDb());
     const handled: StatsEvent[] = [];
-    engine.registerHandler("sessions", {
+    engine.registerHandler({
       handles: ["session.created"],
       handle: (event: StatsEvent) => handled.push(event),
     });
@@ -34,7 +33,7 @@ describe("ProjectionEngine", () => {
   it("processes batches in one transaction and rolls back on failure", () => {
     const db = createTestDb();
     const engine = new ProjectionEngine(db);
-    engine.registerHandler("writer", {
+    engine.registerHandler({
       handles: ["session.created", "session.updated"],
       handle: (event: StatsEvent, txn: TransactionContext) => {
         if (event.event_type === "session.updated") {
