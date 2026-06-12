@@ -60,7 +60,7 @@ function upsertToolCall(
   }
 
   const durationMs =
-    event.duration_ms || event.created_at_ms - existing.started_at_ms;
+    event.duration_ms ?? event.created_at_ms - existing.started_at_ms;
 
   txn.run(
     `UPDATE tool_calls
