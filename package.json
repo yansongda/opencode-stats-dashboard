@@ -3,18 +3,17 @@
   "version": "1.0.0-beta.0",
   "description": "OpenCode Event-Sourced Stats Engine",
   "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./packages/plugin/dist/index.js",
+  "types": "./packages/plugin/dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "types": "./packages/plugin/dist/index.d.ts",
+      "import": "./packages/plugin/dist/index.js"
     }
   },
   "files": [
-    "dist/index.js",
-    "dist/index.d.ts",
-    "dashboard/dist",
+    "packages/plugin/dist",
+    "packages/dashboard/dist",
     "README.md",
     "LICENSE"
   ],
@@ -34,7 +33,7 @@
     "bun": ">=1.0.0"
   },
   "workspaces": [
-    "dashboard"
+    "packages/*"
   ],
   "scripts": {
     "test": "bun test --pass-with-no-tests",
@@ -43,13 +42,14 @@
     "biome:fix": "biome check --fix",
     "biome:fix-unsafe": "biome check --fix --unsafe",
     "typecheck": "tsc --noEmit",
-    "build": "bun build ./src/index.ts --target=bun --format=esm --outdir=dist --external @opencode-ai/plugin --external @opencode-ai/sdk --external hono && tsc --emitDeclarationOnly",
-    "build:dashboard": "bun run --cwd dashboard build",
+    "build": "bun run --cwd packages/plugin build",
+    "build:dashboard": "bun run --cwd packages/dashboard build",
     "prepublishOnly": "bun run biome:check && bun run typecheck && bun run test && bun run build:dashboard && bun run build"
   },
   "dependencies": {
     "@opencode-ai/plugin": "^1.16.0",
     "@opencode-ai/sdk": "^1.16.0",
+    "@opencode-stats/shared": "workspace:*",
     "hono": "^4.12.23"
   },
   "devDependencies": {

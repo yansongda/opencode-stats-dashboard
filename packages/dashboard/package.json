@@ -1,0 +1,27 @@
+{
+  "name": "@opencode-stats/dashboard",
+  "version": "0.1.0",
+  "description": "OpenCode Stats Dashboard",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "type-check": "vue-tsc --noEmit"
+  },
+  "dependencies": {
+    "@opencode-stats/shared": "workspace:*",
+    "echarts": "^6.1.0",
+    "vue": "^3.4.0",
+    "vue-echarts": "^8.0.1",
+    "vue-router": "^4.3.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14",
+    "@vitejs/plugin-vue": "^6.0.7",
+    "typescript": "~5.4.0",
+    "vite": "^8.0.16",
+    "vue-tsc": "^2.0.0"
+  }
+}

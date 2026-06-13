@@ -1,0 +1,82 @@
+import { type Ref, ref } from "vue";
+import {
+  type DashboardSessionListItem,
+  fetchDashboardSessions,
+} from "../api/client";
+
+const sessions = ref<DashboardSessionListItem[]>([]) as Ref<
+  DashboardSessionListItem[]
+>;
+const loading = ref(false) as Ref<boolean>;
+const error = ref<string | null>(null) as Ref<string | null>;
+const lastFetchedAt = ref<number | null>(null) as Ref<number | null>;
+
+type FetchSessionsParams = Parameters<typeof fetchDashboardSessions>[2];
+
+const lastParams = ref<{
+  start?: number;
+  end?: number;
+  params?: FetchSessionsParams;
+} | null>(null);
+
+export async function fetchSessions(
+  start?: number,
+  end?: number,
+  params?: FetchSessionsParams,
+  options?: { silent?: boolean },
+): Promise<boolean> {
+  const silent = options?.silent ?? false;
+  const _hasArgs =
+    start !== undefined ||
+    end !== undefined ||
+    params !== undefined ||
+    options !== undefined;
+  const isSilentOnlyRefresh =
+    options !== undefined &&
+    start === undefined &&
+    end === undefined &&
+    params === undefined;
+
+  if (_hasArgs && !isSilentOnlyRefresh) {
+    lastParams.value = { start, end, params };
+  } else if (lastParams.value) {
+    start = lastParams.value.start;
+    end = lastParams.value.end;
+    params = lastParams.value.params;
+  }
+  if (!silent) {
+    loading.value = true;
+    error.value = null;
+  }
+  try {
+    const data = await fetchDashboardSessions(start, end, params);
+    sessions.value = data;
+    lastFetchedAt.value = Date.now();
+    return true;
+  } catch (err) {
+    if (!silent) {
+      error.value =
+        err instanceof Error ? err.message : "加载会话数据时发生未知错误";
+    } else {
+      console.warn(
+        "[silent fetch] sessions failed:",
+        err instanceof Error ? err.message : err,
+      );
+    }
+    return false;
+  } finally {
+    if (!silent) {
+      loading.value = false;
+    }
+  }
+}
+
+export function useSessionsStore() {
+  return {
+    sessions,
+    loading,
+    error,
+    lastFetchedAt,
+    fetchSessions,
+  };
+}

@@ -1,0 +1,21 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "../..",
+    "declaration": true,
+    "declarationMap": false,
+    "sourceMap": true,
+    "emitDeclarationOnly": false,
+    "baseUrl": ".",
+    "paths": {
+      "@opencode-stats/shared": ["../shared/src"],
+      "@opencode-stats/shared/*": ["../shared/src/*"],
+      "@opencode-stats/engine": ["../engine/src"],
+      "@opencode-stats/engine/*": ["../engine/src/*"],
+      "@defs/*": ["../shared/src/types/*"]
+    }
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "tests"]
+}

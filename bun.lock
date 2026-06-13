@@ -7,6 +7,7 @@
       "dependencies": {
         "@opencode-ai/plugin": "^1.16.0",
         "@opencode-ai/sdk": "^1.16.0",
+        "@opencode-stats/shared": "workspace:*",
         "hono": "^4.12.23",
       },
       "devDependencies": {
@@ -16,10 +17,11 @@
         "typescript": "^5.8.0",
       },
     },
-    "dashboard": {
-      "name": "opencode-stats-dashboard",
+    "packages/dashboard": {
+      "name": "@opencode-stats/dashboard",
       "version": "0.1.0",
       "dependencies": {
+        "@opencode-stats/shared": "workspace:*",
         "echarts": "^6.1.0",
         "vue": "^3.4.0",
         "vue-echarts": "^8.0.1",
@@ -31,6 +33,43 @@
         "typescript": "~5.4.0",
         "vite": "^8.0.16",
         "vue-tsc": "^2.0.0",
+      },
+    },
+    "packages/engine": {
+      "name": "@opencode-stats/engine",
+      "version": "1.0.0-beta.0",
+      "dependencies": {
+        "@opencode-ai/sdk": "^1.16.0",
+        "@opencode-stats/shared": "workspace:*",
+        "hono": "^4.12.23",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+        "bun-types": "latest",
+        "typescript": "^5.8.0",
+      },
+    },
+    "packages/plugin": {
+      "name": "@opencode-stats/plugin",
+      "version": "1.0.0-beta.0",
+      "dependencies": {
+        "@opencode-ai/plugin": "^1.16.0",
+        "@opencode-ai/sdk": "^1.16.0",
+        "hono": "^4.12.23",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+        "bun-types": "latest",
+        "typescript": "^5.8.0",
+      },
+    },
+    "packages/shared": {
+      "name": "@opencode-stats/shared",
+      "version": "1.0.0-beta.0",
+      "devDependencies": {
+        "@types/bun": "latest",
+        "bun-types": "latest",
+        "typescript": "^5.8.0",
       },
     },
   },
@@ -86,6 +125,14 @@
     "@opencode-ai/plugin": ["@opencode-ai/plugin@1.16.0", "", { "dependencies": { "@opencode-ai/sdk": "1.16.0", "effect": "4.0.0-beta.74", "zod": "4.1.8" }, "peerDependencies": { "@opentui/core": ">=0.3.2", "@opentui/keymap": ">=0.3.2", "@opentui/solid": ">=0.3.2" }, "optionalPeers": ["@opentui/core", "@opentui/keymap", "@opentui/solid"] }, "sha512-Plk76tTrJWR43wT8XBkXtSy1N4jFBfEuHpFpb7C3niydqHRih26z1LcbOSkHTFx1XuHGfgBi9+D8cuUn7305AQ=="],
 
     "@opencode-ai/sdk": ["@opencode-ai/sdk@1.16.0", "", { "dependencies": { "cross-spawn": "7.0.6" } }, "sha512-S4H2e9j4rdHs5BQOCjmVEdqdXmKwPFKjXPbPUaWiRJpAjBcZ/uIBpoZkmV+x9BLzc+vrE6WAffMZieQgukt4DA=="],
+
+    "@opencode-stats/dashboard": ["@opencode-stats/dashboard@workspace:packages/dashboard"],
+
+    "@opencode-stats/engine": ["@opencode-stats/engine@workspace:packages/engine"],
+
+    "@opencode-stats/plugin": ["@opencode-stats/plugin@workspace:packages/plugin"],
+
+    "@opencode-stats/shared": ["@opencode-stats/shared@workspace:packages/shared"],
 
     "@oxc-project/types": ["@oxc-project/types@0.133.0", "", {}, "sha512-KzkdCd6Uxqnf6l3HOw1xfatAlUURA0g14cvBYFyJ5SaNOQbOUvBr9PKArcPcrNIeRsBdgcUzOGrhKveVpvOIGA=="],
 
@@ -243,8 +290,6 @@
 
     "node-gyp-build-optional-packages": ["node-gyp-build-optional-packages@5.2.2", "", { "dependencies": { "detect-libc": "^2.0.1" }, "bin": { "node-gyp-build-optional-packages": "bin.js", "node-gyp-build-optional-packages-optional": "optional.js", "node-gyp-build-optional-packages-test": "build-test.js" } }, "sha512-s+w+rBWnpTMwSFbaE0UXsRlg7hU4FjekKU4eyAih5T8nJuNZT1nNsskXpxmeqSK9UzkBl6UgRlnKc8hz8IEqOw=="],
 
-    "opencode-stats-dashboard": ["opencode-stats-dashboard@workspace:dashboard"],
-
     "path-browserify": ["path-browserify@1.0.1", "", {}, "sha512-b7uo2UCUOYZcnF/3ID0lulOJi/bafxa1xPe7ZPsammBSpjSWQkjNxlt635YGS2MiR9GjvuXCtz2emr3jbsz98g=="],
 
     "path-key": ["path-key@3.1.1", "", {}, "sha512-ojmeN0qd+y0jszEtoY48r0Peq5dwMEkIlCOu6Q5f41lfkswXuKtYrhgoTpLnyIcHm24Uhqx+5Tqm2InSwLhE6Q=="],
@@ -303,8 +348,8 @@
 
     "@emnapi/wasi-threads/tslib": ["tslib@2.8.1", "", {}, "sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w=="],
 
-    "@tybys/wasm-util/tslib": ["tslib@2.8.1", "", {}, "sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w=="],
+    "@opencode-stats/dashboard/typescript": ["typescript@5.4.5", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-vcI4UpRgg81oIRUFwR0WSIHKt11nJ7SAVlYNIu+QpqeyXP+gpQJy/Z4+F0aGxSE4MqwjyXvW/TzgkLAx2AGHwQ=="],
 
-    "opencode-stats-dashboard/typescript": ["typescript@5.4.5", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-vcI4UpRgg81oIRUFwR0WSIHKt11nJ7SAVlYNIu+QpqeyXP+gpQJy/Z4+F0aGxSE4MqwjyXvW/TzgkLAx2AGHwQ=="],
+    "@tybys/wasm-util/tslib": ["tslib@2.8.1", "", {}, "sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w=="],
   }
 }

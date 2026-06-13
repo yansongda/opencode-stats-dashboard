@@ -21,7 +21,7 @@
     "verbatimModuleSyntax": true,
 
     "outDir": "./dist",
-    "rootDir": "./src",
+    "rootDir": ".",
     "declaration": true,
     "declarationMap": false,
     "sourceMap": true,
@@ -29,17 +29,17 @@
 
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"],
-      "@api/*": ["src/api/*"],
-      "@event/*": ["src/event/*"],
-      "@db/*": ["src/db/*"],
-      "@projection/*": ["src/projection/*"],
-      "@snapshot/*": ["src/snapshot/*"],
-      "@sse/*": ["src/sse/*"],
-      "@store/*": ["src/store/*"],
-      "@defs/*": ["src/types/*"]
+      "@defs/*": ["packages/shared/src/types/*"],
+      "@opencode-stats/shared": ["packages/shared/src"],
+      "@opencode-stats/shared/*": ["packages/shared/src/*"],
+      "@opencode-stats/engine": ["packages/engine/src"],
+      "@opencode-stats/engine/*": ["packages/engine/src/*"],
+      "@opencode-stats/plugin": ["packages/plugin/src"],
+      "@opencode-stats/plugin/*": ["packages/plugin/src/*"],
+      "@opencode-stats/dashboard": ["packages/dashboard/src"],
+      "@opencode-stats/dashboard/*": ["packages/dashboard/src/*"]
     }
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist", "dashboard", "tests"],
+  "include": ["packages/*/src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "packages/dashboard", "tests", "packages/*/tests", "packages/*/dist"],
 }
