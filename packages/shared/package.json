@@ -1,6 +1,6 @@
 {
   "name": "@opencode-stats/shared",
-  "version": "1.0.0-beta.0",
+  "version": "0.0.0",
   "description": "OpenCode Stats Shared Types and Utilities",
   "private": true,
   "type": "module",

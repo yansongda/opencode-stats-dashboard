@@ -1,6 +1,6 @@
 {
   "name": "@opencode-stats/plugin",
-  "version": "1.0.0-beta.0",
+  "version": "0.0.0",
   "description": "OpenCode Stats Engine Plugin",
   "private": false,
   "type": "module",

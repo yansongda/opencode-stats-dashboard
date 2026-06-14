@@ -90,18 +90,6 @@ bun run biome:fix
 bun run biome:fix-unsafe
 ```
 
-## 包信息
-
-| 项目 | 值 |
-| --- | --- |
-| 包名 | `opencode-stats-engine` |
-| 当前版本 | `1.0.0-beta.0` |
-| 模块类型 | ESM |
-| 入口文件 | `dist/index.js` |
-| 类型声明 | `dist/index.d.ts` |
-| 主要依赖 | `@opencode-ai/plugin`、`@opencode-ai/sdk`、`hono` |
-| 许可证 | MIT |
-
 ## 仪表盘预览
 
 ### 总览
