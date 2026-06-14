@@ -1,6 +1,6 @@
 {
   "name": "opencode-stats-engine",
-  "version": "1.0.0-beta.1",
+  "version": "1.0.0-beta.2",
   "description": "OpenCode Event-Sourced Stats Engine",
   "type": "module",
   "main": "./packages/plugin/dist/index.js",
@@ -49,7 +49,6 @@
   "dependencies": {
     "@opencode-ai/plugin": "^1.16.0",
     "@opencode-ai/sdk": "^1.16.0",
-    "@opencode-stats/shared": "workspace:*",
     "hono": "^4.12.23"
   },
   "devDependencies": {
