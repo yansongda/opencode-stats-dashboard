@@ -62,11 +62,11 @@ jobs:
           bun run biome:check
           bun run typecheck
           bun run test
+          bun run build:dashboard
+          bun run build
 
       - name: Preview npm package
         run: npm pack --dry-run
-        working-directory: packages/plugin
 
       - name: Publish package
         run: npm publish --ignore-scripts --provenance --access public --tag "${{ steps.dist_tag.outputs.tag }}"
-        working-directory: packages/plugin
