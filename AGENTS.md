@@ -1,167 +1,109 @@
 # AGENTS.md — opencode-stats-engine
 
-## 项目简介
+## 项目定位
 
-OpenCode 的事件溯源统计引擎。收集插件事件 → 持久化到 SQLite → 通过处理器投影统计数据 → 通过 HTTP (Hono) + SSE 提供服务。独立的 Vue 3 仪表盘位于 `dashboard/` 目录。
+OpenCode 的事件溯源统计引擎插件：监听 OpenCode 事件 → 写入本地 SQLite → 投影统计表 → 通过 Hono HTTP、Dashboard API 和 SSE 提供本地统计服务。项目是 Bun workspace monorepo，根 `package.json` 声明 `"workspaces": ["packages/*"]`。
 
-## 运行时和工具链
+## 必守约束
 
-- **运行时**: Bun（不是 Node.js）。所有命令使用 `bun`，不用 `npm`/`pnpm`/`yarn`。
-- **模块系统**: ESM（`"type": "module"`）。使用 `import`，不要用 `require`。
-- **代码检查/格式化**: Biome（不是 ESLint/Prettier）。配置文件: `biome.json`。
-- **数据库**: `bun:sqlite`（原生 SQLite，不是 better-sqlite3 或 drizzle）。
-- **HTTP 框架**: Hono（不是 Express/Fastify）。
-- **仪表盘**: Vue 3 + Vite + ECharts（独立包，位于 `dashboard/`）。
+- **运行时只用 Bun**：命令使用 `bun`，不要用 `npm`/`pnpm`/`yarn`。
+- **模块系统是 ESM**：使用 `import`，不要用 `require`。
+- **代码检查/格式化用 Biome**：不要引入 ESLint/Prettier。
+- **数据库用 `bun:sqlite`**：不要换成 better-sqlite3、drizzle 等。
+- **HTTP 框架用 Hono**：不要换成 Express/Fastify。
+- **类型安全**：禁止 `as any`、`@ts-ignore`；严格修类型。
+- **隐私红线**：`packages/shared/src/types/events.ts` 的 `FORBIDDEN_METADATA_KEYS` 禁止进入元数据，尤其是 `tool_input`、`tool_output`、`message_body`、`raw_input`、`raw_output`。
+- **时区边界**：存储、投影、SSE 保持 UTC；时区转换只发生在 Dashboard API 边界和前端展示层，`*_ms` 字段语义不可改变。
 
 ## 常用命令
 
 ```bash
 # 测试 (bun:test, 不是 vitest/jest)
-bun test                                  # 运行所有测试
-bun test tests/projection/engine.test.ts  # 运行单个文件
-bun test --test-name-pattern "routes"     # 按名称过滤
+bun test
+bun test packages/engine/tests/projection/engine.test.ts
+bun test --test-name-pattern "routes"
 
 # 类型检查
-bun run typecheck                         # tsc --noEmit
+bun run typecheck
 
-# 代码检查/格式化 (Biome)
-bun run biome:check                       # 仅检查
-bun run biome:fix                         # 自动修复安全问题
-bun run biome:fix-unsafe                  # 自动修复包括不安全的问题
+# Biome
+bun run biome:check
+bun run biome:fix
+bun run biome:fix-unsafe
 
-# 仪表盘
-bun run build:dashboard                   # 构建 dashboard/dist/
-cd dashboard && bun run dev               # 开发服务器（代理 /api → :11133）
+# 构建
+bun run build              # bun run --cwd packages/plugin build
+bun run build:dashboard    # bun run --cwd packages/dashboard build
+
+# Dashboard 开发
+bun run --cwd packages/dashboard dev
+bun run --cwd packages/dashboard type-check
 ```
 
-**CI 执行顺序**: `biome:check` → `typecheck` → `test`
+**CI 顺序**：`biome:check` → `typecheck` → `test` → `build:dashboard` → `build`。
 
-## 路径别名 (tsconfig.json)
+## 包边界
 
-在导入中使用这些别名 — 它们指向 `src/` 的子目录：
+```text
+packages/
+├── plugin/     # npm 发布入口：StatsPlugin、logger、HTTP 静态资源挂载
+├── engine/     # 后端核心：API、DB、event converter、projection、SSE、leader、store
+├── shared/     # 共享类型和工具：events/api/stream/projections types，event/projection utils
+└── dashboard/  # Vue 3 + Vite + vue-router + ECharts 仪表盘
+```
+
+数据流：`packages/plugin/src/index.ts` 插件钩子 → `packages/engine/src/event/converter.ts` 的 `convertEvent()` → `EventStore` → `ProjectionEngine` → `SSEBroadcaster`。
+
+## 路径别名
+
+根 `tsconfig.json`：
 
 | 别名 | 映射到 |
 |------|--------|
-| `@/*` | `src/*` |
-| `@api/*` | `src/api/*` |
-| `@event/*` | `src/event/*` |
-| `@db/*` | `src/db/*` |
-| `@projection/*` | `src/projection/*` |
-| `@sse/*` | `src/sse/*` |
-| `@store/*` | `src/store/*` |
-| `@defs/*` | `src/types/*` |
+| `@defs/*` | `packages/shared/src/types/*` |
+| `@opencode-stats/shared` / `@opencode-stats/shared/*` | `packages/shared/src` / `packages/shared/src/*` |
+| `@opencode-stats/engine` / `@opencode-stats/engine/*` | `packages/engine/src` / `packages/engine/src/*` |
+| `@opencode-stats/plugin` / `@opencode-stats/plugin/*` | `packages/plugin/src` / `packages/plugin/src/*` |
+| `@opencode-stats/dashboard` / `@opencode-stats/dashboard/*` | `packages/dashboard/src` / `packages/dashboard/src/*` |
 
-示例: `import { EventStore } from "@store/event"`
+Dashboard 本地 `packages/dashboard/tsconfig.json` 还定义：`@/*` → `src/*`，`@defs/*` → `../shared/src/types/*`，`@opencode-stats/shared` / `@opencode-stats/shared/*` → `../shared/src` / `../shared/src/*`。
 
-## 架构
+## 修改入口速查
 
-```
-src/
-├── index.ts          # 插件入口 — StatsPlugin（默认导出）
-├── logger.ts         # 结构化文件日志（best-effort，不阻断插件生命周期）
-├── api/
-│   └── dashboard/    # Hono 路由（7 个 REST 端点 + SSE stream）
-│       ├── helpers/  # 时区、时间范围、分页、排序、SQL offset 等查询工具
-│       └── components/ # heatmap、primary-model 等复用查询组件
-├── db/               # SQLite schema + 迁移（schema.ts, migrations/001_initial.ts）
-├── event/            # 事件转换器（SDK Event → StatsEvent）
-│   ├── converter.ts  # 注册表：映射 event.type → 转换函数
-│   ├── utils.ts      # 工具函数（createBaseEvent, defaultTokens, normalizeTokens）
-│   └── converters/   # 每种事件类型一个文件（session-created.ts 等）
-├── projection/       # 投影处理器（事件 → 聚合统计表）
-│   ├── engine.ts     # ProjectionEngine：在事务中将事件路由到处理器
-│   ├── sessions.ts   # sessions 投影处理器
-│   ├── messages.ts   # messages 投影处理器
-│   ├── tool-calls.ts # tool_calls 投影处理器
-│   └── utils.ts      # 投影工具函数（totalTokens）
-├── server/           # 多实例 leader/follower HTTP 所有权管理
-├── sse/              # SSE 广播器（实时推送到仪表盘）
-├── store/            # EventStore（追加式事件持久化）
-└── types/            # TypeScript 类型（events.ts, projections.ts, api.ts, stream.ts）
-```
+- 插件生命周期、静态文件服务、事件处理编排：`packages/plugin/src/index.ts`
+- 文件日志器：`packages/plugin/src/logger.ts`
+- Dashboard API：`packages/engine/src/api/dashboard/`
+- SQLite schema 与迁移：`packages/engine/src/db/`
+- SDK Event → StatsEvent 转换：`packages/engine/src/event/`
+- 投影处理器：`packages/engine/src/projection/`
+- leader/follower HTTP 所有权：`packages/engine/src/server/leader.ts`
+- SSE：`packages/engine/src/sse/broadcaster.ts`
+- EventStore：`packages/engine/src/store/event.ts`
+- 共享类型/工具：`packages/shared/src/`
+- Vue Dashboard：`packages/dashboard/src/`
 
-**数据流**: 插件钩子 → `event/converter.ts` → `store/event.ts`（持久化）→ `projection/engine.ts`（路由到处理器）→ `sse/broadcaster.ts`（推送更新）
+## 测试与开发模式
 
-## 事件类型（共 10 种）
+- 测试运行器：`bun:test`（`import { describe, it, expect, mock } from "bun:test"`）。
+- 测试目录：`packages/engine/tests/`、`packages/shared/tests/`，结构镜像各包 `src/`。
+- 引擎测试辅助函数在 `packages/engine/tests/helpers/`。
+- 内存数据库测试使用 `new Database(":memory:")` + `runMigrations(db)`。
+- Biome 作用域是 `packages/*/src/**`，测试不检查；Vue 文件有未用变量/导入 override。
 
-`session.created`, `session.updated`, `session.deleted`, `session.error`, `message.updated.user`, `message.updated.assistant`, `tool.execute.pending`, `tool.execute.running`, `tool.execute.completed`, `tool.execute.failed`
+## 新增事件类型 checklist
 
-`src/event/converters/` 中的每个转换器导出 `eventType`（字符串）和 `convert`（函数）。新增事件类型需要：转换器文件 + 在 `converter.ts` 中注册 + 更新相关投影处理器的 `handles` 数组。
+1. 在 `packages/shared/src/types/events.ts` 更新 `StatsEvent` 联合类型。
+2. 在 `packages/engine/src/event/converters/` 新增转换器，导出 `eventType` 和 `convert`。
+3. 在 `packages/engine/src/event/converter.ts` 的 `REGISTERED` 中注册。
+4. 如需投影，更新 `packages/engine/src/projection/` 对应 handler 的 `handles`。
+5. 如需新列，新增 `packages/engine/src/db/migrations/` 迁移并更新 schema。
+6. 在 `packages/engine/tests/event/` 添加转换器测试，必要时补投影/API 测试。
 
-## 添加新事件类型
+## 设计文档索引
 
-1. 在 `src/types/events.ts` 的 `StatsEvent` 联合类型中添加类型
-2. 创建 `src/event/converters/my-event.ts`，包含 `eventType` + `convert`
-3. 在 `src/event/converter.ts` 的 `REGISTERED` 数组中注册
-4. 在相关投影处理器的 `handles` 数组中添加事件类型
-5. 如需新列，更新投影 SQL（添加迁移）
-6. 在 `tests/events/` 中添加测试
+详细说明不要堆在本文件，按需阅读：
 
-## 环境变量
-
-| 变量 | 默认值 | 用途 |
-|------|--------|------|
-| `STATS_PORT` | `11133` | HTTP 服务器端口 |
-| `STATS_DB_DIR` | `~/.local/share/opencode-stats-engine/` | SQLite 目录 |
-| `STATS_DB_PATH` | `$STATS_DB_DIR/stats.db` | SQLite 文件路径 |
-
-## 测试模式
-
-- 测试运行器: `bun:test`（`import { describe, it, expect, mock } from "bun:test"`）
-- 内存数据库: `new Database(":memory:")` + `runMigrations(db)` 用于隔离测试
-- 测试结构镜像 `src/`（例如 `tests/projection/engine.test.ts` 测试 `src/projection/engine.ts`）
-- Mock 函数: `mock(() => {})` 来自 bun:test（不是 vitest.fn 或 jest.fn）
-- 无 fixtures 目录 — 测试通过辅助函数（如 `makeEvent()`）内联创建数据
-
-## Biome 配置
-
-- 格式化器: 空格（不是制表符）
-- 代码检查器: 启用推荐规则
-- 范围: 仅 `src/**`（测试不检查）
-- 保存时自动组织导入
-
-## 开发规范
-
-- **禁止 `as any` 或 `@ts-ignore`** — 严格模式已开启，修复类型
-- **幂等写入** — EventStore 使用 `INSERT OR IGNORE`，messages 投影使用 `ON CONFLICT DO UPDATE`；不维护内存去重集合
-- **错误隔离** — `processEvent` 隔离转换、存储、投影、广播错误；存储失败会阻断投影和广播，投影失败会阻断广播，但错误不会向宿主传播
-- **预编译语句** — EventStore 在 `queryCache` Map 中缓存 SQL 语句
-- **事务安全** — 投影处理器在 `db.transaction()` 内运行；失败 = 回滚
-- **隐私保护** — `src/types/events.ts` 中的 `FORBIDDEN_METADATA_KEYS` 列出了绝不能出现在元数据中的字段（`tool_input`, `tool_output`, `message_body`, `raw_input`, `raw_output`）
-- **时区转换边界** — 时区转换仅发生在 API 边界（`parseTimezone` + SQL offset）和前端展示层（`formatTimestamp`、`formatBucketLocal`）；`*_ms` 语义不变，存储/投影/SSE 全链路保持 UTC
-
-## 仪表盘（独立包）
-
-- 位置: `dashboard/`（独立的 `package.json`, `node_modules`, `bun.lock`）
-- 框架: Vue 3 + Vite + vue-router + ECharts
-- 开发: `cd dashboard && bun run dev`（代理 `/api` 到 `http://127.0.0.1:11133`）
-- 构建输出: `dashboard/dist/`（由主应用作为静态文件提供）
-- 类型检查: `cd dashboard && bun run type-check`
-
-## Dashboard API 时区契约
-
-所有 `/api/v1/dashboard/*` 端点接受可选的 `tz` 查询参数，值为 IANA 时区字符串（如 `America/New_York`、`Asia/Shanghai`）。
-
-- **默认值**: `tz` 缺失或为空时默认 `"UTC"`，向后兼容。
-- **校验**: 无效时区或长度超过 50 字符返回 HTTP 400，响应体 `{ error: "..." }`。
-- **桶化方式**: 后端使用 fixed-offset SQL 辅助函数（`sqlDailyBucketExprWithOffset`、`sqlHourWithOffset` 等）进行日期/小时分桶，不处理 DST 转换。
-- **DST 限制**: DST 边界附近的数据可能被错误归桶约一小时；非 DST 时区（如 `Asia/Shanghai`、`Asia/Kolkata`）不受影响。
-- **`*_ms` 字段**: 所有 `*_ms` 列保持 UTC 毫秒 epoch 值，语义不可改变。
-- **SSE**: SSE 端点和帧格式不变，不携带 `tz` 参数。
-- **存储层**: 数据库、事件、投影、SSE 全链路保持 UTC，无时区转换。
-
-## 插件集成
-
-这是一个 OpenCode 插件（`@opencode-ai/plugin`）。默认导出是 `StatsPlugin`，它：
-1. 接收 `PluginInput`，包含 `client.app.log` 用于结构化日志
-2. 返回 `Hooks` 对象，包含 `event` 和 `dispose`
-3. 跨调用维护单例 `StatsPluginInstance`
-4. 直接使用 `Bun.serve()`（不是 Hono 内置的 serve）
-
-## 设计文档
-
-详细规范位于 `docs/` 目录：
-- `architecture.md`：核心架构和数据流
-- `event-table-mapping.md`：事件与数据表映射关系
-- `dashboard-page-metrics-api-mapping.md`：Dashboard API 端点规范
-- `multi-instance.md`：多实例 leader/follower 并发模型
+- `docs/architecture.md`：核心架构、数据流、模块职责、扩展指南。
+- `docs/event-table-mapping.md`：事件类型、转换器、表结构、投影写入矩阵。
+- `docs/dashboard-page-metrics-api-mapping.md`：Dashboard REST/SSE API、字段契约、时区参数。
+- `docs/multi-instance.md`：leader/follower、多实例并发、SQLite WAL 行为。
