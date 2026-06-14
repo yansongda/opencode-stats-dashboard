@@ -64,7 +64,7 @@ http://127.0.0.1:11133
 
 ## 开发
 
-以下内容仅面向本仓库开发者。项目使用 Bun、TypeScript、Biome、Hono，以及位于 `dashboard/` 的 Vue 3 仪表盘。
+以下内容仅面向本仓库开发者。项目使用 Bun workspace monorepo，包含 `packages/{plugin,engine,shared,dashboard}`，技术栈为 Bun、TypeScript、Biome、Hono，以及位于 `packages/dashboard/` 的 Vue 3 仪表盘。
 
 ```bash
 bun install
@@ -79,8 +79,14 @@ bun run build
 
 ```bash
 bun test
-bun test tests/projection/engine.test.ts
+bun test packages/engine/tests/projection/engine.test.ts
 bun test --test-name-pattern "routes"
+```
+
+仪表盘开发服务器可单独启动，默认代理 `/api` 到 `http://127.0.0.1:11133`：
+
+```bash
+bun run --cwd packages/dashboard dev
 ```
 
 自动修复：
@@ -117,15 +123,11 @@ bun run biome:fix-unsafe
 发布到 npm 前执行：
 
 ```bash
-bun run biome:check
-bun run typecheck
-bun test
-bun run build:dashboard
-bun run build
+bun run prepublishOnly
 npm pack --dry-run
 ```
 
-检查 `npm pack --dry-run` 输出，确认包内包含 `dist/`、`dashboard/dist/`、`README.md`、`LICENSE` 和 `package.json`，且不包含测试源码、仪表盘源码、`node_modules` 或本地依赖目录。
+`prepublishOnly` 会按顺序运行 `biome:check`、`typecheck`、`test`、`build:dashboard` 和 `build`。检查 `npm pack --dry-run` 输出，确认包内包含 `packages/plugin/dist/`、`packages/dashboard/dist/`、`README.md`、`LICENSE` 和 `package.json`，且不包含测试源码、仪表盘源码、`node_modules` 或本地依赖目录。
 
 确认无误后发布：
 
