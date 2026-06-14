@@ -2,7 +2,7 @@
 
 > **时间**: 2026-06-11
 > **状态**: 当前实现契约
-> **依据**: `src/types/api.ts` 与 `src/api/dashboard/*.ts`
+> **依据**: `packages/shared/src/types/api.ts` 与 `packages/engine/src/api/dashboard/*.ts`
 
 ---
 

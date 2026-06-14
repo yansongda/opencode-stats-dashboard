@@ -1,13 +1,13 @@
 # 事件与数据表映射
 
 > 本文档反映当前代码实际状态，基于以下源文件:
-> - `src/types/events.ts` (StatsEvent 类型定义)
-> - `src/event/converters/*.ts` (SDK 事件到 StatsEvent 的转换)
-> - `src/store/event.ts` (EventStore 持久化)
-> - `src/projection/sessions.ts` (sessions 投影处理器)
-> - `src/projection/messages.ts` (messages 投影处理器)
-> - `src/projection/tool-calls.ts` (tool_calls 投影处理器)
-> - `src/db/migrations/001_initial.ts` (数据库 schema)
+> - `packages/shared/src/types/events.ts` (StatsEvent 类型定义)
+> - `packages/engine/src/event/converters/*.ts` (SDK 事件到 StatsEvent 的转换)
+> - `packages/engine/src/store/event.ts` (EventStore 持久化)
+> - `packages/engine/src/projection/sessions.ts` (sessions 投影处理器)
+> - `packages/engine/src/projection/messages.ts` (messages 投影处理器)
+> - `packages/engine/src/projection/tool-calls.ts` (tool_calls 投影处理器)
+> - `packages/engine/src/db/migrations/001_initial.ts` (数据库 schema)
 
 ---
 

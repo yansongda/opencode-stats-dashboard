@@ -1,7 +1,7 @@
 # OpenCode Stats Engine 架构文档
 
 > 本文档覆盖插件的核心架构: 事件采集、持久化、投影统计、HTTP 所有权管理和 Dashboard API 边界。
-> Dashboard 前端实现位于 `dashboard/`，不在本文档范围内。
+> Dashboard 前端实现位于 `packages/dashboard/`，不在本文档范围内。
 
 ---
 
@@ -9,16 +9,16 @@
 
 | 范围内 | 范围外 |
 |--------|--------|
-| 插件入口与生命周期 (`src/index.ts`) | 仪表盘前端 (`dashboard/`) |
-| 结构化日志 (`src/logger.ts`) | 前端构建产物 (`dashboard/dist/`) |
-| 多实例 HTTP 所有权 (`src/server/`) | |
-| Dashboard API 路由边界 (`src/api/dashboard/`) | |
-| SSE 广播边界 (`src/sse/`) | |
-| 事件转换 (`src/event/`) | |
-| 事件存储 (`src/store/`) | |
-| 投影引擎与处理器 (`src/projection/`) | |
-| 数据库 schema 与迁移 (`src/db/`) | |
-| 类型定义与不变量 (`src/types/`) | |
+| 插件入口与生命周期 (`packages/plugin/src/index.ts`) | 仪表盘前端 (`packages/dashboard/`) |
+| 结构化日志 (`packages/plugin/src/logger.ts`) | 前端构建产物 (`packages/dashboard/dist/`) |
+| 多实例 HTTP 所有权 (`packages/engine/src/server/`) | |
+| Dashboard API 路由边界 (`packages/engine/src/api/dashboard/`) | |
+| SSE 广播边界 (`packages/engine/src/sse/`) | |
+| 事件转换 (`packages/engine/src/event/`) | |
+| 事件存储 (`packages/engine/src/store/`) | |
+| 投影引擎与处理器 (`packages/engine/src/projection/`) | |
+| 数据库 schema 与迁移 (`packages/engine/src/db/`) | |
+| 类型定义与不变量 (`packages/shared/src/types/`) | |
 
 ---
 
@@ -39,7 +39,7 @@
 ```
 OpenCode SDK Event
        |
-  convertEvent()         -- src/event/converter.ts
+  convertEvent()         -- packages/engine/src/event/converter.ts
        |
   StatsEvent[]
        |
@@ -83,7 +83,7 @@ events 表                  +--------+--------+
 
 ## 核心模块职责
 
-### 插件入口 (`src/index.ts`)
+### 插件入口 (`packages/plugin/src/index.ts`)
 
 `StatsPluginInstance` 是单例, 在首次插件调用时懒初始化, 跨调用复用。
 
@@ -91,12 +91,12 @@ events 表                  +--------+--------+
 - 创建 SQLite 连接, 配置 PRAGMA, 运行迁移
 - 实例化 `EventStore`, `ProjectionEngine`, `SSEBroadcaster`
 - 注册三个投影处理器: `sessions`, `messages`, `tool-calls`
-- 通过 `src/server/leader.ts` 管理多实例 leader/follower HTTP 所有权
+- 通过 `packages/engine/src/server/leader.ts` 管理多实例 leader/follower HTTP 所有权
 - 启动 HTTP 服务器 (`Bun.serve`) 并挂载 Dashboard REST/SSE 路由
-- 使用 `src/logger.ts` 写入 best-effort 结构化日志
+- 使用 `packages/plugin/src/logger.ts` 写入 best-effort 结构化日志
 - 提供 `dispose()` 释放所有资源
 
-### Dashboard API (`src/api/dashboard/`)
+### Dashboard API (`packages/engine/src/api/dashboard/`)
 
 Dashboard API 作为投影表的查询边界，注册 7 个 REST 端点和 1 个 SSE stream 端点：
 
@@ -105,15 +105,15 @@ Dashboard API 作为投影表的查询边界，注册 7 个 REST 端点和 1 个
 - `components/` 提供 `heatmap`、`primary-model` 等跨端点复用查询组件
 - `stream` 端点通过 `SSEBroadcaster` 推送轻量级失效通知，不返回业务聚合数据
 
-### 多实例 HTTP 所有权 (`src/server/leader.ts`)
+### 多实例 HTTP 所有权 (`packages/engine/src/server/leader.ts`)
 
 插件可能被多个 OpenCode 实例加载。当前实现采用 leader/follower 模式：第一个成功绑定端口的实例成为 leader 并提供 HTTP 服务；端口被占用的实例成为 follower，仅继续写入本地事件和投影。详见 [multi-instance.md](./multi-instance.md)。
 
-### 结构化日志 (`src/logger.ts`)
+### 结构化日志 (`packages/plugin/src/logger.ts`)
 
 日志写入是 best-effort：文件日志失败不会中断插件生命周期、事件处理或 HTTP 服务启动。
 
-### 事件转换器 (`src/event/`)
+### 事件转换器 (`packages/engine/src/event/`)
 
 **注册表** (`converter.ts`): `Map<string, ConvertFn[]>`, 一个 SDK 事件类型可映射多个转换函数 (1:N)。
 
@@ -132,12 +132,12 @@ Dashboard API 作为投影表的查询边界，注册 7 个 REST 端点和 1 个
 | `message-part-updated-tool-completed` | `message.part.updated` | `tool.execute.completed` |
 | `message-part-updated-tool-failed` | `message.part.updated` | `tool.execute.failed` |
 
-**工具函数** (`utils.ts`):
+**共享事件工具函数** (`packages/shared/src/utils/event.ts`):
 - `createBaseEvent()` -- 生成 `event_id` (UUID) + `created_at_ms` (当前时间戳)
 - `defaultTokens()` -- 零值 `TokenBreakdown`
 - `normalizeTokens()` -- 从松散输入构造合法 `TokenBreakdown`
 
-### 事件存储 (`src/store/event.ts`)
+### 事件存储 (`packages/engine/src/store/event.ts`)
 
 追加式持久化层。核心设计:
 
@@ -147,7 +147,7 @@ Dashboard API 作为投影表的查询边界，注册 7 个 REST 端点和 1 个
 
 事件存储为不可变: 写入后不修改、不删除。
 
-### 投影引擎 (`src/projection/engine.ts`)
+### 投影引擎 (`packages/engine/src/projection/engine.ts`)
 
 路由事件到匹配的处理器, 在事务中执行。
 
@@ -156,7 +156,7 @@ Dashboard API 作为投影表的查询边界，注册 7 个 REST 端点和 1 个
 2. 在 `db.transaction()` 中依次调用匹配的处理器
 3. 幂等性由 DB 层保障: EventStore `INSERT OR IGNORE` 防止重复事件写入, messages 投影 `ON CONFLICT DO UPDATE` 实现安全 upsert
 
-**TransactionContext**: 处理器通过 `run()`, `query()`, `get()` 三个方法操作数据库, 所有操作共享同一事务。处理器抛异常则整个事务回滚。
+**TransactionContext**: 处理器通过 `run()`, `query()`, `get()` 三个方法操作数据库, 所有操作共享同一事务。处理器抛异常则整个事务回滚。投影通用工具（如 `totalTokens()`）位于 `packages/shared/src/utils/projection.ts`。
 
 ---
 
@@ -194,7 +194,7 @@ SDK "message.part.updated"  -->  [ToolExecutePendingEvent]  (根据状态分发)
 
 ### 隐私边界
 
-`FORBIDDEN_METADATA_KEYS` 禁止以下字段出现在事件元数据中:
+`FORBIDDEN_METADATA_KEYS`（定义于 `packages/shared/src/types/events.ts`）禁止以下字段出现在事件元数据中:
 `tool_input`, `tool_output`, `message_body`, `raw_input`, `raw_output`
 
 ---
@@ -274,7 +274,7 @@ SDK "message.part.updated"  -->  [ToolExecutePendingEvent]  (根据状态分发)
 
 ### 迁移系统
 
-- 迁移文件: `src/db/migrations/001_initial.ts` (当前唯一迁移)
+- 迁移文件: `packages/engine/src/db/migrations/001_initial.ts` (当前唯一迁移)
 - 跟踪表: `schema_migrations` (version INTEGER PK, applied_at DATETIME)
 - `runMigrations(db)` 在单事务中执行所有未应用的迁移, 幂等可重入
 
@@ -306,17 +306,17 @@ SDK "message.part.updated"  -->  [ToolExecutePendingEvent]  (根据状态分发)
 
 ### 新增事件类型
 
-1. 在 `src/types/events.ts` 的 `StatsEvent` 联合类型中添加接口
-2. 创建 `src/event/converters/my-event.ts`, 导出 `eventType` + `convert`
-3. 在 `src/event/converter.ts` 的 `REGISTERED` 数组中注册
+1. 在 `packages/shared/src/types/events.ts` 的 `StatsEvent` 联合类型中添加接口
+2. 创建 `packages/engine/src/event/converters/my-event.ts`, 导出 `eventType` + `convert`
+3. 在 `packages/engine/src/event/converter.ts` 的 `REGISTERED` 数组中注册
 4. 在相关投影处理器的 `handles` 数组中添加该事件类型
 5. 如需新列, 添加新迁移文件并更新 `schema.ts` 中的 `MIGRATIONS` 数组
 
 ### 新增投影处理器
 
-1. 创建 `src/projection/my-handler.ts`
+1. 创建 `packages/engine/src/projection/my-handler.ts`
 2. 实现 `ProjectionHandler` 接口 (`handles` 数组 + `handle` 方法)
-3. 在 `src/index.ts` 的 `StatsPluginInstance` 构造函数中调用 `registerHandler()`
+3. 在 `packages/plugin/src/index.ts` 的 `StatsPluginInstance` 构造函数中调用 `registerHandler()`
 
 ### 注意事项
 
@@ -340,9 +340,10 @@ bun run biome:check
 bun test
 
 # 运行特定模块测试（新增对应目录后使用）
-bun test tests/projection/
-bun test tests/store/
-bun test tests/events/
+bun test packages/engine/tests/projection/
+bun test packages/engine/tests/store/
+bun test packages/engine/tests/event/
+bun test packages/shared/tests/utils/
 ```
 
 建议验证策略:
